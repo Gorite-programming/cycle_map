@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.gorite.cyclemap.importer.OsmImporterTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-19T13:48:10" hostname="Gorite-no-Macbook-danyonn.local" time="0.041">
+  <properties/>
+  <testcase name="graph keeps highway and applies one way direction()" classname="com.gorite.cyclemap.importer.OsmImporterTest" time="0.038"/>
+  <testcase name="access filtering does not discard road types()" classname="com.gorite.cyclemap.importer.OsmImporterTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
