@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.gorite.cyclemap.routing.RoutingTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-19T13:48:08" hostname="Gorite-no-Macbook-danyonn.local" time="0.049">
-  <properties/>
-  <testcase name="returnsUnreachableWhenNoPathExists()" classname="com.gorite.cyclemap.routing.RoutingTest" time="0.032"/>
-  <testcase name="findsLowestCostPath()" classname="com.gorite.cyclemap.routing.RoutingTest" time="0.016"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

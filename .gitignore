@@ -13,3 +13,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+**/build/
+osm-importer/data/
+*.graph
+*.graph.idx
