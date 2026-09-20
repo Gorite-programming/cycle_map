@@ -20,3 +20,4 @@ osm-importer/data/
 **/bin/
 .kotlin/
 .vscode/
+.aider*

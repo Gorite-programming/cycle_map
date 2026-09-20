@@ -85,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -92,6 +93,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.gorite.cyclemap.data.DownloadStatusManager
 import com.gorite.cyclemap.data.MapSourceType
 import com.gorite.cyclemap.data.Prefecture
@@ -119,6 +122,11 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 private enum class MapLayer(val label: String) {
     GSI("地理院"),
@@ -126,6 +134,18 @@ private enum class MapLayer(val label: String) {
 }
 
 private data class RouteSummary(val distanceMeters: Double, val stepCount: Int)
+
+private class RouteCalculationJob {
+    private val cancelled = AtomicBoolean(false)
+    lateinit var thread: Thread
+
+    fun cancel() {
+        cancelled.set(true)
+        if (::thread.isInitialized) thread.interrupt()
+    }
+
+    fun isCancelled(): Boolean = cancelled.get() || Thread.currentThread().isInterrupted
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -180,6 +200,8 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     var routeOverlay by remember { mutableStateOf<Polyline?>(null) }
     var routeSummary by remember { mutableStateOf<RouteSummary?>(null) }
     var isCalculatingRoute by remember { mutableStateOf(false) }
+    val graphLock = remember { ReentrantReadWriteLock() }
+    val routeJobRef = remember { AtomicReference<RouteCalculationJob?>(null) }
 
     var isRecording by remember { mutableStateOf(false) }
     var gpxPointCount by remember { mutableStateOf(0) }
@@ -219,7 +241,10 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     DisposableEffect(mappedGraph) {
-        onDispose { mappedGraph?.close() }
+        onDispose {
+            routeJobRef.getAndSet(null)?.cancel()
+            graphLock.write { mappedGraph?.close() }
+        }
     }
 
     // GPX BroadcastReceiver
@@ -315,10 +340,10 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("ℹ️ 地図情報・ライセンス") },
-                        selected = selectedMenu == "地図情報",
+                        label = { Text("ℹ️ ライセンス") },
+                        selected = selectedMenu == "ライセンス",
                         onClick = {
-                            selectedMenu = "地図情報"
+                            selectedMenu = "ライセンス"
                             showLicense = true
                             scope.launch { drawerState.close() }
                         },
@@ -386,6 +411,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                     override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
 
                                     override fun longPressHelper(p: GeoPoint): Boolean {
+                                        routeJobRef.getAndSet(null)?.cancel()
                                         destination = p
                                         isCalculatingRoute = true
                                         val graph = latestGraph
@@ -409,16 +435,26 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                             view.invalidate()
                                         }
 
-                                        Thread {
+                                        val routeJob = RouteCalculationJob()
+                                        routeJobRef.set(routeJob)
+                                        routeJob.thread = Thread {
                                             try {
+                                                if (routeJob.isCancelled()) return@Thread
                                                 val start = latestLocation?.let { GeoPoint(it.latitude, it.longitude) }
                                                     ?: GeoPoint(34.1785, 131.4737)
-                                                val startIndex = graph.nearestNodeIndex(start.latitude, start.longitude)
-                                                val goalIndex = graph.nearestNodeIndex(p.latitude, p.longitude)
-                                                val result = graph.route(startIndex, goalIndex)
+                                                val result = graphLock.read {
+                                                    if (routeJob.isCancelled()) return@Thread
+                                                    val startIndex = graph.nearestNodeIndex(start.latitude, start.longitude)
+                                                    if (routeJob.isCancelled()) return@Thread
+                                                    val goalIndex = graph.nearestNodeIndex(p.latitude, p.longitude)
+                                                    if (routeJob.isCancelled()) return@Thread
+                                                    graph.route(startIndex, goalIndex)
+                                                }
+                                                if (routeJob.isCancelled()) return@Thread
                                                 check(result.isReachable) { "有効な自転車ルートが見つかりませんでした" }
 
                                                 (context as? ComponentActivity)?.runOnUiThread {
+                                                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
                                                     val view = mapView
                                                     latestRouteOverlay?.let { view?.overlays?.remove(it) }
                                                     val polyline = view?.let {
@@ -435,15 +471,20 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                                     }
                                                     routeSummary = RouteSummary(result.totalDistanceMeters, result.nodeIds.size - 1)
                                                     isCalculatingRoute = false
+                                                    routeJobRef.compareAndSet(routeJob, null)
                                                 }
                                             } catch (t: Throwable) {
+                                                if (routeJob.isCancelled()) return@Thread
                                                 Log.e("CycleMapGraph", "route failed", t)
                                                 (context as? ComponentActivity)?.runOnUiThread {
+                                                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
                                                     warningMessage = "ルート探索失敗: ${t.message}"
                                                     isCalculatingRoute = false
+                                                    routeJobRef.compareAndSet(routeJob, null)
                                                 }
                                             }
-                                        }.start()
+                                        }
+                                        routeJob.thread.start()
                                         return true
                                     }
                                 },
@@ -594,7 +635,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         }
                         if (!followLocation) {
                             Text(
-                                text = "現在地へ",
+                                text = "現在地に戻る",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimary,
@@ -716,7 +757,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                 color = Color.Black.copy(alpha = 0.6f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 180.dp, end = 8.dp)
+                    .padding(bottom = 100.dp, end = 8.dp)
                     .background(Color.White.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
                     .clickable { showLicense = true }
                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -783,6 +824,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                             }
                             OutlinedButton(
                                 onClick = {
+                                    routeJobRef.getAndSet(null)?.cancel()
                                     mapView?.let { view ->
                                         routeOverlay?.let { view.overlays.remove(it) }
                                         destinationMarker?.let { view.overlays.remove(it) }
@@ -792,6 +834,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                     destinationMarker = null
                                     routeSummary = null
                                     destination = null
+                                    isCalculatingRoute = false
                                 },
                                 shape = RoundedCornerShape(12.dp),
                             ) {
@@ -865,6 +908,14 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.error,
                                     fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
+                                )
+                            }
+                            gpxNotificationText?.let { text ->
+                                Text(
+                                    text = text,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(top = 4.dp, end = 4.dp),
                                 )
                             }
@@ -956,28 +1007,56 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                 ) {
                     Button(
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = !isDownloading,
                         onClick = {
+                            if (isDownloading) return@Button
+                            isDownloading = true
                             showDownloadConfirmDialog = false
-                            startPrefectureDownload(context, pref, MapSourceType.GSI, gsiTileSource()) { progress ->
-                                (context as? ComponentActivity)?.runOnUiThread {
-                                    currentTileProgress = progress
-                                    if (progress.completed >= progress.total) isDownloading = false
-                                }
-                            }
+                            startPrefectureDownload(
+                                context = context,
+                                pref = pref,
+                                sourceType = MapSourceType.GSI,
+                                source = gsiTileSource(),
+                                onProgress = { progress ->
+                                    (context as? ComponentActivity)?.runOnUiThread {
+                                        currentTileProgress = progress
+                                        if (progress.completed >= progress.total) isDownloading = false
+                                    }
+                                },
+                                onFinished = {
+                                    (context as? ComponentActivity)?.runOnUiThread {
+                                        isDownloading = false
+                                    }
+                                },
+                            )
                         },
                     ) {
                         Text("🇯🇵 地理院地図（標準）をDL")
                     }
                     Button(
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = !isDownloading,
                         onClick = {
+                            if (isDownloading) return@Button
+                            isDownloading = true
                             showDownloadConfirmDialog = false
-                            startPrefectureDownload(context, pref, MapSourceType.OSM, osmTileSource()) { progress ->
-                                (context as? ComponentActivity)?.runOnUiThread {
-                                    currentTileProgress = progress
-                                    if (progress.completed >= progress.total) isDownloading = false
-                                }
-                            }
+                            startPrefectureDownload(
+                                context = context,
+                                pref = pref,
+                                sourceType = MapSourceType.OSM,
+                                source = osmTileSource(),
+                                onProgress = { progress ->
+                                    (context as? ComponentActivity)?.runOnUiThread {
+                                        currentTileProgress = progress
+                                        if (progress.completed >= progress.total) isDownloading = false
+                                    }
+                                },
+                                onFinished = {
+                                    (context as? ComponentActivity)?.runOnUiThread {
+                                        isDownloading = false
+                                    }
+                                },
+                            )
                         },
                     ) {
                         Text("🌍 OpenStreetMapをDL")
@@ -996,7 +1075,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     if (showLicense) {
         AlertDialog(
             onDismissRequest = { showLicense = false },
-            title = { Text("アプリ情報・ライセンス") },
+            title = { Text("・ライセンス") },
             text = {
                 Text(
                     "CycleMap App\n" +
@@ -1105,9 +1184,28 @@ private fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    DisposableEffect(mapView) {
-        mapView?.onResume()
-        onDispose { mapView?.onPause() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(mapView, lifecycleOwner) {
+        val view = mapView
+        if (view == null) {
+            onDispose { }
+        } else {
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                view.onResume()
+            }
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> view.onResume()
+                    Lifecycle.Event.ON_PAUSE -> view.onPause()
+                    else -> Unit
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                view.onPause()
+            }
+        }
     }
 }
 
@@ -1118,6 +1216,18 @@ private fun PrefectureListDialog(
     onPrefectureSelected: (Prefecture) -> Unit,
 ) {
     var selectedRegionIndex by remember { mutableIntStateOf(5) } // デフォルト中国地方
+    var downloadStatus by remember { mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap()) }
+
+    LaunchedEffect(context) {
+        downloadStatus = withContext(Dispatchers.IO) {
+            PrefectureData.ALL.associate { pref ->
+                pref.id to (
+                    DownloadStatusManager.isDownloaded(context, pref.id, MapSourceType.GSI) to
+                        DownloadStatusManager.isDownloaded(context, pref.id, MapSourceType.OSM)
+                    )
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1148,8 +1258,9 @@ private fun PrefectureListDialog(
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(prefectures) { pref ->
-                        val isGsi = DownloadStatusManager.isDownloaded(context, pref.id, MapSourceType.GSI)
-                        val isOsm = DownloadStatusManager.isDownloaded(context, pref.id, MapSourceType.OSM)
+                        val status = downloadStatus[pref.id]
+                        val isGsi = status?.first == true
+                        val isOsm = status?.second == true
                         val tileCount = PrefectureData.calculateTileCount(pref.bounds)
                         val sizeMb = PrefectureData.estimateSizeMb(tileCount)
 
@@ -1214,9 +1325,14 @@ private fun startPrefectureDownload(
     sourceType: MapSourceType,
     source: XYTileSource,
     onProgress: (TileProgress) -> Unit,
+    onFinished: () -> Unit,
 ) {
     Thread {
-        TileDownloader.download(context, pref, sourceType, source, onProgress)
+        try {
+            TileDownloader.download(context, pref, sourceType, source, onProgress)
+        } finally {
+            onFinished()
+        }
     }.start()
 }
 
@@ -1289,7 +1405,11 @@ private fun ServiceLocationUpdates(
             if (oldLocation != null) {
                 val elapsedSeconds = (newLocation.time - oldLocation.time) / 1_000.0
                 val distanceMeters = oldLocation.distanceTo(newLocation).toDouble()
-                val rawSpeed = if (elapsedSeconds > 0.0 && distanceMeters >= 5.0) distanceMeters / elapsedSeconds else 0.0
+                val rawSpeed = when {
+                    newLocation.hasSpeed() -> newLocation.speed.toDouble()
+                    elapsedSeconds > 0.0 && distanceMeters >= 1.0 -> distanceMeters / elapsedSeconds
+                    else -> 0.0
+                }
                 smoothedSpeed = smoothedSpeed * 0.7 + rawSpeed * 0.3
                 onSpeed(smoothedSpeed)
             }
