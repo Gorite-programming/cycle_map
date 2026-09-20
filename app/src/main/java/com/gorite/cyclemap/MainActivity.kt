@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
+import android.graphics.Paint
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -67,6 +69,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -135,6 +138,13 @@ private enum class MapLayer(val label: String) {
 
 private data class RouteSummary(val distanceMeters: Double, val stepCount: Int)
 
+private data class SearchResult(
+    val name: String,
+    val category: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
 private class RouteCalculationJob {
     private val cancelled = AtomicBoolean(false)
     lateinit var thread: Thread
@@ -192,6 +202,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     var showLicense by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showDeveloperOptions by remember { mutableStateOf(false) }
+    var showDestinationSearch by remember { mutableStateOf(false) }
     var selectedMenu by remember { mutableStateOf("地図") }
 
     var mappedGraph by remember { mutableStateOf<LazyMappedRoadGraph?>(null) }
@@ -213,6 +224,86 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     val latestLocation by rememberUpdatedState(currentLocation)
     val latestRouteOverlay by rememberUpdatedState(routeOverlay)
     val latestDestMarker by rememberUpdatedState(destinationMarker)
+    val startRouteToDestination: (GeoPoint) -> Unit = route@{ point ->
+        routeJobRef.getAndSet(null)?.cancel()
+        destination = point
+        isCalculatingRoute = true
+        val graph = latestGraph
+        if (graph == null) {
+            isCalculatingRoute = false
+            warningMessage = "ルートグラフが読み込まれていません"
+            return@route
+        }
+
+        (context as? ComponentActivity)?.runOnUiThread {
+            val view = mapView ?: return@runOnUiThread
+            latestDestMarker?.let { view.overlays.remove(it) }
+            val destM = Marker(view).apply {
+                position = point
+                title = "目的地"
+                icon = ContextCompat.getDrawable(context, R.drawable.ic_destination)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            }
+            view.overlays.add(destM)
+            destinationMarker = destM
+            view.controller.animateTo(point)
+            view.invalidate()
+        }
+
+        val routeJob = RouteCalculationJob()
+        routeJobRef.set(routeJob)
+        routeJob.thread = Thread {
+            try {
+                if (routeJob.isCancelled()) return@Thread
+                val start = latestLocation?.let { GeoPoint(it.latitude, it.longitude) }
+                    ?: GeoPoint(34.1785, 131.4737)
+                val result = graphLock.read {
+                    if (routeJob.isCancelled()) return@Thread
+                    val startIndex = graph.nearestNodeIndex(start.latitude, start.longitude)
+                    if (routeJob.isCancelled()) return@Thread
+                    val goalIndex = graph.nearestNodeIndex(point.latitude, point.longitude)
+                    if (routeJob.isCancelled()) return@Thread
+                    graph.route(startIndex, goalIndex)
+                }
+                if (routeJob.isCancelled()) return@Thread
+                check(result.isReachable) { "有効な自転車ルートが見つかりませんでした" }
+
+                (context as? ComponentActivity)?.runOnUiThread {
+                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
+                    val view = mapView
+                    latestRouteOverlay?.let { view?.overlays?.remove(it) }
+                    val polyline = view?.let {
+                        Polyline(it).apply {
+                            setPoints(result.coordinates.map { (lat, lon) -> GeoPoint(lat, lon) })
+                            outlinePaint.color = android.graphics.Color.parseColor("#1976D2")
+                            outlinePaint.strokeWidth = 14f
+                            outlinePaint.strokeJoin = Paint.Join.ROUND
+                            outlinePaint.strokeCap = Paint.Cap.ROUND
+                            outlinePaint.isAntiAlias = true
+                        }
+                    }
+                    if (polyline != null) {
+                        view.overlays.add(polyline)
+                        routeOverlay = polyline
+                        view.invalidate()
+                    }
+                    routeSummary = RouteSummary(result.totalDistanceMeters, result.nodeIds.size - 1)
+                    isCalculatingRoute = false
+                    routeJobRef.compareAndSet(routeJob, null)
+                }
+            } catch (t: Throwable) {
+                if (routeJob.isCancelled()) return@Thread
+                Log.e("CycleMapGraph", "route failed", t)
+                (context as? ComponentActivity)?.runOnUiThread {
+                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
+                    warningMessage = "ルート探索失敗: ${t.message}"
+                    isCalculatingRoute = false
+                    routeJobRef.compareAndSet(routeJob, null)
+                }
+            }
+        }
+        routeJob.thread.start()
+    }
 
     // Load graph & tile check
     LaunchedEffect(Unit) {
@@ -331,6 +422,15 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
+                        label = { Text("🔎 目的地検索") },
+                        selected = selectedMenu == "検索",
+                        onClick = {
+                            selectedMenu = "検索"
+                            showDestinationSearch = true
+                            scope.launch { drawerState.close() }
+                        },
+                    )
+                    NavigationDrawerItem(
                         label = { Text("📥 地図ダウンロード（47都道府県）") },
                         selected = selectedMenu == "ダウンロード",
                         onClick = {
@@ -396,6 +496,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                             loadingLineColor = android.graphics.Color.parseColor("#C5CBD3")
                         }
                         setTileSource(gsiTileSource())
+                        tileProvider.ensureCapacity(256)
                         controller.setZoom(13.0)
                         controller.setCenter(GeoPoint(34.18, 131.47))
                         locationMarker = Marker(this).apply {
@@ -411,80 +512,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                                     override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
 
                                     override fun longPressHelper(p: GeoPoint): Boolean {
-                                        routeJobRef.getAndSet(null)?.cancel()
-                                        destination = p
-                                        isCalculatingRoute = true
-                                        val graph = latestGraph
-                                        if (graph == null) {
-                                            isCalculatingRoute = false
-                                            warningMessage = "ルートグラフが読み込まれていません"
-                                            return true
-                                        }
-
-                                        (context as? ComponentActivity)?.runOnUiThread {
-                                            val view = mapView ?: return@runOnUiThread
-                                            latestDestMarker?.let { view.overlays.remove(it) }
-                                            val destM = Marker(view).apply {
-                                                position = p
-                                                title = "目的地"
-                                                icon = ContextCompat.getDrawable(mapContext, R.drawable.ic_destination)
-                                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                                            }
-                                            view.overlays.add(destM)
-                                            destinationMarker = destM
-                                            view.invalidate()
-                                        }
-
-                                        val routeJob = RouteCalculationJob()
-                                        routeJobRef.set(routeJob)
-                                        routeJob.thread = Thread {
-                                            try {
-                                                if (routeJob.isCancelled()) return@Thread
-                                                val start = latestLocation?.let { GeoPoint(it.latitude, it.longitude) }
-                                                    ?: GeoPoint(34.1785, 131.4737)
-                                                val result = graphLock.read {
-                                                    if (routeJob.isCancelled()) return@Thread
-                                                    val startIndex = graph.nearestNodeIndex(start.latitude, start.longitude)
-                                                    if (routeJob.isCancelled()) return@Thread
-                                                    val goalIndex = graph.nearestNodeIndex(p.latitude, p.longitude)
-                                                    if (routeJob.isCancelled()) return@Thread
-                                                    graph.route(startIndex, goalIndex)
-                                                }
-                                                if (routeJob.isCancelled()) return@Thread
-                                                check(result.isReachable) { "有効な自転車ルートが見つかりませんでした" }
-
-                                                (context as? ComponentActivity)?.runOnUiThread {
-                                                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
-                                                    val view = mapView
-                                                    latestRouteOverlay?.let { view?.overlays?.remove(it) }
-                                                    val polyline = view?.let {
-                                                        Polyline(it).apply {
-                                                            setPoints(result.coordinates.map { (lat, lon) -> GeoPoint(lat, lon) })
-                                                            outlinePaint.color = android.graphics.Color.parseColor("#1976D2")
-                                                            outlinePaint.strokeWidth = 14f
-                                                        }
-                                                    }
-                                                    if (polyline != null) {
-                                                        view.overlays.add(polyline)
-                                                        routeOverlay = polyline
-                                                        view.invalidate()
-                                                    }
-                                                    routeSummary = RouteSummary(result.totalDistanceMeters, result.nodeIds.size - 1)
-                                                    isCalculatingRoute = false
-                                                    routeJobRef.compareAndSet(routeJob, null)
-                                                }
-                                            } catch (t: Throwable) {
-                                                if (routeJob.isCancelled()) return@Thread
-                                                Log.e("CycleMapGraph", "route failed", t)
-                                                (context as? ComponentActivity)?.runOnUiThread {
-                                                    if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
-                                                    warningMessage = "ルート探索失敗: ${t.message}"
-                                                    isCalculatingRoute = false
-                                                    routeJobRef.compareAndSet(routeJob, null)
-                                                }
-                                            }
-                                        }
-                                        routeJob.thread.start()
+                                        startRouteToDestination(p)
                                         return true
                                     }
                                 },
@@ -927,6 +955,16 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     // --- DIALOGS ---
+    if (showDestinationSearch) {
+        DestinationSearchDialog(
+            context = context,
+            onDismiss = { showDestinationSearch = false },
+            onResultSelected = { result ->
+                showDestinationSearch = false
+                startRouteToDestination(GeoPoint(result.latitude, result.longitude))
+            },
+        )
+    }
 
     // 1. Prefecture List Dialog (47 Prefectures grouped by Region)
     if (showPrefectureListDialog) {
@@ -1167,6 +1205,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
             view.setTileSource(source)
             view.minZoomLevel = source.minimumZoomLevel.toDouble()
             view.maxZoomLevel = source.maximumZoomLevel.toDouble()
+            view.tileProvider.ensureCapacity(256)
             // GSI labels stay sharp at native 256px; OSM text is small so scale to DPI.
             view.setTilesScaledToDpi(selectedLayer == MapLayer.OSM)
             view.overlayManager.tilesOverlay.apply {
@@ -1207,6 +1246,81 @@ private fun MapScreen(modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+@Composable
+private fun DestinationSearchDialog(
+    context: Context,
+    onDismiss: () -> Unit,
+    onResultSelected: (SearchResult) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val searchDb = remember(context) { File(cycleMapDataDir(context), "search.db") }
+
+    LaunchedEffect(query, searchDb) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) {
+            results = emptyList()
+            message = if (searchDb.isFile) null else "検索DBが見つかりません: ${searchDb.absolutePath}"
+            return@LaunchedEffect
+        }
+        val found = withContext(Dispatchers.IO) {
+            searchPlaces(searchDb, trimmed)
+        }
+        results = found
+        message = when {
+            !searchDb.isFile -> "検索DBが見つかりません: ${searchDb.absolutePath}"
+            found.isEmpty() -> "該当する目的地がありません"
+            else -> null
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("目的地検索") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().height(420.dp)) {
+                TextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("施設名・地名を入力") },
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                message?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(results) { result ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .clickable { onResultSelected(result) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                                Text(result.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(
+                                    "${result.category}  %.5f, %.5f".format(Locale.US, result.latitude, result.longitude),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("閉じる") }
+        },
+    )
 }
 
 @Composable
@@ -1336,6 +1450,49 @@ private fun startPrefectureDownload(
     }.start()
 }
 
+private fun searchPlaces(dbFile: File, query: String, limit: Int = 30): List<SearchResult> {
+    if (!dbFile.isFile) return emptyList()
+    val results = linkedMapOf<String, SearchResult>()
+    SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+        val ftsQuery = query
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+        db.rawQuery(
+            """
+            SELECT p.name, p.category, p.lat, p.lon
+            FROM places_fts f
+            JOIN places p ON p.id = f.rowid
+            WHERE places_fts MATCH ?
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(ftsQuery, limit.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val result = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                results["${result.name}:${result.latitude}:${result.longitude}"] = result
+            }
+        }
+        if (results.size < limit) {
+            db.rawQuery(
+                """
+                SELECT name, category, lat, lon
+                FROM places
+                WHERE name LIKE ?
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf("%$query%", (limit - results.size).toString()),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val result = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                    results["${result.name}:${result.latitude}:${result.longitude}"] = result
+                }
+            }
+        }
+    }
+    return results.values.toList()
+}
+
 @Composable
 private fun IconButton(
     onClick: () -> Unit,
@@ -1369,17 +1526,18 @@ private fun cycleMapDataDir(context: Context): File =
 
 private fun configureOsmdroid(context: Context, dataDir: File) {
     val tileDir = File(dataDir, "tiles").apply { mkdirs() }
+    SqlTileWriter.setCleanupOnStart(false)
     Configuration.getInstance().apply {
         load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
         osmdroidBasePath = dataDir
         osmdroidTileCache = tileDir
         userAgentValue = "CycleMap/1.0 (Android; cycling navigator; personal use)"
-        tileDownloadThreads = 4
+        tileDownloadThreads = 6
         tileFileSystemThreads = 8
-        tileDownloadMaxQueueSize = 40
-        tileFileSystemMaxQueueSize = 40
-        cacheMapTileCount = 16.toShort()
-        cacheMapTileOvershoot = 2.toShort()
+        tileDownloadMaxQueueSize = 80
+        tileFileSystemMaxQueueSize = 80
+        cacheMapTileCount = 64.toShort()
+        cacheMapTileOvershoot = 4.toShort()
         expirationOverrideDuration = 30L * 24 * 60 * 60 * 1000
         tileFileSystemCacheMaxBytes = 800L * 1024 * 1024
         tileFileSystemCacheTrimBytes = 700L * 1024 * 1024

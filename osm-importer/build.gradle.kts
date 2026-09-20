@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(project(":routing-core"))
     implementation("org.openstreetmap.osmosis:osmosis-pbf:0.48.3")
+    implementation("org.xerial:sqlite-jdbc:3.46.1.0")
     testImplementation(kotlin("test"))
 }
 

@@ -17,11 +17,22 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.sql.Connection
+import java.sql.DriverManager
 
 data class OsmWay(
     val id: Long,
     val nodeIds: LongArray,
     val tags: Map<String, String>,
+)
+
+data class SearchPlace(
+    val osmType: String,
+    val osmId: Long,
+    val name: String,
+    val category: String,
+    val latitude: Double,
+    val longitude: Double,
 )
 
 object BicycleAccessFilter {
@@ -123,6 +134,121 @@ class PbfReader {
         }
         return nodes to ways
     }
+}
+
+class SearchIndexWriter {
+    fun write(places: Sequence<SearchPlace>, output: File): Int {
+        output.parentFile?.mkdirs()
+        if (output.exists()) output.delete()
+        DriverManager.getConnection("jdbc:sqlite:${output.absolutePath}").use { connection ->
+            connection.autoCommit = false
+            connection.createStatement().use { statement ->
+                statement.executeUpdate("PRAGMA journal_mode = OFF")
+                statement.executeUpdate("PRAGMA synchronous = OFF")
+                statement.executeUpdate("CREATE TABLE places (id INTEGER PRIMARY KEY, osm_type TEXT NOT NULL, osm_id INTEGER NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL)")
+                statement.executeUpdate("CREATE VIRTUAL TABLE places_fts USING fts5(name, category, content='places', content_rowid='id', tokenize='unicode61')")
+                statement.executeUpdate("CREATE INDEX places_osm_idx ON places(osm_type, osm_id)")
+            }
+            var count = 0
+            connection.prepareStatement("INSERT INTO places(osm_type, osm_id, name, category, lat, lon) VALUES (?, ?, ?, ?, ?, ?)").use { placeInsert ->
+                connection.prepareStatement("INSERT INTO places_fts(rowid, name, category) VALUES (?, ?, ?)").use { ftsInsert ->
+                    for (place in places) {
+                        placeInsert.setString(1, place.osmType)
+                        placeInsert.setLong(2, place.osmId)
+                        placeInsert.setString(3, place.name)
+                        placeInsert.setString(4, place.category)
+                        placeInsert.setDouble(5, place.latitude)
+                        placeInsert.setDouble(6, place.longitude)
+                        placeInsert.executeUpdate()
+
+                        val rowId = lastInsertRowId(connection)
+                        ftsInsert.setLong(1, rowId)
+                        ftsInsert.setString(2, place.name)
+                        ftsInsert.setString(3, place.category)
+                        ftsInsert.executeUpdate()
+                        count++
+                        if (count % 10_000 == 0) connection.commit()
+                    }
+                }
+            }
+            connection.commit()
+            connection.createStatement().use { statement ->
+                statement.executeUpdate("PRAGMA optimize")
+            }
+            return count
+        }
+    }
+
+    private fun lastInsertRowId(connection: Connection): Long =
+        connection.createStatement().use { statement ->
+            statement.executeQuery("SELECT last_insert_rowid()").use { result ->
+                result.next()
+                result.getLong(1)
+            }
+        }
+}
+
+fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> {
+    val peak = PeakHeapTracker().start()
+    val start = System.nanoTime()
+    val nodes = linkedMapOf<Long, GraphNode>()
+    val places = ArrayList<SearchPlace>()
+    val ways = ArrayList<OsmWay>()
+    readPbf(input) { entity ->
+        when (entity) {
+            is Node -> {
+                val node = GraphNode(entity.id, entity.latitude, entity.longitude)
+                nodes[entity.id] = node
+                if (!bbox.contains(node)) return@readPbf
+                val tags = entity.tags.associate { it.key to it.value }
+                val name = tags["name"]?.trim().orEmpty()
+                if (name.isNotBlank()) {
+                    places += SearchPlace("node", entity.id, name, categoryFor(tags), entity.latitude, entity.longitude)
+                }
+            }
+            is Way -> {
+                val tags = entity.tags.associate { it.key to it.value }
+                if (tags["name"].isNullOrBlank()) return@readPbf
+                ways += OsmWay(entity.id, entity.wayNodes.map { it.nodeId }.toLongArray(), tags)
+            }
+        }
+    }
+    for (way in ways) {
+        val centroid = centroid(way.nodeIds, nodes) ?: continue
+        if (!bbox.contains(centroid)) continue
+        places += SearchPlace("way", way.id, way.tags.getValue("name").trim(), categoryFor(way.tags), centroid.latitude, centroid.longitude)
+    }
+    val count = SearchIndexWriter().write(places.asSequence(), output)
+    peak.stop()
+    val elapsedMs = (System.nanoTime() - start) / 1_000_000L
+    println("searchEntries=$count output=${output.absolutePath} sizeBytes=${output.length()} elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}")
+    return count to output.length()
+}
+
+private fun centroid(nodeIds: LongArray, nodes: Map<Long, GraphNode>): GraphNode? {
+    var lat = 0.0
+    var lon = 0.0
+    var count = 0
+    for (id in nodeIds) {
+        val node = nodes[id] ?: continue
+        lat += node.latitude
+        lon += node.longitude
+        count++
+    }
+    if (count == 0) return null
+    return GraphNode(0L, lat / count, lon / count)
+}
+
+private fun categoryFor(tags: Map<String, String>): String = when {
+    tags["place"] != null -> "place:${tags.getValue("place")}"
+    tags["railway"] == "station" -> "railway:station"
+    tags["amenity"] != null -> "amenity:${tags.getValue("amenity")}"
+    tags["shop"] != null -> "shop:${tags.getValue("shop")}"
+    tags["tourism"] != null -> "tourism:${tags.getValue("tourism")}"
+    tags["leisure"] != null -> "leisure:${tags.getValue("leisure")}"
+    tags["highway"] == "bus_stop" -> "highway:bus_stop"
+    tags["public_transport"] != null -> "public_transport:${tags.getValue("public_transport")}"
+    else -> "named"
 }
 
 data class BicycleNetworkStats(
@@ -286,6 +412,14 @@ fun main(args: Array<String>) {
             "--route" -> {
                 require(rest.size == 5) { "Usage: osm-importer --route <graph> <startLat> <startLon> <goalLat> <goalLon>" }
                 runRouteSanityCheck(File(rest[0]), rest[1].toDouble(), rest[2].toDouble(), rest[3].toDouble(), rest[4].toDouble())
+                return
+            }
+            "--search-index" -> {
+                require(rest.size == 2) { "Usage: osm-importer --search-index [--bbox japan|yamaguchi|none] <input.osm.pbf> <output.search.db>" }
+                val input = File(rest[0])
+                val output = File(rest[1])
+                require(input.isFile) { "Input PBF does not exist: ${input.absolutePath}" }
+                buildSearchIndex(input, output, bbox)
                 return
             }
             else -> error("Unknown flag $flag")
