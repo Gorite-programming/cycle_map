@@ -17,3 +17,6 @@ local.properties
 osm-importer/data/
 *.graph
 *.graph.idx
+**/bin/
+.kotlin/
+.vscode/

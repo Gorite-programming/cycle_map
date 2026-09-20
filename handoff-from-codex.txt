@@ -1,0 +1,60 @@
+Handoff from Codex — CycleMap project, take over from here.
+
+PROJECT: CycleMap — fully offline cycling navigation app for Android (Kotlin/Compose, personal use only, no distribution planned).
+Workspace: /Users/yamamototakuma/Desktop/cycle_map/application
+
+MODULES:
+- app-android: UI, GPS, map (Compose)
+- routing-core: Node/Edge/RoadGraph/A*/CyclingCostModel, mmap-backed lazy graph reader
+- osm-importer: Kotlin/JVM CLI, converts OSM .pbf → custom binary graph format
+- graph-format: binary graph read/write
+
+SCOPE: Yamaguchi prefecture only (changed from initial Hiroshima scope).
+
+STACK DECISIONS:
+- No GraphHopper (not actively supported offline on Android) — self-built A* routing engine instead
+- Map tiles: GSI (国土地理院) standard map, not Google/OSM raster tiles
+- Routing data (OSM graph) and display data (GSI tiles) are kept completely separate
+- Voice guidance: Android TTS first, VOICEVOX pre-generated audio later (not started yet)
+- Data delivery: first-run external import (Documents/CycleMap/ directory) — NOT bundled in APK, NOT a download package system
+
+COMPLETED SO FAR (all verified on physical Samsung S21):
+1. osm-importer extracts bicycle-passable ways from yamaguchi.osm.pbf (filters bicycle=no, access=no/private/emergency, vehicle=no/private/emergency), preserves highway type + oneway + coordinates
+2. Graph generated: 1,688,036 nodes / 3,495,466 directed edges, ~161.5 MiB, Yamaguchi-boundary filtered
+3. CyclingCostModel in routing-core: weights primary/secondary/tertiary favorably, penalizes residential/track, excludes motorway
+4. On-device graph loading optimized via mmap + adjacency-offset sidecar (yamaguchi.graph.idx, ~39 MiB) — load time 2.85s, ~201 MiB PSS increase, no OOM (started at 23.6s/442 MiB before optimization)
+5. UI: GSI map default layer, long-press sets destination, GPS is start point (fallback: Yamaguchi City Hall if GPS unavailable), A* route drawn as blue osmdroid polyline
+6. Real on-device route test succeeded: 6,681.99 m route, 270 steps
+7. First-run external data import implemented: app checks /storage/emulated/0/Android/data/com.gorite.cyclemap/files/Documents/CycleMap/ for yamaguchi.graph, yamaguchi.graph.idx, tiles/cache.db — shows placement instructions if missing
+8. GSI tile download implemented: 8-worker concurrent downloader, standard map tiles z10–z14 for Yamaguchi bbox, 5,771 tiles, ~144 MiB, stored in osmdroid SQLite cache
+9. **Airplane-mode offline verification PASSED on S21** — map renders and routing works with connectivity fully disabled. This confirms the core project goal (full offline operation) is achieved.
+10. Attribution added (OSM + GSI) on map corner and license screen, per terms of use
+11. All tests pass: :routing-core:test, :osm-importer:test, :app:assembleDebug
+
+NOT YET DONE / DEFERRED:
+- z15–z16 tiles (full Yamaguchi would be ~89,189 tiles / >1 GB — deferred, could later do route-corridor-only high-zoom download instead of full bbox)
+- GSI pale map / hillshade layers (for future gradient/elevation feature — MVP-out-of-scope for now)
+- Live location tracking during a ride (current GPS use is a one-time fix for start point only, not continuous tracking)
+- GPX recording (start/stop, save track)
+- Turn-by-turn navigation + off-route detection + auto-reroute
+- Voice guidance
+- Fall detection / micro:bit sensor integration (explicitly out of scope for now — ignore entirely)
+- Heart rate (Amazfit Bip 6) — deferred, ignore for now
+
+YOUR IMMEDIATE TASK:
+Implement live location tracking + GPX recording, in that order:
+
+1. Live location tracking:
+   - Continuously update the current-position marker on the map as the device moves (not just a one-time GPS fix)
+   - Run via a Foreground Service so tracking continues if the screen locks
+   - Test on the S21 while physically moving (or simulate via mock location if a real test ride isn't practical right now) and confirm the marker updates smoothly
+
+2. GPX recording:
+   - Add start/stop recording controls
+   - Record timestamped lat/lng/elevation points during tracking
+   - Save as a valid GPX file to local storage
+   - Confirm the saved GPX opens correctly in a GPX viewer/validator
+
+Do NOT implement turn-by-turn navigation, reroute logic, or voice guidance yet — those come after GPX recording is confirmed working.
+
+Report using the standard handoff format: status / deviations / blockers / next step, in English.
