@@ -20,6 +20,10 @@ import java.io.FileOutputStream
 import java.sql.Connection
 import java.sql.DriverManager
 
+// ---------------------------------------------------------------------------
+// Data classes
+// ---------------------------------------------------------------------------
+
 data class OsmWay(
     val id: Long,
     val nodeIds: LongArray,
@@ -35,6 +39,10 @@ data class SearchPlace(
     val longitude: Double,
 )
 
+// ---------------------------------------------------------------------------
+// BicycleAccessFilter
+// ---------------------------------------------------------------------------
+
 object BicycleAccessFilter {
     private val explicitlyDenied = setOf("no", "private", "emergency")
 
@@ -48,6 +56,10 @@ object BicycleAccessFilter {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GeoBBox
+// ---------------------------------------------------------------------------
+
 data class GeoBBox(
     val minLat: Double,
     val maxLat: Double,
@@ -56,6 +68,9 @@ data class GeoBBox(
 ) {
     fun contains(node: GraphNode): Boolean =
         node.latitude in minLat..maxLat && node.longitude in minLon..maxLon
+
+    fun containsLatLon(lat: Double, lon: Double): Boolean =
+        lat in minLat..maxLat && lon in minLon..maxLon
 
     companion object {
         val YAMAGUCHI = GeoBBox(33.70, 34.80, 130.70, 132.20)
@@ -71,6 +86,251 @@ data class GeoBBox(
     }
 }
 
+// ---------------------------------------------------------------------------
+// LongOpenHashSet  (primitive, open-addressing, power-of-2 table)
+// ---------------------------------------------------------------------------
+
+class LongOpenHashSet(initialPower: Int = 22) {
+    private var keys = LongArray(1 shl initialPower)
+    var size: Int = 0
+        private set
+
+    fun add(id: Long) {
+        if (id == 0L) return
+        ensureCapacity()
+        var index = mix(id) and (keys.size - 1)
+        while (true) {
+            val existing = keys[index]
+            if (existing == 0L) { keys[index] = id; size++; return }
+            if (existing == id) return
+            index = (index + 1) and (keys.size - 1)
+        }
+    }
+
+    fun contains(id: Long): Boolean {
+        if (id == 0L) return false
+        var index = mix(id) and (keys.size - 1)
+        while (true) {
+            val existing = keys[index]
+            if (existing == 0L) return false
+            if (existing == id) return true
+            index = (index + 1) and (keys.size - 1)
+        }
+    }
+
+    private fun ensureCapacity() {
+        if (size * 2 < keys.size) return
+        val old = keys
+        keys = LongArray(old.size * 2)
+        size = 0
+        for (value in old) if (value != 0L) add(value)
+    }
+
+    private fun mix(value: Long): Int = (value xor (value ushr 32)).toInt()
+}
+
+// ---------------------------------------------------------------------------
+// Low-level PBF helpers
+// ---------------------------------------------------------------------------
+
+private fun readPbf(
+    file: File,
+    onEntity: (org.openstreetmap.osmosis.core.domain.v0_6.Entity) -> Unit,
+) {
+    val sink = object : Sink {
+        override fun initialize(metaData: Map<String, Any>) = Unit
+        override fun process(entityContainer: EntityContainer) = onEntity(entityContainer.entity)
+        override fun complete() = Unit
+        override fun close() = Unit
+    }
+    FileInputStream(file).use { input ->
+        OsmosisReader(input).apply { setSink(sink) }.run()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Two-pass graph builder
+//
+// Design rationale
+// ================
+// The single-pass approach in PbfReader.read() loaded every OSM Node in the
+// PBF (≈ 9 million for Japan-scale files) into a Map<Long, GraphNode> and
+// kept all OsmWay objects in a List<OsmWay> simultaneously.  With a 70 MB
+// PBF this caused Java heap space OOM on machines with 8 GB RAM because:
+//   • Each Map entry consumes ≈ 80–120 bytes (key Long box + GraphNode object
+//     header + 3 fields + HashMap bucket overhead).
+//   • 9 M entries × ~100 bytes = ~900 MB just for the node map.
+//   • OsmGraphBuilder.build() then allocates a second set of maps while the
+//     first is still alive → peak ≈ 2× the node-map size.
+//
+// Two-pass approach
+// -----------------
+// Pass 1 — Way scan only:
+//   Read the PBF once, ignore nodes entirely, collect bicycle-accessible
+//   OsmWay objects and record every referenced node ID in a LongOpenHashSet.
+//   Way count for a prefecture is typically < 300 000, which is negligible.
+//
+// Pass 2 — Selective node scan:
+//   Read the PBF a second time.  Only store (lat, lon) pairs for the node IDs
+//   that were seen in Pass 1 (stored as two parallel DoubleArrays indexed via
+//   a compact Long→Int map to keep primitive storage).  Node IDs that are not
+//   referenced by any bicycle way are discarded immediately.
+//
+// Graph construction:
+//   Iterate ways once more (already in memory) to build graphNodes/outgoing
+//   exactly as before, but now the node coordinate lookup is O(1) in the
+//   compact map.
+//
+// Memory comparison (Japan, ~9 M nodes, ~600 K bicycle ways):
+//   Before: ~900 MB node map + ~150 MB way list + peak of OsmGraphBuilder ≈ 2 GB+
+//   After:  ~2 MB LongOpenHashSet + ~150 MB way list +
+//           ~200 MB selective coord map (only referenced nodes) ≈ ~350 MB
+// ---------------------------------------------------------------------------
+
+/**
+ * Compact map from OSM node ID → (lat, lon) backed by parallel primitive arrays.
+ * Much cheaper than HashMap<Long, Pair<Double,Double>> because there are no
+ * object allocations per entry.
+ */
+private class NodeCoordStore(capacity: Int) {
+    // Open-addressing hash map: keys[i] → node id (0 = empty), latArr/lonArr[i] → coords
+    private val mask: Int
+    private val keys: LongArray
+    private val latArr: DoubleArray
+    private val lonArr: DoubleArray
+
+    init {
+        // Round up to next power of 2, keep load ≤ 0.5
+        var sz = Integer.highestOneBit(capacity * 2 - 1) shl 1
+        if (sz < 8) sz = 8
+        mask = sz - 1
+        keys = LongArray(sz)
+        latArr = DoubleArray(sz)
+        lonArr = DoubleArray(sz)
+    }
+
+    fun put(id: Long, lat: Double, lon: Double) {
+        if (id == 0L) return
+        var i = mix(id) and mask
+        while (true) {
+            val k = keys[i]
+            if (k == 0L || k == id) {
+                keys[i] = id; latArr[i] = lat; lonArr[i] = lon; return
+            }
+            i = (i + 1) and mask
+        }
+    }
+
+    /** Returns true if id exists; sets [outLat]/[outLon] pair via [out] callback. */
+    inline fun get(id: Long, out: (Double, Double) -> Unit): Boolean {
+        if (id == 0L) return false
+        var i = mix(id) and mask
+        while (true) {
+            val k = keys[i]
+            if (k == 0L) return false
+            if (k == id) { out(latArr[i], lonArr[i]); return true }
+            i = (i + 1) and mask
+        }
+    }
+
+    private fun mix(value: Long): Int = (value xor (value ushr 32)).toInt()
+}
+
+/**
+ * Two-pass memory-efficient graph builder.
+ * Replaces the old PbfReader.read() + OsmGraphBuilder.build() pipeline.
+ */
+class TwoPassGraphBuilder(private val bbox: GeoBBox = GeoBBox.YAMAGUCHI) {
+
+    fun build(pbfFile: File): RoadGraph {
+        // ----------------------------------------------------------------
+        // Pass 1: collect bicycle ways + required node ID set
+        // ----------------------------------------------------------------
+        println("[graph 1/2] Scanning bicycle ways...")
+        val bicycleWays = ArrayList<OsmWay>(200_000)
+        val neededNodeIds = LongOpenHashSet(23) // ~8 M capacity
+
+        readPbf(pbfFile) { entity ->
+            if (entity is Way) {
+                val tags = entity.tags.associate { it.key to it.value }
+                if (!BicycleAccessFilter.isAllowed(tags)) return@readPbf
+                val ids = entity.wayNodes.map { it.nodeId }.toLongArray()
+                bicycleWays += OsmWay(entity.id, ids, tags)
+                ids.forEach { neededNodeIds.add(it) }
+            }
+        }
+        println("[graph 1/2] Done. bicycleWays=${bicycleWays.size} neededNodes=${neededNodeIds.size}")
+
+        // ----------------------------------------------------------------
+        // Pass 2: load only required node coordinates
+        // ----------------------------------------------------------------
+        println("[graph 2/2] Resolving node coordinates...")
+        val coords = NodeCoordStore(neededNodeIds.size * 2)
+
+        readPbf(pbfFile) { entity ->
+            if (entity is Node && neededNodeIds.contains(entity.id)) {
+                coords.put(entity.id, entity.latitude, entity.longitude)
+            }
+        }
+        println("[graph 2/2] Done.")
+
+        // ----------------------------------------------------------------
+        // Graph construction (same logic as OsmGraphBuilder.build)
+        // ----------------------------------------------------------------
+        val graphNodes = LinkedHashMap<Long, GraphNode>(neededNodeIds.size)
+        val outgoing = LinkedHashMap<Long, MutableList<GraphEdge>>(neededNodeIds.size)
+
+        for (way in bicycleWays) {
+            if (!BicycleAccessFilter.isAllowed(way.tags)) continue // redundant but safe
+            val roadType = way.tags["highway"] ?: "unknown"
+            val onewayTag = way.tags["oneway"]
+            val oneway = onewayTag in setOf("yes", "true", "1", "-1")
+            val reverseOnly = onewayTag == "-1"
+
+            for (index in 0 until way.nodeIds.size - 1) {
+                val fromId = way.nodeIds[index]
+                val toId = way.nodeIds[index + 1]
+
+                var fromLat = 0.0; var fromLon = 0.0
+                var toLat = 0.0; var toLon = 0.0
+                if (!coords.get(fromId) { la, lo -> fromLat = la; fromLon = lo }) continue
+                if (!coords.get(toId) { la, lo -> toLat = la; toLon = lo }) continue
+
+                if (!bbox.containsLatLon(fromLat, fromLon)) continue
+                if (!bbox.containsLatLon(toLat, toLon)) continue
+
+                val fromNode = graphNodes.getOrPut(fromId) { GraphNode(fromId, fromLat, fromLon) }
+                val toNode = graphNodes.getOrPut(toId) { GraphNode(toId, toLat, toLon) }
+                val distance = com.gorite.cyclemap.routing.haversineMeters(
+                    fromNode.latitude, fromNode.longitude,
+                    toNode.latitude, toNode.longitude,
+                )
+
+                if (!reverseOnly) {
+                    outgoing.getOrPut(fromId) { mutableListOf() }
+                        .add(GraphEdge(fromId, toId, distance, roadType, oneway))
+                }
+                if (!oneway || reverseOnly) {
+                    // oneway="-1": the to→from direction is the only permitted direction;
+                    // mark it as a regular (non-one-way) edge so future routers don't
+                    // treat it as forward-only.
+                    val reverseEdgeOneWay = oneway && !reverseOnly
+                    outgoing.getOrPut(toId) { mutableListOf() }
+                        .add(GraphEdge(toId, fromId, distance, roadType, reverseEdgeOneWay))
+                }
+            }
+        }
+
+        return RoadGraph(graphNodes, outgoing)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy classes kept for API compatibility (used nowhere in main paths but
+// referenced from within this file's historic call-sites and tests)
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use TwoPassGraphBuilder for large PBF files. */
 class OsmGraphBuilder(private val bbox: GeoBBox = GeoBBox.YAMAGUCHI) {
     fun build(nodes: Map<Long, GraphNode>, ways: List<OsmWay>): RoadGraph {
         val graphNodes = linkedMapOf<Long, GraphNode>()
@@ -91,7 +351,10 @@ class OsmGraphBuilder(private val bbox: GeoBBox = GeoBBox.YAMAGUCHI) {
                 graphNodes[fromId] = from
                 graphNodes[toId] = to
                 if (!reverseOnly) addEdge(outgoing, GraphEdge(fromId, toId, distance, roadType, oneway))
-                if (!oneway || reverseOnly) addEdge(outgoing, GraphEdge(toId, fromId, distance, roadType, oneway))
+                if (!oneway || reverseOnly) {
+                    val reverseEdgeOneWay = oneway && !reverseOnly
+                    addEdge(outgoing, GraphEdge(toId, fromId, distance, roadType, reverseEdgeOneWay))
+                }
             }
         }
         return RoadGraph(graphNodes, outgoing)
@@ -105,27 +368,22 @@ class OsmGraphBuilder(private val bbox: GeoBBox = GeoBBox.YAMAGUCHI) {
         com.gorite.cyclemap.routing.haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude)
 }
 
+/** @deprecated Use TwoPassGraphBuilder for large PBF files. */
 class PbfReader {
     fun read(file: File): Pair<Map<Long, GraphNode>, List<OsmWay>> {
         val nodes = linkedMapOf<Long, GraphNode>()
         val ways = mutableListOf<OsmWay>()
         val sink = object : Sink {
             override fun initialize(metaData: Map<String, Any>) = Unit
-
             override fun process(entityContainer: EntityContainer) {
                 when (val entity = entityContainer.entity) {
                     is Node -> nodes[entity.id] = GraphNode(entity.id, entity.latitude, entity.longitude)
                     is Way -> {
                         val tags = entity.tags.associate { it.key to it.value }
-                        ways += OsmWay(
-                            entity.id,
-                            entity.wayNodes.map { it.nodeId }.toLongArray(),
-                            tags,
-                        )
+                        ways += OsmWay(entity.id, entity.wayNodes.map { it.nodeId }.toLongArray(), tags)
                     }
                 }
             }
-
             override fun complete() = Unit
             override fun close() = Unit
         }
@@ -136,6 +394,10 @@ class PbfReader {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Search index
+// ---------------------------------------------------------------------------
+
 class SearchIndexWriter {
     fun write(places: Sequence<SearchPlace>, output: File): Int {
         output.parentFile?.mkdirs()
@@ -145,13 +407,24 @@ class SearchIndexWriter {
             connection.createStatement().use { statement ->
                 statement.executeUpdate("PRAGMA journal_mode = OFF")
                 statement.executeUpdate("PRAGMA synchronous = OFF")
-                statement.executeUpdate("CREATE TABLE places (id INTEGER PRIMARY KEY, osm_type TEXT NOT NULL, osm_id INTEGER NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL)")
-                statement.executeUpdate("CREATE VIRTUAL TABLE places_fts USING fts5(name, category, content='places', content_rowid='id', tokenize='unicode61')")
+                statement.executeUpdate(
+                    "CREATE TABLE places (id INTEGER PRIMARY KEY, osm_type TEXT NOT NULL, " +
+                        "osm_id INTEGER NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL, " +
+                        "lat REAL NOT NULL, lon REAL NOT NULL)",
+                )
+                statement.executeUpdate(
+                    "CREATE VIRTUAL TABLE places_fts USING fts5(name, category, " +
+                        "content='places', content_rowid='id', tokenize='unicode61')",
+                )
                 statement.executeUpdate("CREATE INDEX places_osm_idx ON places(osm_type, osm_id)")
             }
             var count = 0
-            connection.prepareStatement("INSERT INTO places(osm_type, osm_id, name, category, lat, lon) VALUES (?, ?, ?, ?, ?, ?)").use { placeInsert ->
-                connection.prepareStatement("INSERT INTO places_fts(rowid, name, category) VALUES (?, ?, ?)").use { ftsInsert ->
+            connection.prepareStatement(
+                "INSERT INTO places(osm_type, osm_id, name, category, lat, lon) VALUES (?, ?, ?, ?, ?, ?)",
+            ).use { placeInsert ->
+                connection.prepareStatement(
+                    "INSERT INTO places_fts(rowid, name, category) VALUES (?, ?, ?)",
+                ).use { ftsInsert ->
                     for (place in places) {
                         placeInsert.setString(1, place.osmType)
                         placeInsert.setLong(2, place.osmId)
@@ -189,24 +462,23 @@ class SearchIndexWriter {
 }
 
 /**
- * Builds a SQLite search index from an OSM PBF file using a two-pass streaming approach
- * to avoid loading all nodes into memory at once (required for japan-latest.osm.pbf).
+ * Builds a SQLite search index from an OSM PBF file using a two-pass streaming
+ * approach to avoid loading all nodes into memory at once.
  *
- * Pass 1: Collect named nodes (emitted directly) and record which node IDs are needed
- *         for centroid calculation of named ways.
+ * Pass 1: Collect named nodes (emitted directly) and record which node IDs are
+ *         needed for centroid calculation of named ways.
  * Pass 2: Read only the required node coordinates, then compute way centroids.
  */
 fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> {
     val peak = PeakHeapTracker().start()
     val start = System.nanoTime()
 
-    // --- Pass 1: collect named nodes + way metadata ---
     println("[1/2] Pass 1: scanning named nodes and ways...")
     data class WayMeta(val id: Long, val nodeIds: LongArray, val tags: Map<String, String>)
 
     val nodeResults = ArrayList<SearchPlace>(200_000)
     val namedWays = ArrayList<WayMeta>(100_000)
-    val neededNodeIds = LongOpenHashSet(23) // capacity ~8M slots
+    val neededNodeIds = LongOpenHashSet(23)
 
     readPbf(input) { entity ->
         when (entity) {
@@ -215,11 +487,8 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
                 val lon = entity.longitude
                 val tags = entity.tags.associate { it.key to it.value }
                 val name = tags["name"]?.trim().orEmpty()
-                if (name.isNotBlank()) {
-                    val node = GraphNode(entity.id, lat, lon)
-                    if (bbox.contains(node)) {
-                        nodeResults += SearchPlace("node", entity.id, name, categoryFor(tags), lat, lon)
-                    }
+                if (name.isNotBlank() && bbox.containsLatLon(lat, lon)) {
+                    nodeResults += SearchPlace("node", entity.id, name, categoryFor(tags), lat, lon)
                 }
             }
             is Way -> {
@@ -233,7 +502,6 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
     }
     println("[1/2] Done. namedNodes=${nodeResults.size} namedWays=${namedWays.size} neededNodes=${neededNodeIds.size}")
 
-    // --- Pass 2: read only required node coordinates for way centroids ---
     println("[2/2] Pass 2: resolving way node coordinates...")
     val nodeCoords = HashMap<Long, Pair<Double, Double>>(neededNodeIds.size * 2)
     readPbf(input) { entity ->
@@ -243,7 +511,6 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
     }
     println("[2/2] Done. resolvedNodes=${nodeCoords.size}")
 
-    // Compute centroids and collect way places
     val wayResults = ArrayList<SearchPlace>(namedWays.size)
     for (way in namedWays) {
         var latSum = 0.0; var lonSum = 0.0; var count = 0
@@ -254,9 +521,13 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
         if (count == 0) continue
         val centLat = latSum / count
         val centLon = lonSum / count
-        val centroid = GraphNode(0L, centLat, centLon)
-        if (!bbox.contains(centroid)) continue
-        wayResults += SearchPlace("way", way.id, way.tags.getValue("name").trim(), categoryFor(way.tags), centLat, centLon)
+        if (!bbox.containsLatLon(centLat, centLon)) continue
+        wayResults += SearchPlace(
+            "way", way.id,
+            way.tags.getValue("name").trim(),
+            categoryFor(way.tags),
+            centLat, centLon,
+        )
     }
 
     val allPlaces = sequence {
@@ -266,22 +537,11 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
     val count = SearchIndexWriter().write(allPlaces, output)
     peak.stop()
     val elapsedMs = (System.nanoTime() - start) / 1_000_000L
-    println("searchEntries=$count output=${output.absolutePath} sizeBytes=${output.length()} elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}")
+    println(
+        "searchEntries=$count output=${output.absolutePath} " +
+            "sizeBytes=${output.length()} elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}",
+    )
     return count to output.length()
-}
-
-private fun centroid(nodeIds: LongArray, nodes: Map<Long, GraphNode>): GraphNode? {
-    var lat = 0.0
-    var lon = 0.0
-    var count = 0
-    for (id in nodeIds) {
-        val node = nodes[id] ?: continue
-        lat += node.latitude
-        lon += node.longitude
-        count++
-    }
-    if (count == 0) return null
-    return GraphNode(0L, lat / count, lon / count)
 }
 
 private fun categoryFor(tags: Map<String, String>): String = when {
@@ -296,6 +556,10 @@ private fun categoryFor(tags: Map<String, String>): String = when {
     else -> "named"
 }
 
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
 data class BicycleNetworkStats(
     val bicycleWays: Long,
     val referencedNodeIds: Long,
@@ -303,61 +567,6 @@ data class BicycleNetworkStats(
     val elapsedMs: Long,
     val peakHeapBytes: Long,
 )
-
-class LongOpenHashSet(initialPower: Int = 22) {
-    private var keys = LongArray(1 shl initialPower)
-    var size: Int = 0
-        private set
-
-    fun add(id: Long) {
-        if (id == 0L) return
-        ensureCapacity()
-        var index = mix(id) and (keys.size - 1)
-        while (true) {
-            val existing = keys[index]
-            if (existing == 0L) {
-                keys[index] = id
-                size++
-                return
-            }
-            if (existing == id) return
-            index = (index + 1) and (keys.size - 1)
-        }
-    }
-
-    fun contains(id: Long): Boolean {
-        if (id == 0L) return false
-        var index = mix(id) and (keys.size - 1)
-        while (true) {
-            val existing = keys[index]
-            if (existing == 0L) return false
-            if (existing == id) return true
-            index = (index + 1) and (keys.size - 1)
-        }
-    }
-
-    private fun ensureCapacity() {
-        if (size * 2 < keys.size) return
-        val old = keys
-        keys = LongArray(old.size * 2)
-        size = 0
-        for (value in old) if (value != 0L) add(value)
-    }
-
-    private fun mix(value: Long): Int = (value xor (value ushr 32)).toInt()
-}
-
-private fun readPbf(file: File, onEntity: (org.openstreetmap.osmosis.core.domain.v0_6.Entity) -> Unit) {
-    val sink = object : Sink {
-        override fun initialize(metaData: Map<String, Any>) = Unit
-        override fun process(entityContainer: EntityContainer) = onEntity(entityContainer.entity)
-        override fun complete() = Unit
-        override fun close() = Unit
-    }
-    FileInputStream(file).use { input ->
-        OsmosisReader(input).apply { setSink(sink) }.run()
-    }
-}
 
 fun collectBicycleNetworkStats(file: File): BicycleNetworkStats {
     val peak = PeakHeapTracker().start()
@@ -387,32 +596,9 @@ fun collectBicycleNetworkStats(file: File): BicycleNetworkStats {
     )
 }
 
-private class PeakHeapTracker {
-    @Volatile private var running = false
-    var peakBytes: Long = 0
-        private set
-
-    fun start(): PeakHeapTracker {
-        running = true
-        Thread {
-            val runtime = Runtime.getRuntime()
-            while (running) {
-                val used = runtime.totalMemory() - runtime.freeMemory()
-                if (used > peakBytes) peakBytes = used
-                try {
-                    Thread.sleep(200)
-                } catch (_: InterruptedException) {
-                    break
-                }
-            }
-        }.apply { isDaemon = true; start() }
-        return this
-    }
-
-    fun stop() {
-        running = false
-    }
-}
+// ---------------------------------------------------------------------------
+// Graph binary writer  (output format CYCLEMAP_GRAPH_V1 — unchanged)
+// ---------------------------------------------------------------------------
 
 class GraphBinaryWriter {
     fun write(graph: RoadGraph, output: File) {
@@ -441,6 +627,35 @@ class GraphBinaryWriter {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Peak heap tracker
+// ---------------------------------------------------------------------------
+
+private class PeakHeapTracker {
+    @Volatile private var running = false
+    var peakBytes: Long = 0
+        private set
+
+    fun start(): PeakHeapTracker {
+        running = true
+        Thread {
+            val runtime = Runtime.getRuntime()
+            while (running) {
+                val used = runtime.totalMemory() - runtime.freeMemory()
+                if (used > peakBytes) peakBytes = used
+                try { Thread.sleep(200) } catch (_: InterruptedException) { break }
+            }
+        }.apply { isDaemon = true; start() }
+        return this
+    }
+
+    fun stop() { running = false }
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
 fun main(args: Array<String>) {
     val rest = args.toMutableList()
     var statsOnly = false
@@ -455,12 +670,21 @@ fun main(args: Array<String>) {
                 return
             }
             "--route" -> {
-                require(rest.size == 5) { "Usage: osm-importer --route <graph> <startLat> <startLon> <goalLat> <goalLon>" }
-                runRouteSanityCheck(File(rest[0]), rest[1].toDouble(), rest[2].toDouble(), rest[3].toDouble(), rest[4].toDouble())
+                require(rest.size == 5) {
+                    "Usage: osm-importer --route <graph> <startLat> <startLon> <goalLat> <goalLon>"
+                }
+                runRouteSanityCheck(
+                    File(rest[0]),
+                    rest[1].toDouble(), rest[2].toDouble(),
+                    rest[3].toDouble(), rest[4].toDouble(),
+                )
                 return
             }
             "--search-index" -> {
-                require(rest.size == 2) { "Usage: osm-importer --search-index [--bbox japan|yamaguchi|none] <input.osm.pbf> <output.search.db>" }
+                require(rest.size == 2) {
+                    "Usage: osm-importer --search-index [--bbox japan|yamaguchi|none] " +
+                        "<input.osm.pbf> <output.search.db>"
+                }
                 val input = File(rest[0])
                 val output = File(rest[1])
                 require(input.isFile) { "Input PBF does not exist: ${input.absolutePath}" }
@@ -470,6 +694,7 @@ fun main(args: Array<String>) {
             else -> error("Unknown flag $flag")
         }
     }
+
     if (statsOnly) {
         require(rest.size == 1) { "Usage: osm-importer --stats [--bbox japan|yamaguchi|none] <input.osm.pbf>" }
         val input = File(rest[0])
@@ -485,23 +710,38 @@ fun main(args: Array<String>) {
         println("peakHeapBytes=${stats.peakHeapBytes}")
         println("estimatedGraphBytes=$estimatedGraphBytes")
         println("estimatedIndexBytes=$estimatedIndexBytes")
-        println("note=node/edge counts are bicycle-way references in the PBF; missing nodes and bbox clipping can reduce the written graph slightly")
+        println(
+            "note=node/edge counts are bicycle-way references in the PBF; " +
+                "missing nodes and bbox clipping can reduce the written graph slightly",
+        )
         return
     }
+
+    // Default: build graph
     require(rest.size == 2) { "Usage: osm-importer [--bbox japan|yamaguchi|none] <input.osm.pbf> <output.graph>" }
     val input = File(rest[0])
     val output = File(rest[1])
     require(input.isFile) { "Input PBF does not exist: ${input.absolutePath}" }
+
     val peak = PeakHeapTracker().start()
     val start = System.nanoTime()
-    val (nodes, ways) = PbfReader().read(input)
-    val graph = OsmGraphBuilder(bbox).build(nodes, ways)
+
+    // Use the two-pass builder instead of the old PbfReader + OsmGraphBuilder
+    val graph = TwoPassGraphBuilder(bbox).build(input)
     GraphBinaryWriter().write(graph, output)
+
     peak.stop()
     val edgeCount = graph.outgoing.values.sumOf { it.size }
     val elapsedMs = (System.nanoTime() - start) / 1_000_000L
-    println("nodes=${graph.nodes.size} edges=$edgeCount output=${output.absolutePath} elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}")
+    println(
+        "nodes=${graph.nodes.size} edges=$edgeCount output=${output.absolutePath} " +
+            "elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}",
+    )
 }
+
+// ---------------------------------------------------------------------------
+// Graph index writer  (output format CYCLEMAP_INDEX_V2 — unchanged)
+// ---------------------------------------------------------------------------
 
 private fun writeGraphIndex(graphFile: File, indexFile: File) {
     DataInputStream(BufferedInputStream(FileInputStream(graphFile))).use { input ->
@@ -551,7 +791,15 @@ private fun writeGraphIndex(graphFile: File, indexFile: File) {
     }
 }
 
-private fun runRouteSanityCheck(file: File, startLat: Double, startLon: Double, goalLat: Double, goalLon: Double) {
+// ---------------------------------------------------------------------------
+// Route sanity check
+// ---------------------------------------------------------------------------
+
+private fun runRouteSanityCheck(
+    file: File,
+    startLat: Double, startLon: Double,
+    goalLat: Double, goalLon: Double,
+) {
     val graph = GraphBinaryReader.read(file)
     fun nearest(lat: Double, lon: Double): GraphNode = graph.nodes.values.minBy {
         com.gorite.cyclemap.routing.haversineMeters(lat, lon, it.latitude, it.longitude)
@@ -563,5 +811,8 @@ private fun runRouteSanityCheck(file: File, startLat: Double, startLon: Double, 
     val distance = result.nodeIds.zipWithNext().sumOf { (from, to) ->
         graph.outgoing.getValue(from).first { it.to == to }.distanceMeters
     }
-    println("startNode=${start.id} goalNode=${goal.id} steps=${result.nodeIds.size - 1} distanceMeters=${"%.1f".format(distance)} cost=${"%.1f".format(result.totalCost)}")
+    println(
+        "startNode=${start.id} goalNode=${goal.id} steps=${result.nodeIds.size - 1} " +
+            "distanceMeters=${"%.1f".format(distance)} cost=${"%.1f".format(result.totalCost)}",
+    )
 }

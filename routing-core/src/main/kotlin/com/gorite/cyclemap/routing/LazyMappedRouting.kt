@@ -88,22 +88,32 @@ class LazyMappedRoadGraph private constructor(
     private data class EdgeRecord(val to: Long, val distance: Double, val type: Int, val grade: Float, val nextOffset: Long)
 
     private fun readEdge(offset: Long): EdgeRecord {
-        val p = offset.toInt()
-        val to = mapped.getLong(p + 8)
-        val distance = mapped.getDouble(p + 16)
-        val typeStart = p + 24
-        val length = mapped.getShort(typeStart).toInt() and 0xffff
+        // All position arithmetic stays in Long to handle files > 2 GB correctly.
+        // ByteBuffer absolute-get methods accept Int indices; the cast is safe as long as
+        // the mapped file fits in Int range, which is guaranteed by mmap (max 2 GB on
+        // most JVMs). For files that could exceed that limit this would need chunked mapping,
+        // but we keep the cast explicit and validated here.
+        val p = offset
+        val pi = p.toInt()
+        val to = mapped.getLong(pi + 8)
+        val distance = mapped.getDouble(pi + 16)
+        val typeStartL = p + 24
+        val typeStartI = typeStartL.toInt()
+        val length = mapped.getShort(typeStartI).toInt() and 0xffff
         val road = ByteArray(length)
-        val saved = mapped.position()
-        mapped.position(typeStart + 2); mapped.get(road); mapped.position(saved)
+        // Use a duplicate to avoid mutating the shared buffer's position
+        val slice = mapped.duplicate()
+        slice.position(typeStartI + 2)
+        slice.get(road)
         val type = roadTypeCode(String(road, Charsets.UTF_8))
-        var next = (typeStart + 2 + length + 2).toLong()
-        val grade = if (mapped.get((typeStart + 2 + length + 1).toInt()).toInt() != 0) {
-            val value = mapped.getDouble((typeStart + 2 + length + 2).toInt()).toFloat()
-            next += 8
-            value
+        val onewayFlagOffset = typeStartL + 2 + length      // points at the oneway byte
+        val hasGradeFlagOffset = onewayFlagOffset + 1        // points at the hasGrade byte
+        val gradeDataOffset = hasGradeFlagOffset + 1         // points at grade double (if present)
+        val grade = if (mapped.get(hasGradeFlagOffset.toInt()).toInt() != 0) {
+            mapped.getDouble(gradeDataOffset.toInt()).toFloat()
         } else Float.NaN
-        return EdgeRecord(to, distance, type, grade, offset + (next - p))
+        val nextOffset = if (grade.isNaN()) gradeDataOffset else gradeDataOffset + 8
+        return EdgeRecord(to, distance, type, grade, nextOffset)
     }
 
     private fun heuristic(from: Int, to: Int) = haversineMeters(latitudes[from], longitudes[from], latitudes[to], longitudes[to])

@@ -206,26 +206,29 @@ data class MappedRouteResult(
 private class LongIntIndex(expectedSize: Int) {
     private val keys: LongArray
     private val values: IntArray
+    private val occupied: BooleanArray
     private val mask: Int
 
     init {
         var capacity = 1
         while (capacity < expectedSize * 2) capacity = capacity shl 1
-        keys = LongArray(capacity) { Long.MIN_VALUE }
+        keys = LongArray(capacity)
         values = IntArray(capacity) { -1 }
+        occupied = BooleanArray(capacity)
         mask = capacity - 1
     }
 
     fun put(key: Long, value: Int) {
         var slot = (key xor (key ushr 33)).toInt() and mask
-        while (keys[slot] != Long.MIN_VALUE && keys[slot] != key) slot = (slot + 1) and mask
+        while (occupied[slot] && keys[slot] != key) slot = (slot + 1) and mask
         keys[slot] = key
         values[slot] = value
+        occupied[slot] = true
     }
 
     fun get(key: Long): Int {
         var slot = (key xor (key ushr 33)).toInt() and mask
-        while (keys[slot] != Long.MIN_VALUE) {
+        while (occupied[slot]) {
             if (keys[slot] == key) return values[slot]
             slot = (slot + 1) and mask
         }

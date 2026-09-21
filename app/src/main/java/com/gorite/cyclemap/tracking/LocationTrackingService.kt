@@ -113,9 +113,9 @@ class LocationTrackingService : Service() {
 
     private fun stopRecording() {
         if (!recording) return
-        recording = false
         val snapshot = recorder
         recorder = null
+        recording = false
         val outputDir = File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "CycleMap/gpx")
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).apply {
             timeZone = TimeZone.getDefault()

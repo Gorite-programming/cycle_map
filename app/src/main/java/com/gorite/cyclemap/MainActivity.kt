@@ -211,6 +211,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     var isDownloading by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showVersion by remember { mutableStateOf(false) }
     var showDeveloperOptions by remember { mutableStateOf(false) }
     var showDestinationSearch by remember { mutableStateOf(false) }
     var selectedMenu by remember { mutableStateOf("地図") }
@@ -234,6 +235,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     val latestLocation by rememberUpdatedState(currentLocation)
     val latestRouteOverlay by rememberUpdatedState(routeOverlay)
     val latestDestMarker by rememberUpdatedState(destinationMarker)
+    val latestMapView by rememberUpdatedState(mapView)
     val startRouteToDestination: (GeoPoint) -> Unit = route@{ point ->
         routeJobRef.getAndSet(null)?.cancel()
         destination = point
@@ -246,7 +248,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
         }
 
         (context as? ComponentActivity)?.runOnUiThread {
-            val view = mapView ?: return@runOnUiThread
+            val view = latestMapView ?: return@runOnUiThread
             latestDestMarker?.let { view.overlays.remove(it) }
             val destM = Marker(view).apply {
                 position = point
@@ -280,7 +282,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
 
                 (context as? ComponentActivity)?.runOnUiThread {
                     if (routeJob.isCancelled() || routeJobRef.get() !== routeJob) return@runOnUiThread
-                    val view = mapView
+                    val view = latestMapView
                     latestRouteOverlay?.let { view?.overlays?.remove(it) }
                     val polyline = view?.let {
                         Polyline(it).apply {
@@ -424,7 +426,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     NavigationDrawerItem(
-                        label = { Text("🗺️ 地図に戻る") },
+                        label = { Text("地図に戻る") },
                         selected = selectedMenu == "地図",
                         onClick = {
                             selectedMenu = "地図"
@@ -432,7 +434,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("🔎 目的地検索") },
+                        label = { Text("目的地検索") },
                         selected = selectedMenu == "検索",
                         onClick = {
                             selectedMenu = "検索"
@@ -441,7 +443,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("📥 地図ダウンロード（47都道府県）") },
+                        label = { Text("地図ダウンロード（47都道府県）") },
                         selected = selectedMenu == "ダウンロード",
                         onClick = {
                             selectedMenu = "ダウンロード"
@@ -450,7 +452,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("ℹ️ ライセンス") },
+                        label = { Text("ライセンス") },
                         selected = selectedMenu == "ライセンス",
                         onClick = {
                             selectedMenu = "ライセンス"
@@ -459,7 +461,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("⚙️ 設定") },
+                        label = { Text("設定") },
                         selected = selectedMenu == "設定",
                         onClick = {
                             selectedMenu = "設定"
@@ -468,11 +470,20 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         },
                     )
                     NavigationDrawerItem(
-                        label = { Text("🛠 開発者オプション") },
+                        label = { Text("開発者オプション") },
                         selected = selectedMenu == "開発者",
                         onClick = {
                             selectedMenu = "開発者"
                             showDeveloperOptions = true
+                            scope.launch { drawerState.close() }
+                        },
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("バージョン情報") },
+                        selected = selectedMenu == "バージョン情報",
+                        onClick = {
+                            selectedMenu = "バージョン情報"
+                            showVersion = true
                             scope.launch { drawerState.close() }
                         },
                     )
@@ -492,6 +503,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         isClickable = true
                         isFocusable = true
                         isNestedScrollingEnabled = false
+                        // HARDWARE: GPU合成でポリゴン描画を最小化
                         setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                         setMultiTouchControls(true)
                         setBuiltInZoomControls(false)
@@ -504,9 +516,12 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                         overlayManager.tilesOverlay.apply {
                             loadingBackgroundColor = android.graphics.Color.parseColor("#F4F1EA")
                             loadingLineColor = android.graphics.Color.parseColor("#C5CBD3")
+                            // 読み込み中タイルを薄く表示（ポリゴン化を抑制）
+                            setLoadingDrawable(null)
                         }
                         setTileSource(gsiTileSource())
-                        tileProvider.ensureCapacity(256)
+                        // メモリキャッシュ容量をConfigurationと合わせて拡張
+                        tileProvider.ensureCapacity(512)
                         controller.setZoom(13.0)
                         controller.setCenter(GeoPoint(34.18, 131.47))
                         locationMarker = Marker(this).apply {
@@ -849,9 +864,9 @@ private fun MapScreen(modifier: Modifier = Modifier) {
                             Column {
                                 Text("目的地までの距離", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 val distStr = if (summary.distanceMeters >= 1000.0) {
-                                    "%.2f km".format(Locale.US, summary.distanceMeters / 1000.0)
+                                    String.format(Locale.US, "%.2f km", summary.distanceMeters / 1000.0)
                                 } else {
-                                    "%.0f m".format(Locale.US, summary.distanceMeters)
+                                    String.format(Locale.US, "%.0f m", summary.distanceMeters)
                                 }
                                 Text(
                                     distStr,
@@ -1150,6 +1165,15 @@ private fun MapScreen(modifier: Modifier = Modifier) {
         )
     }
 
+    if (showVersion) {
+        AlertDialog(
+            onDismissRequest = { showVersion = false },
+            title = { Text("バージョン情報") },
+            text = { Text("Ver. α0.9") },
+            confirmButton = { TextButton(onClick = { showVersion = false }) { Text("閉じる") } },
+        )
+    }
+
     if (showDeveloperOptions) {
         DeveloperOptionsScreen(
             hasLocationPermission = hasLocationPermission,
@@ -1170,7 +1194,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     // Location Animation & Map Centering
-    LaunchedEffect(currentLocation, mapView, followLocation) {
+    LaunchedEffect(currentLocation, mapView, followLocation, locationMarker) {
         val targetLocation = currentLocation ?: return@LaunchedEffect
         val marker = locationMarker ?: return@LaunchedEffect
         val view = mapView ?: return@LaunchedEffect
@@ -1215,7 +1239,7 @@ private fun MapScreen(modifier: Modifier = Modifier) {
             view.setTileSource(source)
             view.minZoomLevel = source.minimumZoomLevel.toDouble()
             view.maxZoomLevel = source.maximumZoomLevel.toDouble()
-            view.tileProvider.ensureCapacity(256)
+            view.tileProvider.ensureCapacity(512)
             // GSI labels stay sharp at native 256px; OSM text is small so scale to DPI.
             view.setTilesScaledToDpi(selectedLayer == MapLayer.OSM)
             view.overlayManager.tilesOverlay.apply {
@@ -1406,9 +1430,9 @@ private fun DestinationSearchDialog(
                                     )
                                     result.distanceMeters?.let { dist ->
                                         val distStr = if (dist >= 1000.0) {
-                                            "%.1f km".format(Locale.US, dist / 1000.0)
+                                            String.format(Locale.US, "%.1f km", dist / 1000.0)
                                         } else {
-                                            "%.0f m".format(Locale.US, dist)
+                                            String.format(Locale.US, "%.0f m", dist)
                                         }
                                         Text(
                                             distStr,
@@ -1577,15 +1601,22 @@ private fun searchPlaces(
     if (!dbFile.isFile) return emptyList()
 
     // カテゴリWHERE句を組み立て
-    val categoryWhere: String
+    val categoryWhere: String        // FTS JOIN クエリ用 (p.category)
+    val categoryWherePlain: String   // plain places クエリ用 (category、エイリアスなし)
     val categoryArgs: List<String>
     if (category == SearchCategory.ALL || category.categoryPrefixes.isEmpty()) {
         categoryWhere = ""
+        categoryWherePlain = ""
         categoryArgs = emptyList()
     } else {
         val clauses = category.categoryPrefixes.joinToString(" OR ") { "p.category LIKE ?" }
+        val clausesPlain = category.categoryPrefixes.joinToString(" OR ") { "category LIKE ?" }
         categoryWhere = "AND ($clauses)"
-        categoryArgs = category.categoryPrefixes.map { if (it.endsWith(":")) "$it%" else it }
+        categoryWherePlain = "AND ($clausesPlain)"
+        // LIKE 用引数: すべての prefix に % を付ける（末尾 : の有無に関わらず統一）
+        categoryArgs = category.categoryPrefixes.map { prefix ->
+            if (prefix.endsWith(":")) "$prefix%" else "$prefix%"
+        }
     }
 
     val results = linkedMapOf<String, SearchResult>()
@@ -1593,43 +1624,48 @@ private fun searchPlaces(
     SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
         val trimmed = query.trim()
         if (trimmed.length >= 2) {
-            // FTS検索
-            val ftsQuery = trimmed
-                .split(Regex("\\s+"))
-                .filter { it.isNotBlank() }
-                .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+            // FTS5検索（デバイスのSQLiteがFTS5未対応の場合はLIKEにフォールバック）
+            var ftsSucceeded = false
+            try {
+                val ftsQuery = trimmed
+                    .split(Regex("\\s+"))
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
 
-            val catWhereForFts = if (categoryWhere.isEmpty()) "" else
-                categoryWhere.replace("p.category", "p.category") // same
+                val catWhereForFts = categoryWhere // p.category を参照するWHERE句
 
-            db.rawQuery(
-                """
-                SELECT p.name, p.category, p.lat, p.lon
-                FROM places_fts f
-                JOIN places p ON p.id = f.rowid
-                WHERE places_fts MATCH ? $catWhereForFts
-                LIMIT ?
-                """.trimIndent(),
-                (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
-            ).use { cursor ->
-                while (cursor.moveToNext()) {
-                    val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
-                    results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                db.rawQuery(
+                    """
+                    SELECT p.name, p.category, p.lat, p.lon
+                    FROM places_fts f
+                    JOIN places p ON p.id = f.rowid
+                    WHERE places_fts MATCH ? $catWhereForFts
+                    LIMIT ?
+                    """.trimIndent(),
+                    (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                        results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                    }
                 }
+                ftsSucceeded = true
+            } catch (_: Exception) {
+                // FTS5未対応デバイス → LIKE検索のみで継続
+                Log.w("CycleMap", "FTS5 not available, falling back to LIKE search")
             }
 
-            // LIKE補完
-            if (results.size < limit) {
-                val likeWhere = if (categoryWhere.isEmpty()) "" else
-                    categoryWhere.replace("p.category", "category")
+            // FTS5未対応 or 件数不足 → LIKE補完
+            if (!ftsSucceeded || results.size < limit) {
+                val remaining = if (ftsSucceeded) limit - results.size else limit
                 db.rawQuery(
                     """
                     SELECT name, category, lat, lon
                     FROM places
-                    WHERE name LIKE ? $likeWhere
+                    WHERE name LIKE ? $categoryWherePlain
                     LIMIT ?
                     """.trimIndent(),
-                    (listOf("%$trimmed%") + categoryArgs.map { it } + listOf((limit - results.size).toString())).toTypedArray(),
+                    (listOf("%$trimmed%") + categoryArgs + listOf(remaining.toString())).toTypedArray(),
                 ).use { cursor ->
                     while (cursor.moveToNext()) {
                         val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
@@ -1639,12 +1675,11 @@ private fun searchPlaces(
             }
         } else if (category != SearchCategory.ALL && category.categoryPrefixes.isNotEmpty()) {
             // クエリ未入力でカテゴリ選択中 → カテゴリ一覧を表示
-            val likeWhere = categoryWhere.replace("p.category", "category")
             db.rawQuery(
                 """
                 SELECT name, category, lat, lon
                 FROM places
-                WHERE 1=1 $likeWhere
+                WHERE 1=1 $categoryWherePlain
                 LIMIT ?
                 """.trimIndent(),
                 (categoryArgs + listOf(limit.toString())).toTypedArray(),
@@ -1723,12 +1758,27 @@ private fun configureOsmdroid(context: Context, dataDir: File) {
         osmdroidBasePath = dataDir
         osmdroidTileCache = tileDir
         userAgentValue = "CycleMap/1.0 (Android; cycling navigator; personal use)"
-        tileDownloadThreads = 6
-        tileFileSystemThreads = 8
-        tileDownloadMaxQueueSize = 80
-        tileFileSystemMaxQueueSize = 80
-        cacheMapTileCount = 64.toShort()
-        cacheMapTileOvershoot = 4.toShort()
+
+        // ---------------------------------------------------------------
+        // スレッド数最適化
+        // ダウンロードスレッドを絞ることで、osmdroidの内部FIFOキューが
+        // 画面中心に近いタイルを先に処理できる（多すぎると帯域を無駄に使う）
+        // ファイルシステムスレッドもSQLiteのシリアルI/Oに合わせて絞る
+        // ---------------------------------------------------------------
+        tileDownloadThreads = 2          // 6→2: 画面中心優先、帯域集中
+        tileFileSystemThreads = 4        // 8→4: SQLite読み取りの競合を減らす
+        tileDownloadMaxQueueSize = 40    // キューを短くして古いリクエストをドロップしやすく
+        tileFileSystemMaxQueueSize = 40
+
+        // ---------------------------------------------------------------
+        // メモリキャッシュ拡大
+        // 256px タイル × 4byte/px = 256KB/枚。
+        // 画面が約20枚 + ズーム前後 + オーバーシュートを考慮して512枚確保。
+        // これにより同じ領域を再スクロールしたときにディスクI/Oが不要になる。
+        // ---------------------------------------------------------------
+        cacheMapTileCount = 512.toShort()   // 64→512
+        cacheMapTileOvershoot = 8.toShort() // 4→8: 先読み範囲を広げる
+
         expirationOverrideDuration = 30L * 24 * 60 * 60 * 1000
         tileFileSystemCacheMaxBytes = 800L * 1024 * 1024
         tileFileSystemCacheTrimBytes = 700L * 1024 * 1024
@@ -1815,6 +1865,9 @@ private class CycleMapView(context: Context) : MapView(context) {
     private var downX = 0f
     private var downY = 0f
     private var notifiedPan = false
+    // scaledTouchSlopは毎タッチで取得せずキャッシュ（ViewConfigurationはスレッドセーフ）
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val touchSlopSq = touchSlop * touchSlop
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
@@ -1825,15 +1878,18 @@ private class CycleMapView(context: Context) : MapView(context) {
                 notifiedPan = false
             }
             MotionEvent.ACTION_MOVE -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
-                if (!notifiedPan && event.pointerCount == 1) {
-                    val slop = ViewConfiguration.get(context).scaledTouchSlop
-                    val dx = event.x - downX
-                    val dy = event.y - downY
-                    if (dx * dx + dy * dy > slop * slop) {
-                        notifiedPan = true
-                        onUserPan?.invoke()
+                // パンと判定済みなら毎フレームの呼び出しをスキップ
+                if (!notifiedPan) {
+                    if (event.pointerCount == 1) {
+                        val dx = event.x - downX
+                        val dy = event.y - downY
+                        if (dx * dx + dy * dy > touchSlopSq) {
+                            notifiedPan = true
+                            onUserPan?.invoke()
+                        }
                     }
+                    // スロップ以下のうちはインターセプトを継続許可
+                    parent?.requestDisallowInterceptTouchEvent(true)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
