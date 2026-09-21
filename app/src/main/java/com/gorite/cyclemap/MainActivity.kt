@@ -143,7 +143,17 @@ private data class SearchResult(
     val category: String,
     val latitude: Double,
     val longitude: Double,
+    val distanceMeters: Double? = null,
 )
+
+/** カテゴリフィルタタブの定義 */
+private enum class SearchCategory(val label: String, val categoryPrefixes: List<String>) {
+    ALL("すべて", emptyList()),
+    CONVENIENCE("コンビニ", listOf("shop:convenience")),
+    STATION("駅・バス停", listOf("railway:station", "public_transport:station", "amenity:bus_station", "highway:bus_stop", "public_transport:stop_position")),
+    TOILET("トイレ", listOf("amenity:toilets")),
+    TOURISM("観光", listOf("tourism:")),
+}
 
 private class RouteCalculationJob {
     private val cancelled = AtomicBoolean(false)
@@ -1255,19 +1265,47 @@ private fun DestinationSearchDialog(
     onResultSelected: (SearchResult) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(SearchCategory.ALL) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
-    val searchDb = remember(context) { File(cycleMapDataDir(context), "search.db") }
+    val searchDb = remember(context) {
+        // テスト用DBが存在すればそちらを優先使用
+        val testDb = File("/tmp/yamaguchi_v2_test.search.db")
+        if (testDb.isFile) testDb else File(cycleMapDataDir(context), "search.db")
+    }
 
-    LaunchedEffect(query, searchDb) {
+    // 現在地を取得（位置情報許可済みの場合）
+    val userLocation = remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    LaunchedEffect(Unit) {
+        if (context.hasLocationPermission()) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val lm = context.getSystemService(android.location.LocationManager::class.java)
+                    val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                        ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                    loc?.let { userLocation.value = it.latitude to it.longitude }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(query, selectedCategory, userLocation.value) {
         val trimmed = query.trim()
-        if (trimmed.length < 2) {
+        // カテゴリ未選択 + クエリ短い場合はリストクリア
+        if (trimmed.length < 2 && selectedCategory == SearchCategory.ALL) {
             results = emptyList()
             message = if (searchDb.isFile) null else "検索DBが見つかりません: ${searchDb.absolutePath}"
             return@LaunchedEffect
         }
+        val (uLat, uLon) = userLocation.value?.let { it.first to it.second } ?: (null to null)
         val found = withContext(Dispatchers.IO) {
-            searchPlaces(searchDb, trimmed)
+            searchPlaces(
+                dbFile = searchDb,
+                query = trimmed,
+                category = selectedCategory,
+                userLat = uLat,
+                userLon = uLon,
+            )
         }
         results = found
         message = when {
@@ -1281,7 +1319,8 @@ private fun DestinationSearchDialog(
         onDismissRequest = onDismiss,
         title = { Text("目的地検索") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth().height(420.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().height(480.dp)) {
+                // 検索テキストフィールド
                 TextField(
                     value = query,
                     onValueChange = { query = it },
@@ -1289,11 +1328,59 @@ private fun DestinationSearchDialog(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("施設名・地名を入力") },
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                message?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // カテゴリフィルタタブ
+                ScrollableTabRow(
+                    selectedTabIndex = SearchCategory.values().indexOf(selectedCategory),
+                    edgePadding = 0.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SearchCategory.values().forEachIndexed { index, cat ->
+                        Tab(
+                            selected = selectedCategory == cat,
+                            onClick = { selectedCategory = cat },
+                            text = { Text(cat.label, fontSize = 12.sp) },
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 現在地・件数ヘッダー
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (userLocation.value != null) {
+                        Text(
+                            "📍 現在地から近い順",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Text(
+                            "📍 現在地なし",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (results.isNotEmpty()) {
+                        Text(
+                            "${results.size}件",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                message?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(results) { result ->
                         Surface(
@@ -1304,13 +1391,33 @@ private fun DestinationSearchDialog(
                             shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                                Text(result.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text(
-                                    "${result.category}  %.5f, %.5f".format(Locale.US, result.latitude, result.longitude),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                Text(result.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        result.category,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    result.distanceMeters?.let { dist ->
+                                        val distStr = if (dist >= 1000.0) {
+                                            "%.1f km".format(Locale.US, dist / 1000.0)
+                                        } else {
+                                            "%.0f m".format(Locale.US, dist)
+                                        }
+                                        Text(
+                                            distStr,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1450,47 +1557,131 @@ private fun startPrefectureDownload(
     }.start()
 }
 
-private fun searchPlaces(dbFile: File, query: String, limit: Int = 30): List<SearchResult> {
+/**
+ * 場所を検索する。
+ * @param dbFile 検索DB
+ * @param query 検索クエリ（空文字の場合はカテゴリ一覧表示）
+ * @param category カテゴリフィルタ（ALL以外はカテゴリ絞り込み）
+ * @param userLat 現在地緯度（null時は距離計算しない）
+ * @param userLon 現在地経度（null時は距離計算しない）
+ * @param limit 最大件数
+ */
+private fun searchPlaces(
+    dbFile: File,
+    query: String,
+    category: SearchCategory = SearchCategory.ALL,
+    userLat: Double? = null,
+    userLon: Double? = null,
+    limit: Int = 50,
+): List<SearchResult> {
     if (!dbFile.isFile) return emptyList()
+
+    // カテゴリWHERE句を組み立て
+    val categoryWhere: String
+    val categoryArgs: List<String>
+    if (category == SearchCategory.ALL || category.categoryPrefixes.isEmpty()) {
+        categoryWhere = ""
+        categoryArgs = emptyList()
+    } else {
+        val clauses = category.categoryPrefixes.joinToString(" OR ") { "p.category LIKE ?" }
+        categoryWhere = "AND ($clauses)"
+        categoryArgs = category.categoryPrefixes.map { if (it.endsWith(":")) "$it%" else it }
+    }
+
     val results = linkedMapOf<String, SearchResult>()
+
     SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-        val ftsQuery = query
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-            .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
-        db.rawQuery(
-            """
-            SELECT p.name, p.category, p.lat, p.lon
-            FROM places_fts f
-            JOIN places p ON p.id = f.rowid
-            WHERE places_fts MATCH ?
-            LIMIT ?
-            """.trimIndent(),
-            arrayOf(ftsQuery, limit.toString()),
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val result = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
-                results["${result.name}:${result.latitude}:${result.longitude}"] = result
+        val trimmed = query.trim()
+        if (trimmed.length >= 2) {
+            // FTS検索
+            val ftsQuery = trimmed
+                .split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+                .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+
+            val catWhereForFts = if (categoryWhere.isEmpty()) "" else
+                categoryWhere.replace("p.category", "p.category") // same
+
+            db.rawQuery(
+                """
+                SELECT p.name, p.category, p.lat, p.lon
+                FROM places_fts f
+                JOIN places p ON p.id = f.rowid
+                WHERE places_fts MATCH ? $catWhereForFts
+                LIMIT ?
+                """.trimIndent(),
+                (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                    results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                }
             }
-        }
-        if (results.size < limit) {
+
+            // LIKE補完
+            if (results.size < limit) {
+                val likeWhere = if (categoryWhere.isEmpty()) "" else
+                    categoryWhere.replace("p.category", "category")
+                db.rawQuery(
+                    """
+                    SELECT name, category, lat, lon
+                    FROM places
+                    WHERE name LIKE ? $likeWhere
+                    LIMIT ?
+                    """.trimIndent(),
+                    (listOf("%$trimmed%") + categoryArgs.map { it } + listOf((limit - results.size).toString())).toTypedArray(),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                        results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                    }
+                }
+            }
+        } else if (category != SearchCategory.ALL && category.categoryPrefixes.isNotEmpty()) {
+            // クエリ未入力でカテゴリ選択中 → カテゴリ一覧を表示
+            val likeWhere = categoryWhere.replace("p.category", "category")
             db.rawQuery(
                 """
                 SELECT name, category, lat, lon
                 FROM places
-                WHERE name LIKE ?
+                WHERE 1=1 $likeWhere
                 LIMIT ?
                 """.trimIndent(),
-                arrayOf("%$query%", (limit - results.size).toString()),
+                (categoryArgs + listOf(limit.toString())).toTypedArray(),
             ).use { cursor ->
                 while (cursor.moveToNext()) {
-                    val result = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
-                    results["${result.name}:${result.latitude}:${result.longitude}"] = result
+                    val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                    results["${r.name}:${r.latitude}:${r.longitude}"] = r
                 }
             }
         }
     }
-    return results.values.toList()
+
+    // 距離計算と近い順ソート
+    val withDistance = results.values.map { r ->
+        if (userLat != null && userLon != null) {
+            val dist = haversineMeters(userLat, userLon, r.latitude, r.longitude)
+            r.copy(distanceMeters = dist)
+        } else {
+            r
+        }
+    }
+    return if (userLat != null && userLon != null) {
+        withDistance.sortedBy { it.distanceMeters ?: Double.MAX_VALUE }
+    } else {
+        withDistance
+    }
+}
+
+/** ハーバーサイン距離計算（メートル） */
+private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6_371_000.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2).let { it * it } +
+        Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+        Math.sin(dLon / 2).let { it * it }
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
 @Composable
