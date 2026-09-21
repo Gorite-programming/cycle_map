@@ -188,37 +188,82 @@ class SearchIndexWriter {
         }
 }
 
+/**
+ * Builds a SQLite search index from an OSM PBF file using a two-pass streaming approach
+ * to avoid loading all nodes into memory at once (required for japan-latest.osm.pbf).
+ *
+ * Pass 1: Collect named nodes (emitted directly) and record which node IDs are needed
+ *         for centroid calculation of named ways.
+ * Pass 2: Read only the required node coordinates, then compute way centroids.
+ */
 fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> {
     val peak = PeakHeapTracker().start()
     val start = System.nanoTime()
-    val nodes = linkedMapOf<Long, GraphNode>()
-    val places = ArrayList<SearchPlace>()
-    val ways = ArrayList<OsmWay>()
+
+    // --- Pass 1: collect named nodes + way metadata ---
+    println("[1/2] Pass 1: scanning named nodes and ways...")
+    data class WayMeta(val id: Long, val nodeIds: LongArray, val tags: Map<String, String>)
+
+    val nodeResults = ArrayList<SearchPlace>(200_000)
+    val namedWays = ArrayList<WayMeta>(100_000)
+    val neededNodeIds = LongOpenHashSet(23) // capacity ~8M slots
+
     readPbf(input) { entity ->
         when (entity) {
             is Node -> {
-                val node = GraphNode(entity.id, entity.latitude, entity.longitude)
-                nodes[entity.id] = node
-                if (!bbox.contains(node)) return@readPbf
+                val lat = entity.latitude
+                val lon = entity.longitude
                 val tags = entity.tags.associate { it.key to it.value }
                 val name = tags["name"]?.trim().orEmpty()
                 if (name.isNotBlank()) {
-                    places += SearchPlace("node", entity.id, name, categoryFor(tags), entity.latitude, entity.longitude)
+                    val node = GraphNode(entity.id, lat, lon)
+                    if (bbox.contains(node)) {
+                        nodeResults += SearchPlace("node", entity.id, name, categoryFor(tags), lat, lon)
+                    }
                 }
             }
             is Way -> {
                 val tags = entity.tags.associate { it.key to it.value }
                 if (tags["name"].isNullOrBlank()) return@readPbf
-                ways += OsmWay(entity.id, entity.wayNodes.map { it.nodeId }.toLongArray(), tags)
+                val ids = entity.wayNodes.map { it.nodeId }.toLongArray()
+                namedWays += WayMeta(entity.id, ids, tags)
+                ids.forEach { neededNodeIds.add(it) }
             }
         }
     }
-    for (way in ways) {
-        val centroid = centroid(way.nodeIds, nodes) ?: continue
-        if (!bbox.contains(centroid)) continue
-        places += SearchPlace("way", way.id, way.tags.getValue("name").trim(), categoryFor(way.tags), centroid.latitude, centroid.longitude)
+    println("[1/2] Done. namedNodes=${nodeResults.size} namedWays=${namedWays.size} neededNodes=${neededNodeIds.size}")
+
+    // --- Pass 2: read only required node coordinates for way centroids ---
+    println("[2/2] Pass 2: resolving way node coordinates...")
+    val nodeCoords = HashMap<Long, Pair<Double, Double>>(neededNodeIds.size * 2)
+    readPbf(input) { entity ->
+        if (entity is Node && neededNodeIds.contains(entity.id)) {
+            nodeCoords[entity.id] = entity.latitude to entity.longitude
+        }
     }
-    val count = SearchIndexWriter().write(places.asSequence(), output)
+    println("[2/2] Done. resolvedNodes=${nodeCoords.size}")
+
+    // Compute centroids and collect way places
+    val wayResults = ArrayList<SearchPlace>(namedWays.size)
+    for (way in namedWays) {
+        var latSum = 0.0; var lonSum = 0.0; var count = 0
+        for (id in way.nodeIds) {
+            val (lat, lon) = nodeCoords[id] ?: continue
+            latSum += lat; lonSum += lon; count++
+        }
+        if (count == 0) continue
+        val centLat = latSum / count
+        val centLon = lonSum / count
+        val centroid = GraphNode(0L, centLat, centLon)
+        if (!bbox.contains(centroid)) continue
+        wayResults += SearchPlace("way", way.id, way.tags.getValue("name").trim(), categoryFor(way.tags), centLat, centLon)
+    }
+
+    val allPlaces = sequence {
+        yieldAll(nodeResults)
+        yieldAll(wayResults)
+    }
+    val count = SearchIndexWriter().write(allPlaces, output)
     peak.stop()
     val elapsedMs = (System.nanoTime() - start) / 1_000_000L
     println("searchEntries=$count output=${output.absolutePath} sizeBytes=${output.length()} elapsedMs=$elapsedMs peakHeapBytes=${peak.peakBytes}")
