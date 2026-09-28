@@ -7,7 +7,14 @@ import kotlin.test.assertTrue
 class RoutingTest {
     @Test
     fun findsLowestCostPath() {
-        val nodes = (1L..4L).associateWith { GraphNode(it, 34.0, 131.0) }
+        // Use distinct, geographically plausible coordinates so the A* heuristic is non-trivial 
+        // (rather than always 0, which would degenerate to Dijkstra).
+        val nodes = mapOf(
+            1L to GraphNode(1, 34.178, 131.473), // Yamaguchi city center
+            2L to GraphNode(2, 34.180, 131.477), // ~400m east
+            3L to GraphNode(3, 34.175, 131.480), // ~700m southeast
+            4L to GraphNode(4, 34.182, 131.485)  // ~1200m east
+        )
         val graph = RoadGraph(
             nodes,
             mapOf(
@@ -27,7 +34,10 @@ class RoutingTest {
     @Test
     fun returnsUnreachableWhenNoPathExists() {
         val graph = RoadGraph(
-            mapOf(1L to GraphNode(1, 34.0, 131.0), 2L to GraphNode(2, 34.1, 131.0)),
+            mapOf(
+                1L to GraphNode(1, 34.178, 131.473),
+                2L to GraphNode(2, 34.180, 131.477)
+            ),
             emptyMap(),
         )
         val result = AStarRouter(graph).route(1, 2)

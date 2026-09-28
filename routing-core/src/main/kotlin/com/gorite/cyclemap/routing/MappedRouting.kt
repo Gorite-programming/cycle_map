@@ -97,7 +97,7 @@ class MappedRoadGraph private constructor(
     }
 
     private fun heuristic(from: Int, to: Int): Double =
-        haversineMeters(latitudes[from], longitudes[from], latitudes[to], longitudes[to])
+        haversineMeters(latitudes[from], longitudes[from], latitudes[to], longitudes[to]) * 0.90
 
     private fun gradePenalty(grade: Float): Double = if (grade.isNaN()) 1.0 else 1.0 + abs(grade.toDouble()) * 0.02
 
@@ -199,6 +199,10 @@ data class MappedRouteResult(
     val totalDistanceMeters: Double,
     val totalCost: Double,
     val coordinates: List<Pair<Double, Double>> = emptyList(),
+    /** 探索がキャンセル要求で中断された。到達不能とは区別すること。 */
+    val wasCancelled: Boolean = false,
+    /** 展開ノード上限で打ち切られた。範囲を狭めて再試行できる。 */
+    val wasTruncated: Boolean = false,
 ) {
     val isReachable: Boolean get() = nodeIds.isNotEmpty()
 }

@@ -2,10 +2,14 @@ package com.gorite.cyclemap.importer
 
 import com.gorite.cyclemap.routing.GraphEdge
 import com.gorite.cyclemap.routing.GraphBinaryReader
+import com.gorite.cyclemap.routing.LandmarkIndex
 import com.gorite.cyclemap.routing.GraphNode
 import com.gorite.cyclemap.routing.AStarRouter
+import com.gorite.cyclemap.routing.benchmarkRoutingVariants
 import com.gorite.cyclemap.routing.CyclingCostModel
 import com.gorite.cyclemap.routing.RoadGraph
+import com.gorite.cyclemap.routing.benchmarkRoutingAlgorithms
+import com.gorite.cyclemap.routing.formatTable
 import crosby.binary.osmosis.OsmosisReader
 import org.openstreetmap.osmosis.core.container.v0_6.EntityContainer
 import org.openstreetmap.osmosis.core.domain.v0_6.Node
@@ -417,10 +421,12 @@ class SearchIndexWriter {
                         "content='places', content_rowid='id', tokenize='unicode61')",
                 )
                 statement.executeUpdate("CREATE INDEX places_osm_idx ON places(osm_type, osm_id)")
+                statement.executeUpdate("CREATE INDEX places_coords_idx ON places(lat, lon)")
             }
             var count = 0
             connection.prepareStatement(
                 "INSERT INTO places(osm_type, osm_id, name, category, lat, lon) VALUES (?, ?, ?, ?, ?, ?)",
+                java.sql.Statement.RETURN_GENERATED_KEYS
             ).use { placeInsert ->
                 connection.prepareStatement(
                     "INSERT INTO places_fts(rowid, name, category) VALUES (?, ?, ?)",
@@ -434,7 +440,7 @@ class SearchIndexWriter {
                         placeInsert.setDouble(6, place.longitude)
                         placeInsert.executeUpdate()
 
-                        val rowId = lastInsertRowId(connection)
+                        val rowId = placeInsert.generatedKeys.use { rs -> rs.next(); rs.getLong(1) }
                         ftsInsert.setLong(1, rowId)
                         ftsInsert.setString(2, place.name)
                         ftsInsert.setString(3, place.category)
@@ -451,14 +457,6 @@ class SearchIndexWriter {
             return count
         }
     }
-
-    private fun lastInsertRowId(connection: Connection): Long =
-        connection.createStatement().use { statement ->
-            statement.executeQuery("SELECT last_insert_rowid()").use { result ->
-                result.next()
-                result.getLong(1)
-            }
-        }
 }
 
 /**
@@ -503,19 +501,22 @@ fun buildSearchIndex(input: File, output: File, bbox: GeoBBox): Pair<Int, Long> 
     println("[1/2] Done. namedNodes=${nodeResults.size} namedWays=${namedWays.size} neededNodes=${neededNodeIds.size}")
 
     println("[2/2] Pass 2: resolving way node coordinates...")
-    val nodeCoords = HashMap<Long, Pair<Double, Double>>(neededNodeIds.size * 2)
+    val nodeCoords = NodeCoordStore(neededNodeIds.size * 2)
+    var resolvedNodes = 0
     readPbf(input) { entity ->
         if (entity is Node && neededNodeIds.contains(entity.id)) {
-            nodeCoords[entity.id] = entity.latitude to entity.longitude
+            nodeCoords.put(entity.id, entity.latitude, entity.longitude)
+            resolvedNodes++
         }
     }
-    println("[2/2] Done. resolvedNodes=${nodeCoords.size}")
+    println("[2/2] Done. resolvedNodes=$resolvedNodes")
 
     val wayResults = ArrayList<SearchPlace>(namedWays.size)
     for (way in namedWays) {
         var latSum = 0.0; var lonSum = 0.0; var count = 0
         for (id in way.nodeIds) {
-            val (lat, lon) = nodeCoords[id] ?: continue
+            var lat = 0.0; var lon = 0.0
+            if (!nodeCoords.get(id) { la, lo -> lat = la; lon = lo }) continue
             latSum += lat; lonSum += lon; count++
         }
         if (count == 0) continue
@@ -663,7 +664,13 @@ fun main(args: Array<String>) {
     while (rest.firstOrNull()?.startsWith("--") == true) {
         when (val flag = rest.removeAt(0)) {
             "--stats" -> statsOnly = true
-            "--bbox" -> bbox = GeoBBox.parse(rest.removeAt(0))
+            "--bbox" -> {
+                if (rest.isEmpty() || rest[0].startsWith("--")) {
+                    System.err.println("Usage: osm-importer --bbox <yamaguchi|japan|none>")
+                    kotlin.system.exitProcess(1)
+                }
+                bbox = GeoBBox.parse(rest.removeAt(0))
+            }
             "--index" -> {
                 require(rest.size == 1) { "Usage: osm-importer --index <graph>" }
                 writeGraphIndex(File(rest[0]), File(rest[0] + ".idx"))
@@ -678,6 +685,35 @@ fun main(args: Array<String>) {
                     rest[1].toDouble(), rest[2].toDouble(),
                     rest[3].toDouble(), rest[4].toDouble(),
                 )
+                return
+            }
+            "--benchmark" -> {
+                require(rest.size == 5) {
+                    "Usage: osm-importer --benchmark <graph> <startLat> <startLon> <goalLat> <goalLon>"
+                }
+                runRoutingBenchmark(
+                    File(rest[0]),
+                    rest[1].toDouble(), rest[2].toDouble(),
+                    rest[3].toDouble(), rest[4].toDouble(),
+                )
+                return
+            }
+            "--benchmark-alt" -> {
+                require(rest.size == 5) {
+                    "Usage: osm-importer --benchmark-alt <graph> <startLat> <startLon> <goalLat> <goalLon>"
+                }
+                runAltBenchmark(
+                    File(rest[0]),
+                    rest[1].toDouble(), rest[2].toDouble(),
+                    rest[3].toDouble(), rest[4].toDouble(),
+                )
+                return
+            }
+            "--build-alt-index" -> {
+                require(rest.size == 3) {
+                    "Usage: osm-importer --build-alt-index <graph> <landmarks> <output.alt>"
+                }
+                buildAltIndex(File(rest[0]), rest[1].toInt(), File(rest[2]))
                 return
             }
             "--search-index" -> {
@@ -766,7 +802,11 @@ private fun writeGraphIndex(graphFile: File, indexFile: File) {
             val to = input.readLong(); offset += 8
             input.readDouble(); offset += 8
             val roadLength = input.readUnsignedShort(); offset += 2
-            input.skipBytes(roadLength); offset += roadLength
+            val skipped = input.skipBytes(roadLength)
+            if (skipped != roadLength) {
+                throw java.io.IOException("Expected to skip $roadLength bytes but only skipped $skipped")
+            }
+            offset += roadLength
             input.readBoolean(); offset++
             val hasGrade = input.readBoolean(); offset++
             if (hasGrade) { input.readDouble(); offset += 8 }
@@ -814,5 +854,68 @@ private fun runRouteSanityCheck(
     println(
         "startNode=${start.id} goalNode=${goal.id} steps=${result.nodeIds.size - 1} " +
             "distanceMeters=${"%.1f".format(distance)} cost=${"%.1f".format(result.totalCost)}",
+    )
+}
+
+private fun runRoutingBenchmark(
+    file: File,
+    startLat: Double, startLon: Double,
+    goalLat: Double, goalLon: Double,
+) {
+    require(file.isFile) { "Graph file does not exist: ${file.absolutePath}" }
+    println("loadingGraph=${file.absolutePath}")
+    val graph = GraphBinaryReader.read(file)
+    fun nearest(lat: Double, lon: Double): GraphNode = graph.nodes.values.minBy {
+        com.gorite.cyclemap.routing.haversineMeters(lat, lon, it.latitude, it.longitude)
+    }
+    val start = nearest(startLat, startLon)
+    val goal = nearest(goalLat, goalLon)
+    println("startNode=${start.id} goalNode=${goal.id} nodes=${graph.nodes.size} edges=${graph.outgoing.values.sumOf { it.size }}")
+    val report = benchmarkRoutingAlgorithms(
+        graph = graph,
+        startId = start.id,
+        goalId = goal.id,
+        warmupRuns = 1,
+        measuredRuns = 3,
+        edgeCostModel = CyclingCostModel,
+    )
+    println("warmupRuns=${report.warmupRuns} measuredRuns=${report.measuredRuns}")
+    print(report.formatTable())
+}
+
+private fun runAltBenchmark(
+    file: File,
+    startLat: Double, startLon: Double,
+    goalLat: Double, goalLon: Double,
+) {
+    require(file.isFile) { "Graph file does not exist: ${file.absolutePath}" }
+    println("loadingGraph=${file.absolutePath}")
+    val graph = GraphBinaryReader.read(file)
+    fun nearest(lat: Double, lon: Double): GraphNode = graph.nodes.values.minBy {
+        com.gorite.cyclemap.routing.haversineMeters(lat, lon, it.latitude, it.longitude)
+    }
+    val start = nearest(startLat, startLon)
+    val goal = nearest(goalLat, goalLon)
+    println("startNode=${start.id} goalNode=${goal.id} nodes=${graph.nodes.size} edges=${graph.outgoing.values.sumOf { it.size }}")
+    val report = benchmarkRoutingVariants(
+        graph = graph,
+        startId = start.id,
+        goalId = goal.id,
+        edgeCostModel = CyclingCostModel,
+    )
+    println("baselineDistanceMeters=${report.baselineDistanceMeters} baselineCost=${report.baselineCost}")
+    print(report.formatTable())
+}
+
+private fun buildAltIndex(file: File, landmarkCount: Int, output: File) {
+    require(file.isFile) { "Graph file does not exist: ${file.absolutePath}" }
+    val graph = GraphBinaryReader.read(file)
+    val startedAt = System.nanoTime()
+    val index = LandmarkIndex.build(graph, landmarkCount, CyclingCostModel)
+    index.write(output)
+    val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
+    println(
+        "altIndex=${output.absolutePath} landmarks=${index.landmarkCount} " +
+            "nodes=${index.nodeIds.size} sizeBytes=${index.estimatedBytes} buildMs=$elapsedMs",
     )
 }

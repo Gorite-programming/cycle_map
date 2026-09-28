@@ -45,10 +45,14 @@ data class RouteResult(
 
 fun interface EdgeCostModel {
     fun cost(edge: GraphEdge): Double?
+
+    /** Admissible lower bound for cost per geometric meter. */
+    fun minimumCostMultiplier(): Double = 0.0
 }
 
 object DistanceCostModel : EdgeCostModel {
     override fun cost(edge: GraphEdge): Double = edge.cost
+    override fun minimumCostMultiplier(): Double = 0.0
 }
 
 object CyclingCostModel : EdgeCostModel {
@@ -68,17 +72,23 @@ object CyclingCostModel : EdgeCostModel {
         val gradePenalty = edge.gradePercent?.let { 1.0 + (kotlin.math.abs(it) * 0.02) } ?: 1.0
         return edge.distanceMeters * (multipliers[edge.roadType] ?: 1.15) * gradePenalty
     }
+
+    override fun minimumCostMultiplier(): Double = 0.90
 }
 
 class AStarRouter(
     private val graph: RoadGraph,
     private val edgeCostModel: EdgeCostModel = DistanceCostModel,
 ) {
+    var lastExpandedNodes: Int = 0
+        private set
+
     private data class QueueEntry(val nodeId: Long, val estimatedTotal: Double) : Comparable<QueueEntry> {
         override fun compareTo(other: QueueEntry): Int = estimatedTotal.compareTo(other.estimatedTotal)
     }
 
     fun route(startId: Long, goalId: Long): RouteResult {
+        lastExpandedNodes = 0
         graph.node(startId)
         graph.node(goalId)
         if (startId == goalId) return RouteResult(listOf(startId), 0.0)
@@ -90,6 +100,7 @@ class AStarRouter(
 
         while (open.isNotEmpty()) {
             val current = open.remove().nodeId
+            lastExpandedNodes++
             if (current == goalId) return buildResult(cameFrom, costSoFar.getValue(goalId), goalId)
 
             for (edge in graph.outgoing[current].orEmpty()) {
@@ -119,7 +130,8 @@ class AStarRouter(
     private fun heuristic(fromId: Long, toId: Long): Double {
         val from = graph.node(fromId)
         val to = graph.node(toId)
-        return haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude)
+        return haversineMeters(from.latitude, from.longitude, to.latitude, to.longitude) *
+            edgeCostModel.minimumCostMultiplier()
     }
 }
 

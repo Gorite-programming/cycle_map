@@ -95,6 +95,8 @@ class LongSet:
         return int(h) & self._mask
 
     def add(self, key: int) -> None:
+        if key == self.EMPTY:
+            raise ValueError(f"Cannot add sentinel value {self.EMPTY} to LongSet")
         if self.size * 2 >= len(self._keys):
             self._resize()
         slot = self._slot(key)
@@ -283,6 +285,7 @@ def _open_db(path: str) -> sqlite3.Connection:
         )
     """)
     con.execute("CREATE INDEX places_osm_idx ON places(osm_type, osm_id)")
+    con.execute("CREATE INDEX places_coords_idx ON places(lat, lon)")
     con.commit()
     return con
 
@@ -389,18 +392,20 @@ def main():
 
     # Way キャッシュ用一時ファイル（output と同ディレクトリに配置）
     out_dir = os.path.dirname(os.path.abspath(args.output))
-    way_cache = os.path.join(out_dir, "_way_cache.pkl")
+    way_cache = tempfile.mktemp(prefix='_way_cache_', suffix='.pkl', dir=out_dir)
 
     try:
         # ---- Pass 1 ----
         print(f"\n[Pass 1] Scanning PBF for named nodes & ways...")
         p1 = Pass1Handler(bbox, args.output, way_cache)
-        osmium.apply(
-            osmium.io.Reader(args.input, osmium.osm.osm_entity_bits.NODE |
-                                          osmium.osm.osm_entity_bits.WAY),
-            p1,
-        )
-        p1.close()
+        try:
+            osmium.apply(
+                osmium.io.Reader(args.input, osmium.osm.osm_entity_bits.NODE |
+                                              osmium.osm.osm_entity_bits.WAY),
+                p1,
+            )
+        finally:
+            p1.close()
         con = p1.db_connection
 
         t1 = time.time() - t_start
