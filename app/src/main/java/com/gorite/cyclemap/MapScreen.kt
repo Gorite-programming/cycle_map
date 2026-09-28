@@ -844,14 +844,14 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     }
     switchRef.set(startGraphSwitch)
 
-    // Load graph & tile check (起動時の既定=山口。現在地が他県なら後続の位置効果で切替)。
+    // Load graph & tile check (起動時: 配置済み最初のグラフ。現在地が他県なら後続の位置効果で切替)。
     LaunchedEffect(Unit) {
         val dataDir = cycleMapDataDir(context)
         configureOsmdroid(context, dataDir)
-        val resolvedFiles = RoutingGraphSelector.resolveGraphFiles(dataDir, "yamaguchi.graph")
+        val resolvedFiles = RoutingGraphSelector.findFirstAvailableGraph(dataDir)
         if (resolvedFiles == null) {
-            warningMessage = "ルートグラフが見つかりません:\nyamaguchi.graph\n配置先: ${dataDir.absolutePath}"
-            Log.e("CycleMapRoute", "GRAPH_SELECT startup file=yamaguchi.graph loaded=false reason=missing")
+            warningMessage = "ルートグラフが見つかりません\n配置先: ${dataDir.absolutePath}"
+            Log.e("CycleMapRoute", "GRAPH_SELECT startup loaded=false reason=missing dir=${dataDir.absolutePath}")
         } else {
             val (graphFile, graphIndex) = resolvedFiles
             isSwitchingGraph = true
@@ -870,7 +870,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 Log.i("CycleMapRoute", "GRAPH_SELECT startup file=${graphFile.name} loaded=true nodes=${result.first.nodeCount}")
             } catch (t: Throwable) {
                 warningMessage = "ルートグラフを読み込めませんでした: ${t.message}"
-                Log.e("CycleMapRoute", "ROUTE_FAILURE reason=graph-load-failed file=yamaguchi.graph exception=${t::class.java.simpleName}:${t.message}")
+                Log.e("CycleMapRoute", "ROUTE_FAILURE reason=graph-load-failed file=${graphFile.name} exception=${t::class.java.simpleName}:${t.message}")
             } finally {
                 isSwitchingGraph = false
             }

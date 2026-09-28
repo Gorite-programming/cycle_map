@@ -529,6 +529,21 @@ object RoutingGraphSelector {
 
         return null
     }
+
+    /**
+     * 配置済みのグラフファイル (.graph) と対応するインデックス (.graph.idx) のペアのうち、
+     * ファイル名昇順で最初に見つかった有効ペアを返す。
+     */
+    fun findFirstAvailableGraph(dataDir: File): Pair<File, File>? {
+        val files = dataDir.listFiles() ?: return null
+        val graphFiles = files.filter { it.isFile && it.name.endsWith(".graph", ignoreCase = true) }
+            .sortedBy { it.name }
+        for (graphFile in graphFiles) {
+            val resolved = resolveGraphFiles(dataDir, graphFile.name)
+            if (resolved != null) return resolved
+        }
+        return null
+    }
 }
 
 /** 検索DBの選択結果。 */
@@ -593,6 +608,22 @@ object SearchDbSelector {
         for (cand in candidates) {
             val f = File(dataDir, cand)
             if (f.isFile) return f
+        }
+        return null
+    }
+
+    /**
+     * 配置済みの検索DB (.search.db または search.db) のうち、
+     * ファイル名昇順で最初に見つかった実在ファイルを返す。
+     */
+    fun findFirstAvailableDb(dataDir: File): File? {
+        val files = dataDir.listFiles() ?: return null
+        val dbFiles = files.filter { file ->
+            file.isFile && (file.name.endsWith(".search.db", ignoreCase = true) || file.name.equals("search.db", ignoreCase = true))
+        }.sortedBy { it.name }
+        for (dbFile in dbFiles) {
+            val resolved = resolveDbFile(dataDir, dbFile.name)
+            if (resolved != null) return resolved
         }
         return null
     }

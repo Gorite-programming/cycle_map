@@ -312,7 +312,7 @@ internal fun DestinationSearchDialog(
         val dataDir = cycleMapDataDir(context)
         val loc = effectiveLocation
         if (loc == null) {
-            val f = SearchDbSelector.resolveDbFile(dataDir, "search.db") ?: File(dataDir, "search.db")
+            val f = SearchDbSelector.findFirstAvailableDb(dataDir) ?: File(dataDir, "search.db")
             Pair(f, null)
         } else {
             when (val sel = SearchDbSelector.select(loc.first, loc.second)) {

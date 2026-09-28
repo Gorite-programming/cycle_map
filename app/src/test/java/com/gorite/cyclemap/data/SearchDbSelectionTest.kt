@@ -35,4 +35,23 @@ class SearchDbSelectionTest {
         assertTrue(sel is SearchDbSelection.Unavailable)
         assertEquals("東京都", (sel as SearchDbSelection.Unavailable).prefectureName)
     }
+
+    @Test
+    fun findFirstAvailableDb_testCases() {
+        val tempDir = java.nio.file.Files.createTempDirectory("searchdb_test").toFile()
+        try {
+            // 1. 空のディレクトリ → null
+            org.junit.Assert.assertNull(SearchDbSelector.findFirstAvailableDb(tempDir))
+
+            // 2. B.search.db を作成 → B.search.db
+            val bDb = java.io.File(tempDir, "B.search.db").apply { createNewFile() }
+            assertEquals(bDb, SearchDbSelector.findFirstAvailableDb(tempDir))
+
+            // 3. 昇順で先頭の A.search.db を作成 → A.search.db
+            val aDb = java.io.File(tempDir, "A.search.db").apply { createNewFile() }
+            assertEquals(aDb, SearchDbSelector.findFirstAvailableDb(tempDir))
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }

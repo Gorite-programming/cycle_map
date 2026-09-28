@@ -46,4 +46,32 @@ class GraphSelectionTest {
         assertTrue(sel is RoutingGraphSelection.Unavailable)
         assertNull((sel as RoutingGraphSelection.Unavailable).prefectureName)
     }
+
+    @Test
+    fun findFirstAvailableGraph_testCases() {
+        val tempDir = java.nio.file.Files.createTempDirectory("graph_test").toFile()
+        try {
+            // 1. 空のディレクトリ → null
+            assertNull(RoutingGraphSelector.findFirstAvailableGraph(tempDir))
+
+            // 2. .idx が欠けているグラフ (B.graph) は無視し、有効なペア (C.graph) が返る
+            java.io.File(tempDir, "B.graph").createNewFile()
+            val cGraph = java.io.File(tempDir, "C.graph").apply { createNewFile() }
+            val cIdx = java.io.File(tempDir, "C.graph.idx").apply { createNewFile() }
+
+            val res1 = RoutingGraphSelector.findFirstAvailableGraph(tempDir)
+            assertEquals(cGraph, res1?.first)
+            assertEquals(cIdx, res1?.second)
+
+            // 3. 昇順で最先頭のペア (A.graph) を追加すると A.graph のペアが返る
+            val aGraph = java.io.File(tempDir, "A.graph").apply { createNewFile() }
+            val aIdx = java.io.File(tempDir, "A.graph.idx").apply { createNewFile() }
+
+            val res2 = RoutingGraphSelector.findFirstAvailableGraph(tempDir)
+            assertEquals(aGraph, res2?.first)
+            assertEquals(aIdx, res2?.second)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }
