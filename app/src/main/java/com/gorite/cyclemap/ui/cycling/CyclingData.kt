@@ -169,7 +169,7 @@ fun forwardGradeAt(profile: List<ElevationSample>, distanceM: Double, windowM: D
     val start = distanceM.coerceIn(0.0, total)
     val end = (start + windowM).coerceAtMost(total)
     val span = end - start
-    if (span <= 10.0) return 0.0
+    if (span <= 0.0) return null
     val base = elevationAt(profile, start) ?: return null
     val ahead = elevationAt(profile, end) ?: return null
     return ((ahead - base) / span * 100.0).coerceIn(-40.0, 40.0)

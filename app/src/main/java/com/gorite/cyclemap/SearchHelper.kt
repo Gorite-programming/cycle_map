@@ -257,6 +257,7 @@ internal fun searchNearbyPlaces(
                 category LIKE 'amenity:fast_food%' OR category LIKE 'railway:station%' OR
                 category LIKE 'tourism:%' OR category LIKE 'amenity:parking%' OR
                 category LIKE 'amenity:hospital%' OR category LIKE 'amenity:clinic%' OR
+                category LIKE 'amenity:doctors%' OR
                 category LIKE 'amenity:fuel%' OR category LIKE 'leisure:park%' OR
                 category LIKE 'amenity:drinking_water%'
               )
@@ -336,9 +337,13 @@ internal fun DestinationSearchDialog(
             withContext(Dispatchers.IO) {
                 runCatching {
                     val lm = context.getSystemService(android.location.LocationManager::class.java)
-                    val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-                        ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                    loc?.let { userLocation.value = it.latitude to it.longitude }
+                    val hasFine = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    val hasCoarse = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (hasFine || hasCoarse) {
+                        val loc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                            ?: lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                        loc?.let { userLocation.value = it.latitude to it.longitude }
+                    }
                 }
             }
         }
