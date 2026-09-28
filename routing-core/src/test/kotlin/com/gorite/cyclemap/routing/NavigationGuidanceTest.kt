@@ -76,5 +76,44 @@ class NavigationGuidanceTest {
         assertNull(progress.nextManeuver)
     }
 
+    @Test
+    fun offRouteDetector_detectsLargeDeviationFromPath() {
+        val route = listOf(
+            point(34.0000, 131.0000),
+            point(34.0010, 131.0000),
+        )
+        // 離脱点 (約100m以上離れた点)
+        val farPoint = point(34.0005, 131.0010)
+        val progress = calculateRouteProgress(farPoint, route)
+        assertNotNull(progress)
+        assertTrue(progress.distanceToRouteMeters > 50.0)
+    }
+
+    @Test
+    fun extractManeuvers_slightTurnThreshold() {
+        // 約 30 度の曲がり
+        val points = listOf(
+            point(0.0000, 0.0000),
+            point(0.0010, 0.0000),
+            point(0.0020, 0.0005),
+        )
+        val maneuvers = extractManeuvers(points)
+        assertEquals(1, maneuvers.size)
+        assertEquals(ManeuverType.RIGHT, maneuvers[0].type)
+    }
+
+    @Test
+    fun calculateRouteProgress_atExactGoalNode() {
+        val route = listOf(
+            point(0.0000, 0.0000),
+            point(0.0010, 0.0000),
+        )
+        val maneuvers = extractManeuvers(route)
+        val progress = calculateRouteProgress(point(0.0010, 0.0000), route, maneuvers)
+        assertNotNull(progress)
+        assertTrue(progress.distanceToRouteMeters < 0.1)
+        assertNull(progress.nextManeuver)
+    }
+
     private fun point(latitude: Double, longitude: Double) = RoutePoint(latitude, longitude)
 }

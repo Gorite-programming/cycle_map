@@ -532,4 +532,38 @@ class TurnClassifierTest {
         assertTrue("icon=turn_right" in line)
         assertTrue("reason=three-branches" in line)
     }
+
+    @Test
+    fun singleNodeRoute_returnsEmptyInstructionList() {
+        val a = pt(34.101, 131.400)
+        val graph = RoadGraph(mapOf(a.id to GraphNode(a.id, a.lat, a.lon)), emptyMap())
+        val result = classify(graph, listOf(a))
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun forkLeftTurn() {
+        val a = pt(34.101, 131.400)
+        val b = pt(34.100, 131.400)
+        val c = pt(34.099, 131.4007) // turn 約 -35°
+        val graph = buildGraph(listOf(a, b, c), listOf("residential", "residential"))
+        val result = classify(graph, listOf(a, b, c))
+        assertEquals(listOf(InstructionType.LEFT_TURN), result.map { it.type })
+    }
+
+    @Test
+    fun forkRightTurn() {
+        val a = pt(34.101, 131.400)
+        val b = pt(34.100, 131.400)
+        val c = pt(34.099, 131.3993) // turn 約 +35°
+        val graph = buildGraph(listOf(a, b, c), listOf("residential", "residential"))
+        val result = classify(graph, listOf(a, b, c))
+        assertEquals(listOf(InstructionType.RIGHT_TURN), result.map { it.type })
+    }
+
+    @Test
+    fun turnAngleNormalization_oppositeDirectionIsNegative180() {
+        val turn = signedTurnDegrees(0.0, 180.0)
+        assertEquals(-180.0, turn, 1e-9)
+    }
 }
