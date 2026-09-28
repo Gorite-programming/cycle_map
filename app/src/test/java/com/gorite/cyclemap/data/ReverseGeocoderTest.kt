@@ -127,5 +127,53 @@ class ReverseGeocoderTest {
         assertEquals("井口五丁目", result?.town)
         assertEquals("広島県広島市西区井口五丁目", result?.formattedAddress)
     }
+
+    @Test
+    fun selectHierarchy_cityWithoutCounty_doesNotAddCounty() {
+        val lat = 34.3976
+        val lon = 132.4756
+        val candidates = listOf(
+            ReverseGeocoder.PlaceCandidate("広島市", "place:city", lat, lon, 0.0),
+            ReverseGeocoder.PlaceCandidate("南区", "place:suburb", lat, lon, 100.0),
+            ReverseGeocoder.PlaceCandidate("松原町", "place:neighbourhood", lat, lon, 50.0),
+        )
+        val result = ReverseGeocoder.selectHierarchy(candidates, lat, lon, "広島県")
+        assertNull(result?.county)
+        assertEquals("広島県広島市南区松原町", result?.formattedAddress)
+    }
+
+    @Test
+    fun selectHierarchy_unsupportedPrefecture_fallbacksSafely() {
+        val lat = 35.6812
+        val lon = 139.7671
+        val candidates = listOf(
+            ReverseGeocoder.PlaceCandidate("千代田区", "place:city", lat, lon, 0.0),
+            ReverseGeocoder.PlaceCandidate("丸の内一丁目", "place:neighbourhood", lat, lon, 50.0),
+        )
+        val result = ReverseGeocoder.selectHierarchy(candidates, lat, lon, "東京都")
+        assertEquals("東京都", result?.prefecture)
+        assertEquals("千代田区", result?.city)
+        assertEquals("丸の内一丁目", result?.town)
+        assertEquals("東京都千代田区丸の内一丁目", result?.formattedAddress)
+    }
+
+    @Test
+    fun isHierarchyConsistent_returnsTrueForValidHierarchy() {
+        val okResult = AddressResult(
+            prefecture = "広島県",
+            city = "広島市",
+            ward = "中区",
+            formattedAddress = "広島県広島市中区大手町一丁目",
+        )
+        org.junit.Assert.assertTrue(ReverseGeocoder.isHierarchyConsistent(okResult, "広島県"))
+
+        val mixedResult = AddressResult(
+            prefecture = "広島県",
+            city = "呉市",
+            ward = "中区",
+            formattedAddress = "広島県呉市中区大手町一丁目",
+        )
+        org.junit.Assert.assertFalse(ReverseGeocoder.isHierarchyConsistent(mixedResult, "広島県"))
+    }
 }
 
