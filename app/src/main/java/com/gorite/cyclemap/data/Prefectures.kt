@@ -34,7 +34,12 @@ data class TileProgress(
 )
 
 object PrefectureData {
-    const val DOWNLOAD_MIN_ZOOM = 10
+    /**
+     * 低ズーム (z7-) まで事前取得する。z7–z9は1県あたり数十枚程度と軽量だが、
+     * ズームアウト時の地図表示をキャッシュで即時描画できる効果が大きい。
+     * z5–z6は全国で十数枚のため表示時に取得する。
+     */
+    const val DOWNLOAD_MIN_ZOOM = 7
     const val DOWNLOAD_MAX_ZOOM = 14
 
     val REGIONS = listOf("北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州・沖縄")
@@ -140,7 +145,8 @@ object DownloadStatusManager {
         if (prefId == "yamaguchi" && sourceType == MapSourceType.GSI) {
             val tileFile = File(File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CycleMap/tiles"), SqlTileWriter.DATABASE_FILENAME)
             if (tileFile.isFile && tileFile.length() > 50_000_000L) {
-                markDownloaded(context, prefId, sourceType, 5771)
+                val count = PrefectureData.ALL.firstOrNull { it.id == "yamaguchi" }?.let { PrefectureData.calculateTileCount(it.bounds) } ?: 0
+                markDownloaded(context, prefId, sourceType, count)
                 return true
             }
         }
@@ -166,12 +172,187 @@ object DownloadStatusManager {
 }
 
 object TileDownloader {
+    private const val CONNECT_TIMEOUT_MS = 10_000
+    private const val READ_TIMEOUT_MS = 20_000
+    private const val MAX_RETRIES = 1
+    private const val THREADS = 8
+
     fun download(
         context: Context,
         pref: Prefecture,
         sourceType: MapSourceType,
         source: XYTileSource,
         onProgress: (TileProgress) -> Unit,
+    ) {
+        downloadTiles(
+            context = context,
+            label = pref.name,
+            bounds = pref.bounds,
+            sourceType = sourceType,
+            source = source,
+            minZoom = PrefectureData.DOWNLOAD_MIN_ZOOM,
+            maxZoom = PrefectureData.DOWNLOAD_MAX_ZOOM,
+            onProgress = onProgress,
+            onDone = { total -> DownloadStatusManager.markDownloaded(context, pref.id, sourceType, total) },
+        )
+    }
+
+    /**
+     * 任意の BoundingBox と zoom 範囲でタイルをダウンロードする。
+     * エリア選択 (z15-z16) 用途など、都道府県バウンダリに縛られない任意範囲ダウンロードに使用する。
+     * 既存の osmdroid SQLite キャッシュに書き込むため、通常レイヤーのタイルと共存する。
+     */
+    fun downloadArea(
+        context: Context,
+        bounds: BoundingBox,
+        areaLabel: String,
+        sourceType: MapSourceType,
+        source: XYTileSource,
+        minZoom: Int,
+        maxZoom: Int,
+        onProgress: (TileProgress) -> Unit,
+    ) {
+        downloadTiles(
+            context = context,
+            label = areaLabel,
+            bounds = bounds,
+            sourceType = sourceType,
+            source = source,
+            minZoom = minZoom,
+            maxZoom = maxZoom,
+            onProgress = onProgress,
+            onDone = null,
+        )
+    }
+
+    /**
+     * 経路沿いの回廊タイルを事前ダウンロードする (AGENTS.md 方針合致)。
+     * 経路ポリラインから bufferTiles (既定1タイル=数百m〜1km) の幅に含まれる
+     * 指定ズーム範囲 (既定14〜16) のタイルのみを抽出し、高速・最小容量でキャッシュする。
+     */
+    fun downloadRouteCorridor(
+        context: Context,
+        routePoints: List<Pair<Double, Double>>, // (lat, lon)
+        label: String = "経路回廊",
+        sourceType: MapSourceType = MapSourceType.GSI,
+        source: XYTileSource,
+        minZoom: Int = 14,
+        maxZoom: Int = 16,
+        bufferTiles: Int = 1,
+        onProgress: (TileProgress) -> Unit,
+        onDone: ((Int) -> Unit)? = null,
+    ) {
+        if (routePoints.isEmpty()) {
+            onDone?.invoke(0)
+            return
+        }
+
+        val dataDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CycleMap").apply { mkdirs() }
+        val tileDir = File(dataDir, "tiles").apply { mkdirs() }
+        Configuration.getInstance().apply {
+            load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+            setOsmdroidBasePath(dataDir)
+            setOsmdroidTileCache(tileDir)
+            userAgentValue = "CycleMap/1.0 (Android; cycling navigator; personal use)"
+        }
+
+        val baseUrl = when (sourceType) {
+            MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
+            MapSourceType.OSM -> "https://tile.openstreetmap.org"
+        }
+
+        val jobSet = LinkedHashSet<TileJob>()
+        for (zoom in minZoom..maxZoom) {
+            val zoomJobs = HashSet<TileJob>()
+            for ((lat, lon) in routePoints) {
+                val cx = PrefectureData.tileX(lon, zoom)
+                val cy = PrefectureData.tileY(lat, zoom)
+                for (dx in -bufferTiles..bufferTiles) {
+                    for (dy in -bufferTiles..bufferTiles) {
+                        zoomJobs.add(TileJob(zoom, cx + dx, cy + dy))
+                    }
+                }
+            }
+            jobSet.addAll(zoomJobs)
+        }
+        val jobs = jobSet.toList()
+        val total = jobs.size
+        if (total == 0) {
+            onDone?.invoke(0)
+            return
+        }
+
+        val cached = readCachedTileKeys(File(tileDir, SqlTileWriter.DATABASE_FILENAME), source.name())
+        val writer = SqlTileWriter()
+        val completed = AtomicInteger(0)
+        val executor = Executors.newFixedThreadPool(THREADS)
+
+        fun report() {
+            val current = completed.incrementAndGet()
+            onProgress(TileProgress(label, sourceType.displayName, current, total))
+        }
+
+        for (job in jobs) {
+            val tileIndex = MapTileIndex.getTileIndex(job.zoom, job.x, job.y)
+            if (tileIndex in cached) {
+                report()
+                continue
+            }
+            executor.submit {
+                val urlStr = "$baseUrl/${job.zoom}/${job.x}/${job.y}.png"
+                var attempt = 0
+                var saved = false
+                while (!saved && attempt <= MAX_RETRIES) {
+                    if (attempt > 0) Thread.sleep(300L * attempt)
+                    var connection: HttpURLConnection? = null
+                    try {
+                        connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = CONNECT_TIMEOUT_MS
+                            readTimeout = READ_TIMEOUT_MS
+                            requestMethod = "GET"
+                            setRequestProperty("User-Agent", "CycleMap/1.0 (Android; cycling navigator; personal use)")
+                        }
+                        if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                            connection.inputStream.use { input ->
+                                writer.saveFile(source, tileIndex, input, null)
+                            }
+                            saved = true
+                        }
+                    } catch (_: Exception) {
+                        attempt++
+                    } finally {
+                        connection?.disconnect()
+                    }
+                }
+                report()
+            }
+        }
+        executor.shutdown()
+        try {
+            executor.awaitTermination(60, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {}
+        onDone?.invoke(total)
+    }
+
+    private data class TileJob(val zoom: Int, val x: Int, val y: Int)
+
+    /**
+     * ダウンロード共通コア。
+     * - 低ズームから順に取得 (ズームアウト表示が先に使える)
+     * - 同一ズーム内は中心から外向きに取得 (体感完了を早める)
+     * - キャッシュ済みはスキップ (中断後の再開・重複DLを高速化)
+     * - 失敗時は1回だけリトライ
+     */
+    private fun downloadTiles(
+        context: Context,
+        label: String,
+        bounds: BoundingBox,
+        sourceType: MapSourceType,
+        source: XYTileSource,
+        minZoom: Int,
+        maxZoom: Int,
+        onProgress: (TileProgress) -> Unit,
+        onDone: ((Int) -> Unit)?,
     ) {
         val dataDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CycleMap").apply { mkdirs() }
         val tileDir = File(dataDir, "tiles").apply { mkdirs() }
@@ -182,53 +363,237 @@ object TileDownloader {
             userAgentValue = context.packageName
         }
 
-        val writer = SqlTileWriter()
-        val total = PrefectureData.calculateTileCount(pref.bounds)
-        val completed = AtomicInteger(0)
-        val executor = Executors.newFixedThreadPool(8)
-
         val baseUrl = when (sourceType) {
             MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
             MapSourceType.OSM -> "https://tile.openstreetmap.org"
         }
 
-        for (zoom in PrefectureData.DOWNLOAD_MIN_ZOOM..PrefectureData.DOWNLOAD_MAX_ZOOM) {
-            val minX = PrefectureData.tileX(pref.bounds.lonWest, zoom)
-            val maxX = PrefectureData.tileX(pref.bounds.lonEast, zoom)
-            val minY = PrefectureData.tileY(pref.bounds.latNorth, zoom)
-            val maxY = PrefectureData.tileY(pref.bounds.latSouth, zoom)
-            for (x in minX..maxX) for (y in minY..maxY) {
-                executor.submit {
-                    val urlStr = "$baseUrl/$zoom/$x/$y.png"
+        // 低ズーム→高ズーム、各ズーム内は中心out順
+        val jobs = ArrayList<TileJob>()
+        for (zoom in minZoom..maxZoom) {
+            val minX = PrefectureData.tileX(bounds.lonWest, zoom)
+            val maxX = PrefectureData.tileX(bounds.lonEast, zoom)
+            val minY = PrefectureData.tileY(bounds.latNorth, zoom)
+            val maxY = PrefectureData.tileY(bounds.latSouth, zoom)
+            val cx = (minX + maxX) / 2.0
+            val cy = (minY + maxY) / 2.0
+            val level = ArrayList<TileJob>()
+            for (x in minX..maxX) for (y in minY..maxY) level += TileJob(zoom, x, y)
+            level.sortBy { (it.x - cx) * (it.x - cx) + (it.y - cy) * (it.y - cy) }
+            jobs += level
+        }
+        val total = jobs.size
+
+        // キャッシュ済みタイルのスナップショット (1クエリ)。失敗時は空扱いで全DLする。
+        val cached = readCachedTileKeys(File(tileDir, SqlTileWriter.DATABASE_FILENAME), source.name())
+        val writer = SqlTileWriter()
+        val completed = AtomicInteger(0)
+        val executor = Executors.newFixedThreadPool(THREADS)
+
+        fun report() {
+            val current = completed.incrementAndGet()
+            onProgress(TileProgress(label, sourceType.displayName, current, total))
+        }
+
+        for (job in jobs) {
+            val tileIndex = MapTileIndex.getTileIndex(job.zoom, job.x, job.y)
+            if (tileIndex in cached) {
+                report()
+                continue
+            }
+            executor.submit {
+                val urlStr = "$baseUrl/${job.zoom}/${job.x}/${job.y}.png"
+                var attempt = 0
+                var saved = false
+                while (!saved && attempt <= MAX_RETRIES) {
+                    if (attempt > 0) Thread.sleep(500L * attempt)
+                    var connection: HttpURLConnection? = null
                     try {
-                        val connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                            connectTimeout = 15_000
-                            readTimeout = 30_000
+                        connection = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = CONNECT_TIMEOUT_MS
+                            readTimeout = READ_TIMEOUT_MS
                             requestMethod = "GET"
                             setRequestProperty("User-Agent", "CycleMap/1.0 (Android; cycling navigator; personal use)")
                         }
                         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                             connection.inputStream.use { input ->
                                 synchronized(writer) {
-                                    writer.saveFile(source, MapTileIndex.getTileIndex(zoom, x, y), input, null)
+                                    writer.saveFile(source, tileIndex, input, null)
                                 }
                             }
+                            saved = true
                         }
-                        connection.disconnect()
                     } catch (_: Exception) {
-                        // エラー時も進捗カウントを進める
+                        // リトライまたはスキップ (進捗は進める)
                     } finally {
-                        val current = completed.incrementAndGet()
-                        onProgress(TileProgress(pref.name, sourceType.displayName, current, total))
+                        connection?.disconnect()
                     }
+                    attempt++
                 }
+                report()
             }
         }
 
         executor.shutdown()
-        executor.awaitTermination(30, TimeUnit.MINUTES)
+        executor.awaitTermination(60, TimeUnit.MINUTES)
         writer.onDetach()
+        onDone?.invoke(total)
+    }
 
-        DownloadStatusManager.markDownloaded(context, pref.id, sourceType, total)
+    /**
+     * 指定ソースのキャッシュ済みタイルキー一覧を取得する。
+     * osmdroid SQLite (`tiles(key, provider, tile)`) を直接参照する。
+     */
+    private fun readCachedTileKeys(dbFile: File, providerName: String): Set<Long> {
+        if (!dbFile.isFile) return emptySet()
+        val keys = HashSet<Long>()
+        try {
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                dbFile.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY,
+            ).use { db ->
+                db.rawQuery("SELECT key FROM tiles WHERE provider = ?", arrayOf(providerName)).use { cursor ->
+                    while (cursor.moveToNext()) keys += cursor.getLong(0)
+                }
+            }
+        } catch (_: Exception) {
+            return emptySet()
+        }
+        return keys
+    }
+}
+
+/** routing用県グラフの選択結果。 */
+sealed interface RoutingGraphSelection {
+    /** 対応グラフあり。fileName は CycleMap データ dir 直下の実ファイル名。 */
+    data class Available(
+        val prefectureId: String,
+        val prefectureName: String,
+        val fileName: String,
+    ) : RoutingGraphSelection
+
+    /** 対応グラフなし (未対応県・県判定不能)。他県グラフの使い回しは禁止のため呼び出し側は失敗させる。 */
+    data class Unavailable(val prefectureName: String?) : RoutingGraphSelection
+}
+
+/**
+ * 現在地→県→routing用グラフの選択 (純粋関数・JVMテスト可能)。
+ * 県判定は既存 [findPrefectureName]、県定義は既存 [PrefectureData.ALL] を再利用する。
+ */
+object RoutingGraphSelector {
+    /**
+     * 配置済みの県グラフ (県ID → ファイル名)。
+     * ファイル命名は生成パイプライン由来で一貫しないため (Hiroshima.graph に対し yamaguchi.graph)、
+     * 推測せず対応表に固定する。県追加時は実ファイル名で1行追加する。
+     */
+    private val SUPPORTED_FILES = mapOf(
+        "yamaguchi" to "yamaguchi.graph",
+        "hiroshima" to "Hiroshima.graph",
+        "okayama" to "Okayama.graph",
+        "shimane" to "Shimane.graph",
+        "tottori" to "Tottori.graph",
+    )
+
+    fun select(latitude: Double, longitude: Double): RoutingGraphSelection {
+        val name = findPrefectureName(latitude, longitude)
+        val pref = PrefectureData.ALL.firstOrNull { it.name == name }
+        val file = pref?.let { SUPPORTED_FILES[it.id] }
+        return if (pref != null && file != null) {
+            RoutingGraphSelection.Available(pref.id, pref.name, file)
+        } else {
+            RoutingGraphSelection.Unavailable(name)
+        }
+    }
+
+    /** 対応する .graph.idx のファイル名。 */
+    fun indexFileName(graphFileName: String): String = "$graphFileName.idx"
+
+    /**
+     * 実在するグラフファイルとインデックスファイルのペアを解決する。
+     * パイプライン生成物 (Yamaguchi.graph) と既存配備 (yamaguchi.graph) の
+     * 大文字小文字の違いをフォールバック解決する (BUG-65)。
+     */
+    fun resolveGraphFiles(dataDir: File, fileName: String): Pair<File, File>? {
+        val primaryGraph = File(dataDir, fileName)
+        val primaryIdx = File(dataDir, indexFileName(fileName))
+        if (primaryGraph.isFile && primaryIdx.isFile) return primaryGraph to primaryIdx
+
+        val altName = if (fileName.startsWith("yamaguchi", ignoreCase = true)) {
+            if (fileName.startsWith("yamaguchi")) "Yamaguchi.graph" else "yamaguchi.graph"
+        } else {
+            val capitalized = fileName.replaceFirstChar { it.uppercase() }
+            if (capitalized == fileName) fileName.replaceFirstChar { it.lowercase() } else capitalized
+        }
+        val altGraph = File(dataDir, altName)
+        val altIdx = File(dataDir, indexFileName(altName))
+        if (altGraph.isFile && altIdx.isFile) return altGraph to altIdx
+
+        return null
+    }
+}
+
+/** 検索DBの選択結果。 */
+sealed interface SearchDbSelection {
+    /** 対応DBあり。fileName は CycleMap データ dir 直下の実ファイル名。 */
+    data class Available(
+        val prefectureId: String,
+        val prefectureName: String,
+        val fileName: String,
+    ) : SearchDbSelection
+
+    /** 対応DBなし (未対応県・県判定不能)。他県DBの使い回しは禁止のため呼び出し側は失敗させる。 */
+    data class Unavailable(val prefectureName: String?) : SearchDbSelection
+}
+
+/**
+ * 現在地→県→検索DB (search.db系) の選択 (純粋関数・JVMテスト可能)。
+ * 県判定は既存 [findPrefectureName]、県定義は既存 [PrefectureData.ALL] を再利用する。
+ */
+object SearchDbSelector {
+    /**
+     * 配置済みの県別検索DB (県ID → ファイル名)。
+     * yamaguchi は既配備の search.db (山口県内容) をそのまま使う。
+     * hiroshima はパイプライン命名 (Hiroshima.search.db) に従う。県追加時は実ファイル名で1行追加する。
+     */
+    private val SUPPORTED_FILES = mapOf(
+        "yamaguchi" to "search.db",
+        "hiroshima" to "Hiroshima.search.db",
+        "okayama" to "Okayama.search.db",
+        "shimane" to "Shimane.search.db",
+        "tottori" to "Tottori.search.db",
+    )
+
+    fun select(latitude: Double, longitude: Double): SearchDbSelection {
+        val name = findPrefectureName(latitude, longitude)
+        val pref = PrefectureData.ALL.firstOrNull { it.name == name }
+        val file = pref?.let { SUPPORTED_FILES[it.id] }
+        return if (pref != null && file != null) {
+            SearchDbSelection.Available(pref.id, pref.name, file)
+        } else {
+            SearchDbSelection.Unavailable(name)
+        }
+    }
+
+    /**
+     * 実在する検索DBファイルを解決する。
+     * パイプライン生成物 (Yamaguchi.search.db) と既存配備 (search.db) の
+     * プレフィックス・大文字小文字の違いをフォールバック解決する (BUG-65)。
+     */
+    fun resolveDbFile(dataDir: File, fileName: String): File? {
+        val primary = File(dataDir, fileName)
+        if (primary.isFile) return primary
+
+        val candidates = when (fileName) {
+            "search.db" -> listOf("Yamaguchi.search.db", "yamaguchi.search.db")
+            "Yamaguchi.search.db", "yamaguchi.search.db" -> listOf("search.db")
+            else -> {
+                val cap = fileName.replaceFirstChar { it.uppercase() }
+                if (cap == fileName) listOf(fileName.replaceFirstChar { it.lowercase() }) else listOf(cap)
+            }
+        }
+        for (cand in candidates) {
+            val f = File(dataDir, cand)
+            if (f.isFile) return f
+        }
+        return null
     }
 }

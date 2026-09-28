@@ -3,10 +3,7 @@
     android:height="48dp"
     android:viewportWidth="48"
     android:viewportHeight="48">
-    <!-- 進行方向ビーム (半透明。上向き。Marker回転で向きが変わる) -->
-    <path
-        android:fillColor="#331A73E8"
-        android:pathData="M24,0 L34,26 L14,26 Z" />
+    <!-- 現在地ドット (静止・進行方向不明時用。矢印なし) -->
     <!-- 白縁 -->
     <path
         android:fillColor="#FFFFFF"

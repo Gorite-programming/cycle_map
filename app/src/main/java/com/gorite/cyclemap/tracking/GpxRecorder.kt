@@ -30,7 +30,17 @@ class GpxRecorder {
     fun writeToFile(file: File): File {
         file.parentFile?.mkdirs()
         val snapshot = synchronized(points) { points.toList() }
-        file.writer().use { it.write(GpxWriter.write(snapshot)) }
+        val tmpFile = File(file.parentFile, "${file.name}.tmp")
+        try {
+            tmpFile.writer().use { it.write(GpxWriter.write(snapshot)) }
+            if (!tmpFile.renameTo(file)) {
+                tmpFile.copyTo(file, overwrite = true)
+                tmpFile.delete()
+            }
+        } catch (t: Throwable) {
+            tmpFile.delete()
+            throw t
+        }
         return file
     }
 }
@@ -43,8 +53,10 @@ data class GpxPoint(
 )
 
 object GpxWriter {
-    private val gpxTimeFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("UTC")
+    private val gpxTimeFormat = ThreadLocal.withInitial {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
     }
 
     fun write(points: List<GpxPoint>): String = buildString {
@@ -54,13 +66,14 @@ object GpxWriter {
         append('\n')
         append("  <trk><name>CycleMap recording</name><trkseg>")
         append('\n')
+        val formatter = checkNotNull(gpxTimeFormat.get())
         for (p in points) {
             append("    <trkpt lat=\"").append(formatCoord(p.latitude))
                 .append("\" lon=\"").append(formatCoord(p.longitude)).append("\">")
             if (p.elevationMeters != null) {
                 append("<ele>").append("%.1f".format(Locale.US, p.elevationMeters)).append("</ele>")
             }
-            append("<time>").append(gpxTimeFormat.format(Date(p.timestampMillis))).append("</time>")
+            append("<time>").append(formatter.format(Date(p.timestampMillis))).append("</time>")
             append("</trkpt>")
             append('\n')
         }

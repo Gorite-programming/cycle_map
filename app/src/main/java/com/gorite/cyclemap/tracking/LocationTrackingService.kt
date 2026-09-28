@@ -39,6 +39,7 @@ class LocationTrackingService : Service() {
     private var recorder: GpxRecorder? = null
     private var tracking = false
     private var previousLocation: Location? = null
+    private var smoothedSpeed = 0.0
 
     @Volatile var recording: Boolean = false
         private set
@@ -89,17 +90,33 @@ class LocationTrackingService : Service() {
         startTracking()
     }
 
-    @SuppressLint("MissingPermission")
     private fun startTracking() {
+        val hasFine = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            android.util.Log.e("CycleMapTracking", "Location permission not granted, aborting startTracking")
+            stopSelf()
+            return
+        }
+
         tracking = true
         startForeground(NOTIFICATION_ID, trackingNotification())
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
             .setMinUpdateIntervalMillis(250L)
             .setMaxUpdateDelayMillis(1_000L)
             .build()
-        fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
-        fusedClient.lastLocation.addOnSuccessListener { last ->
-            if (last != null) considerLocation(last)
+        try {
+            fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+            fusedClient.lastLocation.addOnSuccessListener { last ->
+                if (last != null) considerLocation(last)
+            }
+        } catch (se: SecurityException) {
+            android.util.Log.e("CycleMapTracking", "SecurityException requesting location updates", se)
+            stopSelf()
         }
     }
 
@@ -121,15 +138,23 @@ class LocationTrackingService : Service() {
             timeZone = TimeZone.getDefault()
         }.format(Date())
         val points = snapshot?.pointCount ?: 0
-        val output = snapshot?.writeToFile(File(outputDir, "cyclemap_$timestamp.gpx"))
-        if (output != null) {
-            getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit().putString(KEY_LAST_FILE, output.absolutePath).apply()
-            sendBroadcast(
-                Intent(ACTION_RECORDING_SAVED).setPackage(packageName)
-                    .putExtra(EXTRA_PATH, output.absolutePath)
-                    .putExtra(EXTRA_POINTS, points),
-            )
-        }
+
+        Thread {
+            try {
+                val output = snapshot?.writeToFile(File(outputDir, "cyclemap_$timestamp.gpx"))
+                if (output != null) {
+                    getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit().putString(KEY_LAST_FILE, output.absolutePath).apply()
+                    sendBroadcast(
+                        Intent(ACTION_RECORDING_SAVED).setPackage(packageName)
+                            .putExtra(EXTRA_PATH, output.absolutePath)
+                            .putExtra(EXTRA_POINTS, points),
+                    )
+                }
+            } catch (t: Throwable) {
+                android.util.Log.e("CycleMapTracking", "Failed to save GPX file", t)
+            }
+        }.start()
+
         startForeground(NOTIFICATION_ID, trackingNotification())
     }
 
@@ -137,6 +162,8 @@ class LocationTrackingService : Service() {
         stopRecordingIfNeeded()
         fusedClient.removeLocationUpdates(callback)
         tracking = false
+        previousLocation = null
+        smoothedSpeed = 0.0
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -146,8 +173,11 @@ class LocationTrackingService : Service() {
     }
 
     override fun onDestroy() {
+        stopRecordingIfNeeded()
         fusedClient.removeLocationUpdates(callback)
         tracking = false
+        previousLocation = null
+        smoothedSpeed = 0.0
         super.onDestroy()
     }
 
@@ -159,15 +189,47 @@ class LocationTrackingService : Service() {
 
     private fun considerLocation(newLocation: Location) {
         val oldLocation = previousLocation
+        var speed = 0.0
         if (oldLocation != null) {
             val elapsedSeconds = (newLocation.time - oldLocation.time) / 1_000.0
             val distanceMeters = oldLocation.distanceTo(newLocation).toDouble()
             val calculatedSpeed = if (elapsedSeconds > 0.0) distanceMeters / elapsedSeconds else Double.POSITIVE_INFINITY
-            val isTooFast = calculatedSpeed > 60.0
+            
+            val isTooFast = calculatedSpeed > 25.0
             val isTooInaccurate = newLocation.hasAccuracy() && newLocation.accuracy > 100f
             val isOutOfOrder = elapsedSeconds <= 0.0
             if (isTooFast || isTooInaccurate || isOutOfOrder) return
+
+            // 1. Calculate raw speed
+            val rawSpeed = when {
+                newLocation.hasSpeed() -> newLocation.speed.toDouble()
+                elapsedSeconds > 0.0 && distanceMeters >= 1.0 -> distanceMeters / elapsedSeconds
+                else -> 0.0
+            }
+
+            // 2. Stationary detection (Noise gate)
+            // BUG-50 fix: Do not compare distanceMeters directly against accuracy,
+            // because at 15 km/h (4.2 m/fix) typical GPS accuracy (5-15 m) will constantly zero out speed.
+            val isStationary = if (newLocation.hasSpeed()) {
+                rawSpeed < 0.5
+            } else {
+                distanceMeters < 1.0 || rawSpeed < 0.5
+            }
+            val finalRawSpeed = if (isStationary) 0.0 else rawSpeed
+
+            // 3. Exponential Moving Average Smoothing
+            smoothedSpeed = smoothedSpeed * 0.7 + finalRawSpeed * 0.3
+            speed = smoothedSpeed
+        } else {
+            // First location
+            val rawSpeed = if (newLocation.hasSpeed()) newLocation.speed.toDouble() else 0.0
+            smoothedSpeed = if (rawSpeed < 0.5) 0.0 else rawSpeed
+            speed = smoothedSpeed
         }
+
+        // Override speed on the location object so all downstream consumers use the filtered/smoothed speed
+        newLocation.speed = speed.toFloat()
+
         previousLocation = newLocation
         lastLocation = newLocation
         if (recording) recorder?.addPoint(newLocation)

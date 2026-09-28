@@ -13,6 +13,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import com.gorite.cyclemap.routing.HsaMode
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +29,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,10 +58,18 @@ import kotlin.math.sqrt
 fun DeveloperOptionsScreen(
     hasLocationPermission: Boolean,
     onRequestLocationPermission: () -> Unit,
+    isBenchmarkRunning: Boolean,
+    benchmarkResult: String?,
+    onRunRoutingBenchmark: (RoutingBenchmarkRequest) -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
     val readings = rememberSensorReadings(context, hasLocationPermission)
+    var selectedBenchmarkMode by remember { mutableStateOf(HsaMode.B) }
+    var startLatitude by remember { mutableStateOf("34.1785") }
+    var startLongitude by remember { mutableStateOf("131.4737") }
+    var goalLatitude by remember { mutableStateOf("34.1700") }
+    var goalLongitude by remember { mutableStateOf("132.2200") }
 
     Dialog(
         onDismissRequest = onClose,
@@ -87,6 +99,87 @@ fun DeveloperOptionsScreen(
                         .padding(top = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("ルーティング実機ベンチマーク", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(
+                                "mmapグラフでA*と選択したHSA*を比較します。始点・終点を変更できます。",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            ScrollableTabRow(selectedTabIndex = selectedBenchmarkMode.ordinal) {
+                                HsaMode.entries.forEach { mode ->
+                                    Tab(
+                                        selected = selectedBenchmarkMode == mode,
+                                        onClick = { selectedBenchmarkMode = mode },
+                                        text = { Text("HSA*-${mode.name}") },
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = startLatitude,
+                                    onValueChange = { startLatitude = it },
+                                    label = { Text("始点 緯度") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                    value = startLongitude,
+                                    onValueChange = { startLongitude = it },
+                                    label = { Text("始点 経度") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = goalLatitude,
+                                    onValueChange = { goalLatitude = it },
+                                    label = { Text("終点 緯度") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                OutlinedTextField(
+                                    value = goalLongitude,
+                                    onValueChange = { goalLongitude = it },
+                                    label = { Text("終点 経度") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    val request = runCatching {
+                                        RoutingBenchmarkRequest(
+                                            mode = selectedBenchmarkMode,
+                                            startLatitude = startLatitude.toDouble(),
+                                            startLongitude = startLongitude.toDouble(),
+                                            goalLatitude = goalLatitude.toDouble(),
+                                            goalLongitude = goalLongitude.toDouble(),
+                                        )
+                                    }.getOrNull() ?: return@Button
+                                    onRunRoutingBenchmark(request)
+                                },
+                                enabled = !isBenchmarkRunning,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (isBenchmarkRunning) "測定中…" else "ベンチマーク実行")
+                            }
+                            benchmarkResult?.let {
+                                Text(
+                                    it,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
                     SensorCard("加速度計", "TYPE_ACCELEROMETER", readings.accelerometer)
                     SensorCard("ジャイロスコープ", "TYPE_GYROSCOPE", readings.gyroscope)
                     SensorCard("地磁気センサー", "TYPE_MAGNETIC_FIELD", readings.magnetometer)
@@ -165,6 +258,14 @@ private data class GpsReading(
     val details: List<String> = emptyList(),
 )
 
+data class RoutingBenchmarkRequest(
+    val mode: HsaMode,
+    val startLatitude: Double,
+    val startLongitude: Double,
+    val goalLatitude: Double,
+    val goalLongitude: Double,
+)
+
 private class SensorReadingsState {
     var accelerometer by mutableStateOf(SensorReading(false))
     var gyroscope by mutableStateOf(SensorReading(false))
@@ -184,6 +285,7 @@ private fun rememberSensorReadings(context: Context, hasLocationPermission: Bool
 
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(SensorManager::class.java)
+            ?: return@DisposableEffect onDispose { }
         val sensors = mapOf(
             Sensor.TYPE_ACCELEROMETER to { r: SensorReading -> readings.accelerometer = r },
             Sensor.TYPE_GYROSCOPE to { r: SensorReading -> readings.gyroscope = r },
@@ -221,6 +323,7 @@ private fun rememberSensorReadings(context: Context, hasLocationPermission: Bool
             return@DisposableEffect onDispose { }
         }
         val locationManager = context.getSystemService(LocationManager::class.java)
+            ?: return@DisposableEffect onDispose { readings.gps = GpsReading("位置情報サービスが利用できません") }
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             readings.gps = GpsReading("端末のGPSがオフです", listOf("設定から位置情報をオンにしてください"))
         }
