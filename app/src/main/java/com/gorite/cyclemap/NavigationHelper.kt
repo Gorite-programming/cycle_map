@@ -20,6 +20,7 @@ import com.gorite.cyclemap.routing.RoutePoint
 import com.gorite.cyclemap.routing.RouteProgress
 import com.gorite.cyclemap.routing.TurnClassifier
 import com.gorite.cyclemap.routing.bearingBetween
+import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.tracking.LocationTrackingService
 import com.gorite.cyclemap.tracking.locationServiceConnection
 import kotlin.math.roundToInt
@@ -206,24 +207,31 @@ internal fun ServiceLocationUpdates(
     context: Context,
     onLocationChanged: (location: Location, recording: Boolean, recordedPoints: Int) -> Unit,
     onSpeedChanged: (Double) -> Unit,
+    onGpsStatusChanged: (GpsSignalStatus) -> Unit = {},
 ) {
     val onLocation by rememberUpdatedState(onLocationChanged)
     val onSpeed by rememberUpdatedState(onSpeedChanged)
+    val onStatus by rememberUpdatedState(onGpsStatusChanged)
     DisposableEffect(context) {
         LocationTrackingService.startTracking(context)
         var serviceRef: LocationTrackingService? = null
-        val listener: (Location) -> Unit = { newLocation ->
+        val locationListener: (Location) -> Unit = { newLocation ->
             onSpeed(newLocation.speed.toDouble())
             val service = serviceRef
             onLocation(newLocation, service?.recording == true, service?.recordedPoints ?: 0)
         }
+        val statusListener: (GpsSignalStatus) -> Unit = { status ->
+            onStatus(status)
+        }
         val connection = locationServiceConnection { service ->
             serviceRef = service
-            service.addListener(listener)
+            service.addListener(locationListener)
+            service.addStatusListener(statusListener)
         }
         LocationTrackingService.bind(context, connection)
         onDispose {
-            serviceRef?.removeListener(listener)
+            serviceRef?.removeListener(locationListener)
+            serviceRef?.removeStatusListener(statusListener)
             runCatching { context.unbindService(connection) }
         }
     }

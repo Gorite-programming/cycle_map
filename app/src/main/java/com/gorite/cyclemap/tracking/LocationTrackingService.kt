@@ -35,11 +35,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 class LocationTrackingService : Service() {
     private val fusedClient by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private val listeners = CopyOnWriteArrayList<(Location) -> Unit>()
+    private val statusListeners = CopyOnWriteArrayList<(GpsSignalStatus) -> Unit>()
     private val binder = LocalBinder()
     private var recorder: GpxRecorder? = null
     private var tracking = false
     private var previousLocation: Location? = null
     private var smoothedSpeed = 0.0
+
+    @Volatile var lastStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY
+        private set
 
     @Volatile var recording: Boolean = false
         private set
@@ -80,6 +84,20 @@ class LocationTrackingService : Service() {
 
     fun removeListener(listener: (Location) -> Unit) {
         listeners -= listener
+    }
+
+    fun addStatusListener(listener: (GpsSignalStatus) -> Unit) {
+        statusListeners += listener
+        listener(lastStatus)
+    }
+
+    fun removeStatusListener(listener: (GpsSignalStatus) -> Unit) {
+        statusListeners -= listener
+    }
+
+    private fun notifyStatus(status: GpsSignalStatus) {
+        lastStatus = status
+        statusListeners.forEach { it(status) }
     }
 
     private fun ensureTracking() {
@@ -188,6 +206,12 @@ class LocationTrackingService : Service() {
     }
 
     private fun considerLocation(newLocation: Location) {
+        val isTooInaccurate = newLocation.hasAccuracy() && newLocation.accuracy > 100f
+        if (isTooInaccurate) {
+            notifyStatus(GpsSignalStatus.WEAK)
+            return
+        }
+
         val oldLocation = previousLocation
         var speed = 0.0
         if (oldLocation != null) {
@@ -196,9 +220,8 @@ class LocationTrackingService : Service() {
             val calculatedSpeed = if (elapsedSeconds > 0.0) distanceMeters / elapsedSeconds else Double.POSITIVE_INFINITY
             
             val isTooFast = calculatedSpeed > 25.0
-            val isTooInaccurate = newLocation.hasAccuracy() && newLocation.accuracy > 100f
             val isOutOfOrder = elapsedSeconds <= 0.0
-            if (isTooFast || isTooInaccurate || isOutOfOrder) return
+            if (isTooFast || isOutOfOrder) return
 
             // 1. Calculate raw speed
             val rawSpeed = when {
@@ -230,6 +253,7 @@ class LocationTrackingService : Service() {
         // Override speed on the location object so all downstream consumers use the filtered/smoothed speed
         newLocation.speed = speed.toFloat()
 
+        notifyStatus(GpsSignalStatus.HEALTHY)
         previousLocation = newLocation
         lastLocation = newLocation
         if (recording) recorder?.addPoint(newLocation)
