@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>オフライン サイクリングマップアプリ ― 設計仕様書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EAE4CE;
+    --paper-card:#F5F1E2;
+    --ink:#23291D;
+    --ink-soft:#55604A;
+    --line:#B9AE8C;
+    --line-soft:#D6CFB0;
+    --route:#B5541F;
+    --tech:#235E68;
+    --sensor:#A67C2E;
+    --moss:#4B6B43;
+    --future:#6B5B73;
+    color-scheme: light;
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--paper);
+    color:var(--ink);
+  }
+
+  body{
+    font-family:'Zen Kaku Gothic New', -apple-system, 'Hiragino Sans', sans-serif;
+    line-height:1.8;
+    font-size:16px;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+    overflow-x:hidden;
+  }
+
+  h1,h2{
+    font-family:'Shippori Mincho', serif;
+    color:var(--ink);
+    margin:0;
+  }
+
+  a{ color:var(--tech); }
+
+  /* ---------- 背景の等高線パターン ---------- */
+  .bg-contours{
+    position:fixed;
+    inset:0;
+    z-index:-1;
+    opacity:0.55;
+    pointer-events:none;
+  }
+
+  /* ---------- レイアウト共通 ---------- */
+  main{
+    max-width:960px;
+    margin:0 auto;
+    padding:0 24px 80px;
+  }
+
+  .prose{
+    max-width:680px;
+  }
+
+  .section{
+    padding:56px 0;
+    border-top:1px solid var(--line);
+    position:relative;
+  }
+
+  .section > h2{
+    font-size:clamp(1.5rem, 3vw, 1.9rem);
+    font-weight:700;
+    margin-bottom:8px;
+  }
+
+  .section-lede{
+    color:var(--ink-soft);
+    font-size:0.95rem;
+    margin:0 0 28px;
+    max-width:640px;
+  }
+
+  /* ---------- ヒーロー ---------- */
+  .hero{
+    position:relative;
+    padding:96px 0 64px;
+    overflow:visible;
+  }
+
+  .hero-rings{
+    position:absolute;
+    top:50%;
+    right:-120px;
+    transform:translateY(-50%);
+    width:520px;
+    height:520px;
+    z-index:0;
+    opacity:0.9;
+  }
+
+  .hero-meta{
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-size:0.9rem;
+    letter-spacing:0.04em;
+    color:var(--route);
+    margin:0 0 18px;
+    font-weight:700;
+    position:relative;
+    z-index:1;
+    animation: rise 0.7s ease both;
+  }
+
+  .hero h1{
+    font-size:clamp(2.3rem, 6vw, 3.6rem);
+    font-weight:800;
+    line-height:1.25;
+    position:relative;
+    z-index:1;
+    animation: rise 0.7s ease both 0.08s;
+  }
+
+  .hero-sub{
+    font-family:'Shippori Mincho',serif;
+    font-size:clamp(1.1rem,2.4vw,1.4rem);
+    color:var(--ink-soft);
+    margin:10px 0 40px;
+    position:relative;
+    z-index:1;
+    animation: rise 0.7s ease both 0.16s;
+  }
+
+  .hero-stats{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0;
+    margin:0;
+    position:relative;
+    z-index:1;
+    border-top:1px solid var(--line);
+    max-width:600px;
+    animation: rise 0.7s ease both 0.24s;
+  }
+
+  .hero-stats > div{
+    flex:1 1 160px;
+    padding:16px 20px 16px 0;
+    border-bottom:1px solid var(--line);
+  }
+
+  .hero-stats dt{
+    font-size:0.78rem;
+    color:var(--ink-soft);
+    margin:0 0 4px;
+  }
+
+  .hero-stats dd{
+    margin:0;
+    font-weight:700;
+    font-size:1rem;
+  }
+
+  @keyframes rise{
+    from{ opacity:0; transform:translateY(10px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .hero-meta, .hero h1, .hero-sub, .hero-stats{ animation:none; }
+  }
+
+  /* ---------- 技術スタック表 ---------- */
+  .table-wrap{
+    overflow-x:auto;
+    border:1px solid var(--line);
+    background:var(--paper-card);
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:480px;
+  }
+
+  th,td{
+    text-align:left;
+    padding:14px 20px;
+    font-size:0.95rem;
+    border-bottom:1px solid var(--line-soft);
+  }
+
+  thead th{
+    font-weight:700;
+    color:var(--ink-soft);
+    font-size:0.82rem;
+    border-bottom:1px solid var(--line);
+    background:rgba(181,84,31,0.06);
+  }
+
+  tbody tr:last-child td{ border-bottom:none; }
+
+  td.tech-value{ font-weight:500; }
+
+  /* ---------- 機能一覧 ---------- */
+  .feature-groups{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(240px,1fr));
+    gap:28px;
+  }
+
+  .feature-group{
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    padding:22px 24px;
+  }
+
+  .feature-group h3{
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-size:0.95rem;
+    font-weight:700;
+    margin:0 0 14px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+
+  .dot{
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    flex:none;
+    display:inline-block;
+  }
+
+  .feature-group ul{
+    margin:0;
+    padding:0;
+    list-style:none;
+  }
+
+  .feature-group li{
+    padding:7px 0 7px 20px;
+    position:relative;
+    font-size:0.92rem;
+    color:var(--ink);
+    border-top:1px dashed var(--line-soft);
+  }
+
+  .feature-group li:first-child{ border-top:none; }
+
+  .feature-group li::before{
+    content:"";
+    position:absolute;
+    left:0;
+    top:16px;
+    width:9px;
+    height:5px;
+    border-left:1.5px solid var(--ink-soft);
+    border-bottom:1.5px solid var(--ink-soft);
+    transform:rotate(-45deg);
+  }
+
+  /* ---------- センサー連携 ---------- */
+  .device-cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(260px,1fr));
+    gap:24px;
+    margin-bottom:24px;
+  }
+
+  .device-card{
+    border:1px solid var(--line);
+    background:var(--paper-card);
+    padding:24px;
+    border-left:4px solid var(--sensor);
+  }
+
+  .device-card.secondary{ border-left-color:var(--ink-soft); }
+
+  .device-card .role{
+    font-size:0.76rem;
+    color:var(--ink-soft);
+    margin:0 0 2px;
+  }
+
+  .device-card h3{
+    font-family:'Shippori Mincho',serif;
+    font-size:1.15rem;
+    margin:0 0 14px;
+  }
+
+  .device-card ul{
+    margin:0;
+    padding-left:18px;
+    font-size:0.92rem;
+  }
+
+  .device-card li{ margin-bottom:8px; }
+  .device-card li:last-child{ margin-bottom:0; }
+
+  .note-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:24px;
+  }
+
+  .logic-note, .pending-note{
+    padding:18px 22px;
+    font-size:0.9rem;
+  }
+
+  .logic-note{
+    background:rgba(35,94,104,0.08);
+    border-left:3px solid var(--tech);
+  }
+
+  .pending-note{
+    border:1px dashed var(--line);
+    color:var(--ink-soft);
+  }
+
+  .logic-note strong, .pending-note strong{
+    display:block;
+    color:var(--ink);
+    font-weight:700;
+    margin-bottom:4px;
+    font-size:0.85rem;
+  }
+
+  /* ---------- マインドマップ ---------- */
+  .mindmap-wrap{
+    position:relative;
+    width:100%;
+    max-width:960px;
+    aspect-ratio: 960 / 760;
+    margin:0 auto;
+  }
+
+  .mindmap-lines{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+  }
+
+  .mindmap-center{
+    position:absolute;
+    left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    width:150px; height:150px;
+    border-radius:50%;
+    background:var(--ink);
+    color:var(--paper);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    font-family:'Shippori Mincho',serif;
+    font-weight:700;
+    font-size:0.95rem;
+    line-height:1.5;
+    padding:10px;
+    box-shadow:0 0 0 6px var(--paper), 0 0 0 7px var(--line);
+  }
+
+  .mindmap-node{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    width:min(230px, 40vw);
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    border-top:3px solid var(--c);
+    padding:14px 16px;
+  }
+
+  .mindmap-node h3{
+    font-size:0.88rem;
+    margin:0 0 8px;
+    font-weight:700;
+    color:var(--ink);
+    display:flex;
+    align-items:center;
+    gap:7px;
+  }
+
+  .mindmap-node ul{
+    margin:0;
+    padding:0;
+    list-style:none;
+    font-size:0.78rem;
+    color:var(--ink-soft);
+  }
+
+  .mindmap-node li{
+    padding:3px 0;
+  }
+
+  .mindmap-fallback{ display:none; }
+
+  @media (max-width:680px){
+    .mindmap-wrap{ display:none; }
+    .mindmap-fallback{
+      display:grid;
+      gap:16px;
+    }
+    .mindmap-fallback .mindmap-node{
+      position:static;
+      transform:none;
+      width:100%;
+    }
+  }
+
+  /* ---------- アーキテクチャ構成 ---------- */
+  .flow{
+    display:flex;
+    align-items:stretch;
+    gap:0;
+  }
+
+  .flow-box{
+    flex:1;
+    background:var(--paper-card);
+    border:1px solid var(--line);
+    padding:20px;
+  }
+
+  .flow-box h3{
+    font-size:0.85rem;
+    margin:0 0 10px;
+    color:var(--ink-soft);
+    font-weight:700;
+  }
+
+  .flow-box ul{
+    margin:0;
+    padding-left:16px;
+    font-size:0.85rem;
+  }
+
+  .flow-box li{ margin-bottom:6px; }
+
+  .flow-box.core{
+    border-top:3px solid var(--tech);
+  }
+
+  .flow-arrow{
+    flex:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:44px;
+    color:var(--ink-soft);
+    font-size:1.3rem;
+  }
+
+  @media (max-width:640px){
+    .flow{ flex-direction:column; }
+    .flow-arrow{ width:auto; height:28px; }
+  }
+
+  /* ---------- 将来拡張 ---------- */
+  .future-tag{
+    display:inline-block;
+    font-size:0.68rem;
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    font-weight:700;
+    color:var(--future);
+    border:1px solid var(--future);
+    padding:2px 8px;
+    margin-left:10px;
+    vertical-align:middle;
+    border-radius:2px;
+  }
+
+  .future-list{
+    list-style:none;
+    margin:24px 0 0;
+    padding:0;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:16px;
+  }
+
+  .future-list li{
+    border:1px dashed var(--future);
+    padding:16px 18px;
+    font-size:0.9rem;
+    color:var(--ink-soft);
+  }
+
+  /* ---------- フッター ---------- */
+  footer{
+    padding:40px 0 0;
+    border-top:1px solid var(--line);
+    color:var(--ink-soft);
+    font-size:0.82rem;
+  }
+
+</style>
+</head>
+<body>
+
+<svg class="bg-contours" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <pattern id="contours" width="240" height="160" patternUnits="userSpaceOnUse">
+      <path d="M-20 40 C 40 10, 80 70, 140 40 S 220 10, 260 40" stroke="#B9AE8C" stroke-width="1.3" fill="none"/>
+      <path d="M-20 92 C 40 62, 80 122, 140 92 S 220 62, 260 92" stroke="#B9AE8C" stroke-width="1.3" fill="none"/>
+      <path d="M-20 144 C 40 114, 80 174, 140 144 S 220 114, 260 144" stroke="#B9AE8C" stroke-width="1.3" fill="none"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#contours)" opacity="0.35"/>
+</svg>
+
+<main>
+
+  <header class="hero">
+    <svg class="hero-rings" viewBox="0 0 520 520" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <ellipse cx="260" cy="260" rx="240" ry="230" fill="none" stroke="#B9AE8C" stroke-width="1.2" opacity="0.5"/>
+      <ellipse cx="255" cy="270" rx="190" ry="182" fill="none" stroke="#B9AE8C" stroke-width="1.2" opacity="0.55"/>
+      <ellipse cx="265" cy="250" rx="142" ry="136" fill="none" stroke="#B9AE8C" stroke-width="1.2" opacity="0.6"/>
+      <ellipse cx="258" cy="262" rx="96" ry="92" fill="none" stroke="#B5541F" stroke-width="1.4" opacity="0.45"/>
+      <ellipse cx="262" cy="255" rx="52" ry="50" fill="none" stroke="#B9AE8C" stroke-width="1.2" opacity="0.6"/>
+    </svg>
+    <p class="hero-meta">Android ・ 完全オフライン ・ 個人開発プロジェクト</p>
+    <h1>オフライン<br>サイクリングマップアプリ</h1>
+    <p class="hero-sub">設計仕様書</p>
+    <dl class="hero-stats">
+      <div><dt>対象範囲</dt><dd>中国地方</dd></div>
+      <div><dt>プラットフォーム</dt><dd>Android(Kotlin)</dd></div>
+      <div><dt>現在のステータス</dt><dd>企画・設計中</dd></div>
+    </dl>
+  </header>
+
+  <section class="section" id="overview">
+    <h2>概要</h2>
+    <div class="prose">
+      <p>Android端末単体で完結し、通信環境に依存せずに動作する、完全オフラインのサイクリング用マップ・ナビゲーションアプリ。地図表示からルート案内、走行記録、センサーによる走行データ取得までを一つのアプリでまかなう。</p>
+      <p>地図データのダウンロード範囲は、初期スコープとして中国地方を対象とする。</p>
+    </div>
+  </section>
+
+  <section class="section" id="stack">
+    <h2>技術スタック</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>項目</th><th>採用技術</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>開発方式</td><td class="tech-value">Kotlin(Androidネイティブ)</td></tr>
+          <tr><td>表示地図タイル</td><td class="tech-value">国土地理院(GSI)標準地図 / 淡色地図 ＋ 陰影起伏</td></tr>
+          <tr><td>標高データ</td><td class="tech-value">GSI DEMタイル</td></tr>
+          <tr><td>ルーティング用道路網</td><td class="tech-value">OpenStreetMap(OSM)</td></tr>
+          <tr><td>ルーティングエンジン</td><td class="tech-value">GraphHopper(オフライン・幹線道路優先プロファイル)</td></tr>
+          <tr><td>音声案内</td><td class="tech-value">VOICEVOXで事前生成した定型音声を同梱</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <h2>機能一覧</h2>
+    <div class="feature-groups">
+      <div class="feature-group">
+        <h3><span class="dot" style="background:var(--route)"></span>地図・ナビゲーション</h3>
+        <ul>
+          <li>地図表示・現在地表示</li>
+          <li>ターンバイターンナビ＋音声案内</li>
+          <li>ルート逸脱時の自動リルート</li>
+        </ul>
+      </div>
+      <div class="feature-group">
+        <h3><span class="dot" style="background:var(--tech)"></span>記録・統計</h3>
+        <ul>
+          <li>ルート記録(GPX保存)</li>
+          <li>速度・距離・高度のリアルタイム統計表示</li>
+          <li>標高ウィジェット</li>
+          <li>ルートラインのカスタム色分け表示</li>
+        </ul>
+      </div>
+      <div class="feature-group">
+        <h3><span class="dot" style="background:var(--moss)"></span>オフラインコンテンツ</h3>
+        <ul>
+          <li>地図無制限ダウンロード</li>
+          <li>オフラインWikipedia / Wikivoyage(Maps+相当)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="sensors">
+    <h2>センサー連携</h2>
+    <p class="section-lede">micro:bitを使った速度・ケイデンス・転倒検知の自作センサー構成。</p>
+    <div class="device-cards">
+      <div class="device-card">
+        <p class="role">メイン ・ 車体側</p>
+        <h3>micro:bit v2</h3>
+        <ul>
+          <li>ホイール＋ペダルにリードスイッチ＋磁石を取り付け、パルスカウントで速度・ケイデンスを算出</li>
+          <li>加速度センサーで転倒検知(スパイク＋直後の静止で判定)</li>
+          <li>BLE UARTでアプリへストリーミング</li>
+        </ul>
+      </div>
+      <div class="device-card secondary">
+        <p class="role">サブ ・ ハンドル側</p>
+        <h3>micro:bit v1.5</h3>
+        <ul>
+          <li>ハンドル取り付けの記録開始 / 停止リモコン</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note-row">
+      <div class="logic-note">
+        <strong>速度算出ロジック</strong>
+        低速時はmicro:bitのセンサー値を優先し、それ以外はGPSとの平均値を使用する。
+      </div>
+      <div class="pending-note">
+        <strong>心拍(Amazfit Bip 6) ― 保留中</strong>
+        Gadgetbridge側のプロトコル解析が必要なため、連携は一旦保留。
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="mindmap">
+    <h2>マインドマップ</h2>
+    <p class="section-lede">アプリを構成する5つの要素領域の全体像。</p>
+
+    <div class="mindmap-wrap">
+      <svg class="mindmap-lines" viewBox="0 0 960 760" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="480" y1="380" x2="480" y2="130" stroke="var(--route)" stroke-width="1.6" opacity="0.6"/>
+        <line x1="480" y1="380" x2="717.75" y2="302.75" stroke="var(--tech)" stroke-width="1.6" opacity="0.6"/>
+        <line x1="480" y1="380" x2="627" y2="582.25" stroke="var(--sensor)" stroke-width="1.6" opacity="0.6"/>
+        <line x1="480" y1="380" x2="333" y2="582.25" stroke="var(--moss)" stroke-width="1.6" opacity="0.6"/>
+        <line x1="480" y1="380" x2="242.25" y2="302.75" stroke="var(--future)" stroke-width="1.6" stroke-dasharray="5 5" opacity="0.6"/>
+      </svg>
+
+      <div class="mindmap-center">オフライン<br>サイクリング<br>マップアプリ</div>
+
+      <div class="mindmap-node" style="left:50%; top:17.1%; --c:var(--route)">
+        <h3><span class="dot" style="background:var(--route)"></span>地図・ナビゲーション</h3>
+        <ul>
+          <li>GSI地図タイル表示</li>
+          <li>GraphHopperルーティング</li>
+          <li>ターンバイターン＋音声案内</li>
+          <li>自動リルート</li>
+        </ul>
+      </div>
+
+      <div class="mindmap-node" style="left:74.76%; top:39.83%; --c:var(--tech)">
+        <h3><span class="dot" style="background:var(--tech)"></span>記録・統計</h3>
+        <ul>
+          <li>GPX記録</li>
+          <li>速度・距離・高度</li>
+          <li>標高ウィジェット</li>
+          <li>ルート色分け表示</li>
+        </ul>
+      </div>
+
+      <div class="mindmap-node" style="left:65.31%; top:76.61%; --c:var(--sensor)">
+        <h3><span class="dot" style="background:var(--sensor)"></span>センサー連携</h3>
+        <ul>
+          <li>micro:bit v2(速度・ケイデンス・転倒検知)</li>
+          <li>micro:bit v1.5(記録リモコン)</li>
+          <li>心拍 Bip6(保留)</li>
+        </ul>
+      </div>
+
+      <div class="mindmap-node" style="left:34.69%; top:76.61%; --c:var(--moss)">
+        <h3><span class="dot" style="background:var(--moss)"></span>オフラインコンテンツ</h3>
+        <ul>
+          <li>地図無制限DL</li>
+          <li>オフラインWikipedia</li>
+          <li>オフラインWikivoyage</li>
+        </ul>
+      </div>
+
+      <div class="mindmap-node" style="left:25.23%; top:39.83%; --c:var(--future)">
+        <h3><span class="dot" style="background:var(--future)"></span>将来拡張</h3>
+        <ul>
+          <li>勾配計算</li>
+          <li>休憩所の提案(OSM POI)</li>
+          <li>到着予測時間</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mindmap-fallback">
+      <div class="mindmap-node" style="--c:var(--route)">
+        <h3><span class="dot" style="background:var(--route)"></span>地図・ナビゲーション</h3>
+        <ul><li>GSI地図タイル表示</li><li>GraphHopperルーティング</li><li>ターンバイターン＋音声案内</li><li>自動リルート</li></ul>
+      </div>
+      <div class="mindmap-node" style="--c:var(--tech)">
+        <h3><span class="dot" style="background:var(--tech)"></span>記録・統計</h3>
+        <ul><li>GPX記録</li><li>速度・距離・高度</li><li>標高ウィジェット</li><li>ルート色分け表示</li></ul>
+      </div>
+      <div class="mindmap-node" style="--c:var(--sensor)">
+        <h3><span class="dot" style="background:var(--sensor)"></span>センサー連携</h3>
+        <ul><li>micro:bit v2(速度・ケイデンス・転倒検知)</li><li>micro:bit v1.5(記録リモコン)</li><li>心拍 Bip6(保留)</li></ul>
+      </div>
+      <div class="mindmap-node" style="--c:var(--moss)">
+        <h3><span class="dot" style="background:var(--moss)"></span>オフラインコンテンツ</h3>
+        <ul><li>地図無制限DL</li><li>オフラインWikipedia</li><li>オフラインWikivoyage</li></ul>
+      </div>
+      <div class="mindmap-node" style="--c:var(--future)">
+        <h3><span class="dot" style="background:var(--future)"></span>将来拡張</h3>
+        <ul><li>勾配計算</li><li>休憩所の提案(OSM POI)</li><li>到着予測時間</li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="architecture">
+    <h2>アーキテクチャ構成イメージ</h2>
+    <p class="section-lede">センサー・GPSからの入力がアプリコアを経て、案内・記録として出力される流れ。</p>
+    <div class="flow">
+      <div class="flow-box">
+        <h3>入力</h3>
+        <ul>
+          <li>GPS位置情報</li>
+          <li>micro:bit(BLE UART)</li>
+        </ul>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box core">
+        <h3>アプリコア</h3>
+        <ul>
+          <li>GraphHopperルーティング</li>
+          <li>記録エンジン(GPX)</li>
+          <li>統計・センサー統合計算</li>
+        </ul>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">
+        <h3>出力</h3>
+        <ul>
+          <li>音声案内(VOICEVOX)</li>
+          <li>地図・統計UI表示</li>
+          <li>GPXファイル保存</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="future">
+    <h2>将来拡張<span class="future-tag">MVP範囲外</span></h2>
+    <ul class="future-list">
+      <li>勾配計算</li>
+      <li>休憩所の提案(OSM POI活用)</li>
+      <li>現在のペースでの到着予測時間</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>個人開発プロジェクト ・ 設計メモ ／ 2026年9月時点</p>
+  </footer>
+
+</main>
+</body>
+</html>

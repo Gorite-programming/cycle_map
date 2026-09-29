@@ -1,0 +1,11 @@
+data/
+out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.streamlit/
+*.db
+*.pbf
+*.graph
+*.idx

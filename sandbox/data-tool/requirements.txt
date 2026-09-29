@@ -1,0 +1,5 @@
+# 追加依存（標準ライブラリ以外）。各行の理由は末尾コメント参照
+osmium  # OSM PBF 読み込み (PyOsmium)。sources/osm.py で使用
+streamlit  # GUI (tools/gui.py: ダッシュボード・取り込み・生成画面)
+pytest  # 単体テスト実行 (tests/)
+pykakasi  # 漢字→読み生成 (core/kana.py)。タグ由来の読みが無い行の補完用。誤変換があるため既定OFF (out/kana_sample.md)

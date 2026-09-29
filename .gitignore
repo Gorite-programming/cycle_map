@@ -1,23 +1,36 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-**/build/
-osm-importer/data/
+# Large OSM and pipeline files (>100MB, cannot be committed to GitHub)
+data/
+japan-latest.osm.pbf
+work/
+packages/
+*.osm.pbf
 *.graph
 *.graph.idx
-**/bin/
-.kotlin/
+*.search.db
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+logs/
+chat_logs/
+scratch/
+
+# OS / Editor
+.DS_Store
+.idea/
+*.iml
 .vscode/
-.aider*
+
+# Android / Gradle
+application/.git.bak
+application/.gradle/
+application/build/
+application/**/build/
+application/local.properties
+application/.externalNativeBuild/
+application/.cxx/
+application/captures/
+*.git.bak
