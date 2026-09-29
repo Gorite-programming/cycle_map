@@ -20,8 +20,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.annotation.VisibleForTesting
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
@@ -42,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gorite.cyclemap.data.DownloadStatusManager
+import com.gorite.cyclemap.data.Fts5SupportDetector
 import com.gorite.cyclemap.data.MapSourceType
 import com.gorite.cyclemap.data.Prefecture
 import com.gorite.cyclemap.data.PrefectureData
@@ -57,6 +62,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 // ---------------------------------------------------------------------------
 // 検索データモデル
@@ -78,6 +84,71 @@ internal enum class SearchCategory(val label: String, val categoryPrefixes: List
     TOILET("トイレ", listOf("amenity:toilets")),
     FOOD("飲食", listOf("amenity:restaurant", "amenity:cafe", "amenity:fast_food")),
     TOURISM("観光", listOf("tourism:")),
+}
+
+private val placesHasSearchTextCache = ConcurrentHashMap<String, Boolean>()
+
+@VisibleForTesting
+internal fun clearPlacesHasSearchTextCacheForTesting() {
+    placesHasSearchTextCache.clear()
+}
+
+private fun hasSearchTextColumn(db: SQLiteDatabase): Boolean {
+    val path = db.path ?: ""
+    if (path.isEmpty()) {
+        return checkSearchTextColumnDirectly(db)
+    }
+    return placesHasSearchTextCache.computeIfAbsent(path) {
+        checkSearchTextColumnDirectly(db)
+    }
+}
+
+private fun checkSearchTextColumnDirectly(db: SQLiteDatabase): Boolean {
+    return try {
+        db.rawQuery("PRAGMA table_info(places)", null).use { cursor ->
+            val nameCol = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                if (nameCol >= 0 && cursor.getString(nameCol) == "search_text") {
+                    return true
+                }
+            }
+        }
+        false
+    } catch (e: Exception) {
+        Log.w("CycleMap", "Failed to check table_info for places: ${e.message}")
+        false
+    }
+}
+
+private var hasShownFts5NoticeThisSession = false
+
+@VisibleForTesting
+internal fun resetFts5NoticeForTesting() {
+    hasShownFts5NoticeThisSession = false
+}
+
+@VisibleForTesting
+internal fun buildFtsQuery(trimmed: String): String {
+    return trimmed
+        .split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+}
+
+@VisibleForTesting
+internal fun buildLikeTextConditions(trimmed: String, targetColumn: String): Pair<String, List<String>> {
+    val words = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+    val whereClause = if (words.isEmpty()) {
+        "$targetColumn LIKE ?"
+    } else {
+        words.joinToString(" AND ") { "$targetColumn LIKE ?" }
+    }
+    val args = if (words.isEmpty()) {
+        listOf("%$trimmed%")
+    } else {
+        words.map { "%$it%" }
+    }
+    return whereClause to args
 }
 
 // ---------------------------------------------------------------------------
@@ -125,48 +196,52 @@ internal fun searchPlaces(
     SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
         val trimmed = query.trim()
         if (trimmed.length >= 2) {
-            // FTS5検索（デバイスのSQLiteがFTS5未対応の場合はLIKEにフォールバック）
+            val ftsSupported = Fts5SupportDetector.isSupported(db)
             var ftsSucceeded = false
-            try {
-                val ftsQuery = trimmed
-                    .split(Regex("\\s+"))
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+            if (ftsSupported) {
+                try {
+                    val ftsQuery = buildFtsQuery(trimmed)
+                    val catWhereForFts = categoryWhere // p.category を参照するWHERE句
 
-                val catWhereForFts = categoryWhere // p.category を参照するWHERE句
-
-                db.rawQuery(
-                    """
-                    SELECT p.name, p.category, p.lat, p.lon
-                    FROM places_fts f
-                    JOIN places p ON p.id = f.rowid
-                    WHERE places_fts MATCH ? $catWhereForFts
-                    LIMIT ?
-                    """.trimIndent(),
-                    (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
-                ).use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
-                        results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                    db.rawQuery(
+                        """
+                        SELECT p.name, p.category, p.lat, p.lon
+                        FROM places_fts f
+                        JOIN places p ON p.id = f.rowid
+                        WHERE places_fts MATCH ? $catWhereForFts
+                        LIMIT ?
+                        """.trimIndent(),
+                        (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
+                    ).use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                            results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                        }
                     }
+                    ftsSucceeded = true
+                } catch (e: SQLiteException) {
+                    // FTS5未対応デバイスまたはエラー → LIKE検索へフォールバック
+                    Log.w("CycleMap", "FTS5 query failed, falling back to LIKE search: ${e.message}")
                 }
-                ftsSucceeded = true
-            } catch (_: SQLiteException) {
-                // FTS5未対応デバイス → LIKE検索のみで継続
-                Log.w("CycleMap", "FTS5 not available, falling back to LIKE search")
             }
 
-            // FTS5未対応 or 件数不足 → LIKE補完
+            // FTS5未対応 or FTS5クエリ失敗 or 件数不足 → LIKE補完
             if (!ftsSucceeded || results.size < limit) {
                 val remaining = if (ftsSucceeded) limit - results.size else limit
+                val hasSearchText = hasSearchTextColumn(db)
+                val targetColumn = if (hasSearchText) "search_text" else "name"
+
+                // FTS5非対応時は複数単語をANDで繋ぎ、各単語の中間一致 (%word%) で検索する。
+                val (textWhereClause, textArgs) = buildLikeTextConditions(trimmed, targetColumn)
+
                 db.rawQuery(
                     """
                     SELECT name, category, lat, lon
                     FROM places
-                    WHERE name LIKE ? $categoryWherePlain
+                    WHERE ($textWhereClause) $categoryWherePlain
                     LIMIT ?
                     """.trimIndent(),
-                    (listOf("%$trimmed%") + categoryArgs + listOf(remaining.toString())).toTypedArray(),
+                    (textArgs + categoryArgs + listOf(remaining.toString())).toTypedArray(),
                 ).use { cursor ->
                     while (cursor.moveToNext()) {
                         val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
@@ -301,6 +376,14 @@ internal fun DestinationSearchDialog(
     var selectedCategory by remember { mutableStateOf(SearchCategory.ALL) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
+    var showFts5Notice by remember {
+        val unsupported = !Fts5SupportDetector.isSupported()
+        val shouldShow = unsupported && !hasShownFts5NoticeThisSession
+        if (shouldShow) {
+            hasShownFts5NoticeThisSession = true
+        }
+        mutableStateOf(shouldShow)
+    }
 
     // 現在地を取得（位置情報許可済みの場合）
     val userLocation = remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -385,6 +468,50 @@ internal fun DestinationSearchDialog(
         title = { Text("目的地検索") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().height(480.dp)) {
+                // FTS5非対応時の案内バナー（セッション中1回のみ）
+                if (showFts5Notice) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_lucide_info),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "この端末では高度な検索機能（ひらがな・ローマ字での曖昧検索）が利用できません。通常の検索に切り替えます",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { showFts5Notice = false },
+                                modifier = Modifier.size(24.dp),
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_lucide_x),
+                                    contentDescription = "閉じる",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // 検索テキストフィールド
                 TextField(
                     value = query,

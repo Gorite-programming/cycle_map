@@ -110,10 +110,13 @@ import com.gorite.cyclemap.routing.benchmarkMappedRouting
 import com.gorite.cyclemap.routing.calculateRouteProgress
 import com.gorite.cyclemap.routing.computeNavigationStats
 import com.gorite.cyclemap.routing.extractManeuvers
+import com.gorite.cyclemap.routing.DeadReckoner
 import com.gorite.cyclemap.routing.MappedRouteResult
 import com.gorite.cyclemap.routing.Maneuver
 import com.gorite.cyclemap.routing.ManeuverType
 import com.gorite.cyclemap.routing.RoutePreference
+import com.gorite.cyclemap.tracking.GpsHealthMonitor
+import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.tracking.LocationTrackingService
 import com.gorite.cyclemap.ui.DeveloperOptionsScreen
 import com.gorite.cyclemap.ui.RoutingBenchmarkRequest
@@ -150,6 +153,7 @@ import com.gorite.cyclemap.ui.cycling.mockElevationProfile
 import com.gorite.cyclemap.ui.theme.CycleMapTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
@@ -293,6 +297,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var hasLocationPermission by remember { mutableStateOf(context.hasLocationPermission()) }
     var currentLocation by remember { mutableStateOf<android.location.Location?>(null) }
+    val gpsHealthMonitor = remember { GpsHealthMonitor() }
+    var gpsStatus by remember { mutableStateOf(GpsSignalStatus.HEALTHY) }
+    var lastValidLocation by remember { mutableStateOf<android.location.Location?>(null) }
+    var lastValidRouteProgressMeters by remember { mutableStateOf<Double?>(null) }
+    var lastValidBearingDegrees by remember { mutableFloatStateOf(0f) }
     var selectedLayer by remember { mutableStateOf(MapLayer.GSI) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var locationMarker by remember { mutableStateOf<Marker?>(null) }
@@ -963,7 +972,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         ServiceLocationUpdates(
             context = context,
             onLocationChanged = { location, recording, points ->
+                gpsHealthMonitor.onValidFix()
+                gpsStatus = gpsHealthMonitor.status
                 currentLocation = location
+                lastValidLocation = location
+                if (location.hasBearing() && location.bearing != 0f) {
+                    lastValidBearingDegrees = location.bearing
+                }
                 isRecording = recording
                 if (recording) gpxPointCount = points
                 if (isNavigationActive && navigationRoute.isNotEmpty()) {
@@ -973,6 +988,9 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         navigationManeuvers,
                     )
                     navigationProgress = progress
+                    if (progress != null) {
+                        lastValidRouteProgressMeters = progress.distanceFromStartMeters
+                    }
                     navStats = computeNavigationStats(
                         progress = progress,
                         smoothedSpeedMps = navSpeedMps,
@@ -1015,7 +1033,74 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 speedKmh = speed * 3.6
                 navSpeedMps = speed
             },
+            onGpsStatusChanged = { status ->
+                if (status == GpsSignalStatus.WEAK) {
+                    gpsHealthMonitor.onAccuracyDegraded()
+                    gpsStatus = gpsHealthMonitor.status
+                } else if (status == GpsSignalStatus.HEALTHY) {
+                    gpsHealthMonitor.onValidFix()
+                    gpsStatus = gpsHealthMonitor.status
+                }
+            },
         )
+    }
+
+    // GPS 測位状態のタイムアウト監視および推測移動 (Dead Reckoning)
+    LaunchedEffect(hasLocationPermission, isNavigationActive, navigationRoute) {
+        if (!hasLocationPermission) return@LaunchedEffect
+        while (isActive) {
+            delay(1000L)
+            val updated = gpsHealthMonitor.tick()
+            if (gpsStatus != updated) {
+                gpsStatus = updated
+            }
+
+            // WEAK 状態かつ直近の有効位置がある場合、最大15秒間推測移動を実行
+            val validLoc = lastValidLocation
+            if (updated == GpsSignalStatus.WEAK && validLoc != null && gpsHealthMonitor.hasReceivedFirstFix) {
+                val elapsedSec = (SystemClock.elapsedRealtime() - gpsHealthMonitor.lastFixMs) / 1000.0
+                val speed = navSpeedMps.takeIf { it.isFinite() && it >= 0.0 } ?: validLoc.speed.toDouble()
+                val drResult = DeadReckoner.estimate(
+                    lastLocation = RoutePoint(validLoc.latitude, validLoc.longitude),
+                    lastBearingDegrees = if (lastValidBearingDegrees != 0f) lastValidBearingDegrees.toDouble() else headingDegrees.toDouble(),
+                    speedMps = speed,
+                    elapsedSeconds = elapsedSec,
+                    route = if (isNavigationActive) navigationRoute else emptyList(),
+                    lastRouteProgressMeters = if (isNavigationActive) lastValidRouteProgressMeters else null,
+                )
+
+                if (drResult.distanceAdvancedMeters > 0.0) {
+                    val estLocation = android.location.Location(validLoc).apply {
+                        latitude = drResult.location.latitude
+                        longitude = drResult.location.longitude
+                        bearing = drResult.bearingDegrees.toFloat()
+                        accuracy = 100f
+                        this.speed = speed.toFloat()
+                        time = System.currentTimeMillis()
+                    }
+                    currentLocation = estLocation
+
+                    if (isNavigationActive && navigationRoute.isNotEmpty()) {
+                        val progress = calculateRouteProgress(
+                            drResult.location,
+                            navigationRoute,
+                            navigationManeuvers,
+                        )
+                        if (progress != null) {
+                            navigationProgress = progress
+                            navStats = computeNavigationStats(
+                                progress = progress,
+                                smoothedSpeedMps = navSpeedMps,
+                                navStartElapsedRealtimeMs = navStartElapsedMs,
+                                nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                                nowEpochMillis = System.currentTimeMillis(),
+                                arrivalRadiusMeters = ARRIVAL_RADIUS_METERS,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     CompassUpdates(context) { headingDegrees = it }
@@ -1776,6 +1861,30 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                     )
                                 },
                             ) { Text("許可") }
+                        }
+                    }
+                }
+
+                // GPS 精度低下・ロスト通知バナー (フェーズ1)
+                if (gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && gpsHealthMonitor.hasReceivedFirstFix) {
+                    val isLost = gpsStatus == GpsSignalStatus.LOST
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isLost) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = if (isLost) "GPS信号を受信できません（GPSロスト）" else "GPS信号が弱まっています（推測移動中）",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isLost) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
