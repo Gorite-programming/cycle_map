@@ -132,7 +132,7 @@ internal fun buildFtsQuery(trimmed: String): String {
     return trimmed
         .split(Regex("\\s+"))
         .filter { it.isNotBlank() }
-        .joinToString(" ") { "${it.replace("\"", "\"\"")}*" }
+        .joinToString(" ") { "\"${it.replace("\"", "\"\"")}\"*" }
 }
 
 @VisibleForTesting

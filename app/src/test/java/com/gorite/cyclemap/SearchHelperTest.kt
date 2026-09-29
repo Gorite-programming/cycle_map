@@ -15,9 +15,11 @@ class SearchHelperTest {
 
     @Test
     fun buildFtsQuery_formatsPrefixQuery() {
-        assertEquals("セブン* イレブン*", buildFtsQuery("セブン イレブン"))
-        assertEquals("広島*", buildFtsQuery("広島"))
-        assertEquals("ダブル\"\"クォート*", buildFtsQuery("ダブル\"クォート"))
+        assertEquals("\"セブン\"* \"イレブン\"*", buildFtsQuery("セブン イレブン"))
+        assertEquals("\"広島\"*", buildFtsQuery("広島"))
+        assertEquals("\"cafe\"*", buildFtsQuery("cafe"))
+        assertEquals("\"sebun'irebun\"*", buildFtsQuery("sebun'irebun"))
+        assertEquals("\"ダブル\"\"クォート\"*", buildFtsQuery("ダブル\"クォート"))
     }
 
     @Test
