@@ -17,11 +17,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
 import com.gorite.cyclemap.routing.RoutePreference
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,6 +45,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -815,7 +826,7 @@ fun CompassDial(
                 .clip(CircleShape)
                 .clickable(onClick = onClick),
         ) {
-            val rotation = if (headingUp) headingDegrees else 0f
+            val rotation = -headingDegrees
             rotate(rotation) {
                 val cx = size.width / 2
                 val cy = size.height / 2
@@ -828,6 +839,14 @@ fun CompassDial(
                     close()
                 }
                 drawPath(needle, Color(0xFFE53935))
+                // 南針 (シルバー/グレーの三角)
+                val southNeedle = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(cx, cy + r + 2.dp.toPx())
+                    lineTo(cx - 5.dp.toPx(), cy + 2.dp.toPx())
+                    lineTo(cx + 5.dp.toPx(), cy + 2.dp.toPx())
+                    close()
+                }
+                drawPath(southNeedle, Color(0xFF90A4AE))
                 // 方位文字
                 val label = { text: String, color: Color, dx: Float, dy: Float ->
                     val layout = measurer.measure(
@@ -871,6 +890,8 @@ fun DarkControlStack(
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
     modifier: Modifier = Modifier,
+    canZoomIn: Boolean = true,
+    canZoomOut: Boolean = true,
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -891,16 +912,91 @@ fun DarkControlStack(
                 onClick = onTargetClick,
                 tint = if (following) Color.White else Color(0xFF64B5F6),
             )
-            DarkStackButton(
-                iconRes = R.drawable.ic_lucide_zoom_in,
+            DarkStackRepeatButton(
+                iconRes = R.drawable.ic_ms_add,
                 description = "ズームイン",
-                onClick = onZoomIn,
+                onAction = onZoomIn,
+                enabled = canZoomIn,
             )
-            DarkStackButton(
-                iconRes = R.drawable.ic_lucide_zoom_out,
+            DarkStackRepeatButton(
+                iconRes = R.drawable.ic_ms_remove,
                 description = "ズームアウト",
-                onClick = onZoomOut,
+                onAction = onZoomOut,
+                enabled = canZoomOut,
                 showDivider = false,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DarkStackRepeatButton(
+    iconRes: Int,
+    description: String,
+    onAction: () -> Unit,
+    enabled: Boolean = true,
+    showDivider: Boolean = true,
+) {
+    val haptic = LocalHapticFeedback.current
+    val currentOnAction by rememberUpdatedState(onAction)
+    val isPressed = remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPressed.value, enabled) {
+        if (isPressed.value && enabled) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            currentOnAction()
+            // 長押しリピート開始までの初回待機
+            delay(400L)
+            // 押し続けている間、高速に連続リピート
+            while (isPressed.value && enabled) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                currentOnAction()
+                delay(180L)
+            }
+        }
+    }
+
+    val alpha = if (enabled) 1.0f else 0.35f
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(60.dp, 56.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .then(
+                    if (isPressed.value && enabled) {
+                        Modifier.background(Color.White.copy(alpha = 0.15f))
+                    } else {
+                        Modifier
+                    }
+                )
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures(
+                        onPress = {
+                            isPressed.value = true
+                            try {
+                                awaitRelease()
+                            } finally {
+                                isPressed.value = false
+                            }
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(iconRes),
+                contentDescription = description,
+                tint = Color.White.copy(alpha = alpha),
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                color = Color.White.copy(alpha = 0.2f),
+                thickness = 1.dp,
+                modifier = Modifier.width(28.dp),
             )
         }
     }

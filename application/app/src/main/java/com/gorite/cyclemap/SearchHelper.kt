@@ -196,6 +196,16 @@ internal fun searchPlaces(
     SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
         val trimmed = query.trim()
         if (trimmed.length >= 2) {
+            // 現在地がある場合は距離順 (NEARBY_ORDER_BY) でソートしてから LIMIT を適用。
+            // ※ bbox による範囲絞り込みは遠方目的地を壊さないため適用しないが、
+            //    距離順ソートは名称検索にも適用することで近傍のチェーン店（セブン等）を確実に拾う。
+            val orderArgs = if (userLat != null && userLon != null) {
+                nearbyOrderArgs(userLat, userLon)
+            } else {
+                emptyList()
+            }
+            val orderBy = if (orderArgs.isNotEmpty()) NEARBY_ORDER_BY else ""
+
             val ftsSupported = Fts5SupportDetector.isSupported(db)
             var ftsSucceeded = false
             if (ftsSupported) {
@@ -209,9 +219,10 @@ internal fun searchPlaces(
                         FROM places_fts f
                         JOIN places p ON p.id = f.rowid
                         WHERE places_fts MATCH ? $catWhereForFts
+                        $orderBy
                         LIMIT ?
                         """.trimIndent(),
-                        (listOf(ftsQuery) + categoryArgs + listOf(limit.toString())).toTypedArray(),
+                        (listOf(ftsQuery) + categoryArgs + orderArgs + listOf(limit.toString())).toTypedArray(),
                     ).use { cursor ->
                         while (cursor.moveToNext()) {
                             val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
@@ -239,9 +250,10 @@ internal fun searchPlaces(
                     SELECT name, category, lat, lon
                     FROM places
                     WHERE ($textWhereClause) $categoryWherePlain
+                    $orderBy
                     LIMIT ?
                     """.trimIndent(),
-                    (textArgs + categoryArgs + listOf(remaining.toString())).toTypedArray(),
+                    (textArgs + categoryArgs + orderArgs + listOf(remaining.toString())).toTypedArray(),
                 ).use { cursor ->
                     while (cursor.moveToNext()) {
                         val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
@@ -252,8 +264,7 @@ internal fun searchPlaces(
         } else if (category != SearchCategory.ALL && category.categoryPrefixes.isNotEmpty()) {
             // クエリ未入力でカテゴリ選択中 → 近傍カテゴリ一覧を表示。
             // 遠方行を拾わないよう現在地bboxで事前絞りする (逆ジオコーディングと同型の BETWEEN 方式)。
-            // 位置不明時は従来通り。名称検索 (上2分岐) には適用しない
-            // (遠方目的地の検索を壊さないため)。
+            // 位置不明時は従来通り。名称検索 (上2分岐) には bbox を適用しない (遠方目的地の検索を壊さないため)。距離順ソートは名称検索にも適用する。
             val bboxArgs = if (userLat != null && userLon != null) {
                 nearbyBboxArgs(userLat, userLon, NEARBY_CATEGORY_BBOX_HALF_M)
             } else {

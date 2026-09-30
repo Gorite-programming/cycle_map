@@ -1,6 +1,6 @@
 # AGENTS.md — CycleMap
 
-完全オフラインの自転車ナビ。2層構成: ルート直下の Python データパイプライン + `application/` Android Gradle プロジェクト。git リポジトリはルート直下ではなく `application/` のみ(`application/.git` あり、ルートにはなし)。ルートの `build_search_db.py`・`osm-importer`・`japan-latest.osm.pbf` はシンボリックリンク(実体は `application/osm-importer/`・`data/`)。
+完全オフラインの自転車ナビ。3層構成: ルート直下の Python データパイプライン + `application/` Android Gradle プロジェクト + `sandbox/data-tool/` 検索DB生成ツール(Python/Streamlit)。git リポジトリは `cycle_map/` ルート直下に統合済み(GitHub: Gorite-programming/cycle_map, Public)。`application/.git.bak` に旧・独立リポジトリ時代の全履歴を保存(参照用、削除しないこと)。ルートの `build_search_db.py`・`osm-importer`・`japan-latest.osm.pbf` はシンボリックリンク(実体は `application/osm-importer/`・`data/`) — **macOS/Linux専用の機能。Windows環境ではこれらのリンクは機能しない**(下記「クロスプラットフォーム対応」参照)。
 
 ## 構成
 
@@ -8,7 +8,8 @@
   - `app/` — Android UI(Compose、osmdroid 6.1.20、play-services-location)。エントリーポイントは `MainActivity.kt`、データ設定は `data/Prefectures.kt`。
   - `routing-core/` — 純粋 JVM ライブラリ:`RoadGraph`、`AStarRouter`、`CyclingCostModel`、mmap リーダー(`LazyMappedRouting.kt`、`MappedRouting.kt`)。**本番ルーティングは A\* のみ。`HsaRouting.kt` / `AltRouting.kt` は実験用** (詳細は `HSA_STAR_EXTERNAL_REVIEW_REQUEST.md`)。
   - `osm-importer/` — JVM CLI(`OsmImporterKt`):OSM `.pbf` → 独自バイナリ `.graph` + サイドカー `.graph.idx`。
-- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` → `packages/<name>.zip`。`build_search_db.py` は FTS5 検索 DB ビルダー。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
+- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` → `packages/<name>.zip`。`build_search_db.py` は FTS5 検索 DB ビルダー(OSMタグのみ使用。日本特化POIデータは `sandbox/data-tool/` 参照)。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
+- `sandbox/data-tool/` — 検索DB生成ツール(Python + Streamlit)。以前は独立Gitだったが現在は `cycle_map` リポジトリに統合済み(旧履歴は `sandbox/data-tool/.git.bak` に保存しようとしたが実際には一度もコミットされていなかったため削除済み)。OSM PBFを地図・道路基盤のみに使い、POI（コンビニ・病院・学校等）は国土数値情報（医療機関第3.0版・学校第2.0版。旧版は非商用限定のため使用禁止）を優先取り込みして重複を統合するパイプライン。表記ゆれ対応（はひらがな・カタカナ・ローマ字）も実装済み。詳細は `sandbox/data-tool/SPEC.md`、`SPEC_stage3_addendum.md`、`HANDOFF.md` を参照。**重要**: Android 標準 SQLite は多くの実機で FTS5 非対応(`no such module: fts5`)のため、検索DBは `places.search_text` 列(LIKE検索用、表示名の `name` 列とは別)も保持して互換性を確保している(アプリ側の対応は `Fts5SupportDetector.kt`)。
 - 大容量データ(コミット・移動禁止):`data/japan-latest.osm.pbf`(約2.5 GB。ルート直下の `japan-latest.osm.pbf` はシンボリックリンク)、`work/` 中間生成物、`venv/`。
 
 ## コマンド
@@ -32,8 +33,15 @@ venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 
 ## 注意点
 
 - ルーティング用データ(OSM `.graph`)と表示用データ(地理院タイル)は厳密に分離。Google/OSM ラスターデータをグラフに混ぜない。OSM + 地理院の帰属表示(地図隅 + ライセンス画面)はオフラインでも表示を維持する。
-- データは APK に同梱しない。アプリはアプリ専用外部ストレージ `getExternalFilesDir(DOCUMENTS)/CycleMap/` を見る:`<name>.graph`、`<name>.graph.idx`、`tiles/cache.db`。グラフ名は現状 `MainActivity.kt` のグラフ読み込み部に `yamaguchi.graph` でハードコード(約626行目付近、`Prefectures.kt` の県別基盤はあるが未接続) — 県追加時は汎化が必要。
+- データは APK に同梱しない。アプリはアプリ専用外部ストレージ `getExternalFilesDir(DOCUMENTS)/CycleMap/` を見る:`<name>.graph`、`<name>.graph.idx`、`tiles/cache.db`。県の動的切替は対応済み(`RoutingGraphSelector` / `SearchDbSelector` を `Prefectures.kt` に実装)。起動時は配置済みファイルから名前昇順で最初のものを自動探索し、現在地が確定したら対応する県のグラフ/検索DBに自動切替する。
 - `build_prefectures.py` の不変条件:`osmium extract --polygon <boundary> --strategy complete_ways` を使う。importer 呼び出しは `--bbox none`。ZIP 内容は `<name>.search.db` + `<name>.graph` + `<name>.graph.idx` の3点のみ。有効な ZIP があれば `--force` なしではスキップ。失敗時の作業ディレクトリはデバッグ用に残す。
 - `CyclingCostModel` は `motorway` を除外。最小倍率 0.90 は A\* ヒューリスティックの下限 — JVM 側と `LazyMappedRoadGraph` で同期を保つ。
 - `LazyMappedRouting.readEdge()` は 2 GB 超でオーバーフロー(`offset.toInt()`)。`nearestNodeIndex` は O(n) 線形走査。既知バグ集は `application/bugs.md` — 修正前に必ず確認すること。ただし Critical/High の大半はコミット `3a6faf2` で修正済みのため、着手前に `git -C application log --oneline` と現行コードで再確認する(盲目的な再修正を避ける)。
 - 実機手順:Samsung S21 + `adb push`、機内モードで検証。山口 z15–z16 全域タイル(約8.9万枚、1 GB 超)は見送り — 全域取得ではなく経路回廊のみ取得する方針。
+
+## コミットポリシー（全エージェント共通）
+
+- git commit は、人間（Gorite）の明示的な承認を得てから、人間自身が実行する
+- Antigravity / OpenCode / その他のエージェントは、コード変更後に git add・git commit を自分自身では行わない
+- 各作業の完了時は、変更内容の要約・diff・テスト結果を報告し、コミットは人間からの指示を待つ
+- 「コミットしないでください」という指示が無くても、これがデフォルトの動作とする

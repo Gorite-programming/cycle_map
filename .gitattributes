@@ -1,0 +1,26 @@
+# Auto-detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Kotlin, Java, Gradle, XML, Python, Markdown must always be LF
+*.kt text eol=lf
+*.java text eol=lf
+*.kts text eol=lf
+*.xml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows batch files must be CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.pbf binary
+*.db binary
+*.graph binary
+*.idx binary
+*.jar binary

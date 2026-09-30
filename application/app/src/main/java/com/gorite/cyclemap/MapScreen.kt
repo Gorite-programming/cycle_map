@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -381,6 +382,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     var poiVisible by remember { mutableStateOf(true) }
     var poiSelected by remember { mutableStateOf(PoiCategory.defaults()) }
     var poiRefreshTick by remember { mutableIntStateOf(0) }
+    var currentZoomLevel by remember { mutableDoubleStateOf(15.0) }
     var startMarker by remember { mutableStateOf<Marker?>(null) }
     var spotCategory by remember { mutableStateOf<SpotQuickCategory?>(null) }
     var spotResults by remember { mutableStateOf<List<NearbySpot>>(emptyList()) }
@@ -1470,6 +1472,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
                                 override fun onZoom(event: ZoomEvent?): Boolean {
                                     poiRefreshTick++
+                                    event?.zoomLevel?.let { currentZoomLevel = it }
                                     return true
                                 }
                             },
@@ -1576,16 +1579,18 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            // Top Search Bar (menu + 地名 + 検索)
-            TopSearchBar(
-                locationLabel = locationLabel,
-                onMenuClick = { scope.launch { drawerState.open() } },
-                onSearchClick = { showDestinationSearch = true },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
-                    .zIndex(2f),
-            )
+            if (!isNavigationActive) {
+                // Top Search Bar (menu + 地名 + 検索)
+                TopSearchBar(
+                    locationLabel = locationLabel,
+                    onMenuClick = { scope.launch { drawerState.open() } },
+                    onSearchClick = { showDestinationSearch = true },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                        .zIndex(2f),
+                )
+            }
 
             // Right-Side Controls: Compass + Layers/Target/Zoom stack (dark)
             Column(
@@ -1593,7 +1598,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     .align(Alignment.CenterEnd)
                     .padding(end = 12.dp)
                     .zIndex(2f),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.End,
             ) {
                 CompassDial(
@@ -1607,6 +1612,8 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         }
                     },
                 )
+                val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 18.0)
+                val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 5.0)
                 DarkControlStack(
                     layerLabel = when (selectedLayer) {
                         MapLayer.GSI -> "標準"
@@ -1614,6 +1621,8 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         MapLayer.TERRAIN -> "地形"
                     },
                     following = followLocation,
+                    canZoomIn = canZoomIn,
+                    canZoomOut = canZoomOut,
                     onLayerClick = {
                         val layers = MapLayer.entries
                         selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
@@ -1624,61 +1633,63 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
                         }
                     },
-                    onZoomIn = { mapView?.controller?.zoomIn() },
-                    onZoomOut = { mapView?.controller?.zoomOut() },
+                    onZoomIn = { mapView?.controller?.zoomIn(150L) },
+                    onZoomOut = { mapView?.controller?.zoomOut(150L) },
                 )
 
-                // Area-select (high-zoom download) toggle button
-                Surface(
-                    shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
-                    color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
-                    shadowElevation = 6.dp,
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .clickable {
-                                isAreaSelectMode = !isAreaSelectMode
-                                if (!isAreaSelectMode) {
-                                    // Cancel: clear drag state and any pending bbox
-                                    areaDragState = AreaDragState()
-                                    selectedAreaBounds = null
-                                }
-                            }
-                            .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
+                // Area-select (high-zoom download) toggle button (案内中は非表示)
+                if (!isNavigationActive) {
+                    Surface(
+                        shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
+                        color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
+                        shadowElevation = 6.dp,
                     ) {
-                        Box(
-                            modifier = Modifier.size(48.dp),
-                            contentAlignment = Alignment.Center,
+                        Row(
+                            modifier = Modifier
+                                .clickable {
+                                    isAreaSelectMode = !isAreaSelectMode
+                                    if (!isAreaSelectMode) {
+                                        // Cancel: clear drag state and any pending bbox
+                                        areaDragState = AreaDragState()
+                                        selectedAreaBounds = null
+                                    }
+                                }
+                                .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
                         ) {
-                            Icon(
-                                painterResource(R.drawable.ic_lucide_square_dashed),
-                                contentDescription = "エリア選択",
-                                tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        if (isAreaSelectMode) {
-                            Text(
-                                text = "選択中",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiary,
-                                modifier = Modifier.padding(end = 4.dp),
-                            )
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_lucide_square_dashed),
+                                    contentDescription = "エリア選択",
+                                    tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            if (isAreaSelectMode) {
+                                Text(
+                                    text = "選択中",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiary,
+                                    modifier = Modifier.padding(end = 4.dp),
+                                )
+                            }
                         }
                     }
                 }
             }
 
             // Top Center: Notifications / Warning Banner / Download Progress
-            // (上部サーチバーの下に配置)
+            // (通常時は上部サーチバーの下(76dp)、案内中は最上部(12dp)に配置)
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = 76.dp)
+                    .padding(start = 12.dp, end = 12.dp, top = if (isNavigationActive) 12.dp else 76.dp)
                     .zIndex(2f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),

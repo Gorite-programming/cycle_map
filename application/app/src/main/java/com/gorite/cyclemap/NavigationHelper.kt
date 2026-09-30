@@ -245,25 +245,38 @@ internal fun ServiceLocationUpdates(
 internal fun CompassUpdates(context: Context, onHeadingChanged: (Float) -> Unit) {
     DisposableEffect(context) {
         val sensorManager = context.getSystemService(SensorManager::class.java)
-        val rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
         var smoothedHeading = 0f
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val rotationMatrix = FloatArray(9)
+                val remappedMatrix = FloatArray(9)
                 val orientation = FloatArray(3)
                 SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-                SensorManager.getOrientation(rotationMatrix, orientation)
+
+                val wm = context.getSystemService(android.view.WindowManager::class.java)
+                @Suppress("DEPRECATION")
+                val displayRotation = wm?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
+                val (axisX, axisY) = when (displayRotation) {
+                    android.view.Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
+                    android.view.Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
+                    android.view.Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
+                    else -> SensorManager.AXIS_X to SensorManager.AXIS_Y
+                }
+                SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, remappedMatrix)
+                SensorManager.getOrientation(remappedMatrix, orientation)
                 val rawHeading = ((Math.toDegrees(orientation[0].toDouble()).toFloat() + 360f) % 360f)
                 val delta = ((rawHeading - smoothedHeading + 540f) % 360f) - 180f
-                smoothedHeading = (smoothedHeading + delta * 0.15f + 360f) % 360f
+                smoothedHeading = (smoothedHeading + delta * 0.25f + 360f) % 360f
                 onHeadingChanged(smoothedHeading)
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
         if (rotationSensor != null) {
-            sensorManager.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_GAME)
+            sensorManager?.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
         }
-        onDispose { sensorManager.unregisterListener(listener) }
+        onDispose { sensorManager?.unregisterListener(listener) }
     }
 }
