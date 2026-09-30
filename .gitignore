@@ -1,5 +1,5 @@
 # Large OSM and pipeline files (>100MB, cannot be committed to GitHub)
-data/
+/data/
 japan-latest.osm.pbf
 work/
 packages/

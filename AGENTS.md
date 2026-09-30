@@ -39,9 +39,16 @@ venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 
 - `LazyMappedRouting.readEdge()` は 2 GB 超でオーバーフロー(`offset.toInt()`)。`nearestNodeIndex` は O(n) 線形走査。既知バグ集は `application/bugs.md` — 修正前に必ず確認すること。ただし Critical/High の大半はコミット `3a6faf2` で修正済みのため、着手前に `git -C application log --oneline` と現行コードで再確認する(盲目的な再修正を避ける)。
 - 実機手順:Samsung S21 + `adb push`、機内モードで検証。山口 z15–z16 全域タイル(約8.9万枚、1 GB 超)は見送り — 全域取得ではなく経路回廊のみ取得する方針。
 
-## コミットポリシー（全エージェント共通）
+## 開発体制・Git運用ポリシー（全エージェント共通）
 
-- git commit は、人間（Gorite）の明示的な承認を得てから、人間自身が実行する
-- Antigravity / OpenCode / その他のエージェントは、コード変更後に git add・git commit を自分自身では行わない
-- 各作業の完了時は、変更内容の要約・diff・テスト結果を報告し、コミットは人間からの指示を待つ
-- 「コミットしないでください」という指示が無くても、これがデフォルトの動作とする
+- **開発体制**:
+  - 本プロジェクトは Claude の指揮のもと、複数のAIエージェント（Antigravity、OpenCode、Kiro等）が連携・交代しながら進めています（※Codexはトークン上限のため10/17まで休止中）。
+- **クロス環境（Windows / MacBook）と同期**:
+  - Windows 環境と MacBook 環境の双方で作業を進めるため、GitHub（`Gorite-programming/cycle_map`）を経由して同期を行っています。
+  - 作業着手前や時間が空いた場合は、必ず `git pull` を実行して最新のコード・状況を取り込んでください。
+  - 作業完了・コミット後は、別マシンや別エージェントへ速やかに引き継げるよう定期的に `git push` を行います。
+- **Git操作は完全承認制**:
+  - `git commit` / `git push` を含むGit反映操作は、人間（Gorite）の明示的な承認を得てから人間自身が実行する（または明示的な指示のもとで行う）。
+  - Antigravity / OpenCode / Kiro / その他のエージェントは、コード変更後に勝手に `git add`・`git commit`・`git push` を行わない。
+  - 各作業の完了時は、変更内容の要約・diff・テスト結果を報告し、コミットやプッシュについての指示を待つ。
+  - 「コミットしないでください」という指示が無くても、これがデフォルトの動作とする。
