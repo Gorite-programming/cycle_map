@@ -34,3 +34,4 @@ application/.externalNativeBuild/
 application/.cxx/
 application/captures/
 *.git.bak
+sandbox/data-tool/*.dmg
