@@ -28,7 +28,7 @@ venv/bin/python build_search_db.py --bbox none <in.osm.pbf> <out.search.db>   # 
 venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 再ビルドは --force を追加。PATH に `osmium` CLI が必要
 ```
 
-ツールチェイン:AGP 8.10.1、Kotlin 2.0.21、compileSdk/target 35、minSdk 33、Java 11。`local.properties` の `sdk.dir` はこの Mac 専用 — 他マシンでは更新すること。
+ツールチェイン:AGP 8.10.1、Kotlin 2.0.21、compileSdk/target 35、minSdk 33、Java 11。`local.properties` の `sdk.dir` はマシン固有(`.gitignore`で除外済み、コミットされない) — 新しい環境(Windows含む)では Android Studio の初回起動時に自動生成されるか、手動で `sdk.dir=<自分のAndroid SDKパス>` を記載すること。
 
 ## 注意点
 
