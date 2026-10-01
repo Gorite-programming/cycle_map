@@ -20,7 +20,8 @@ def test_bbox_order():
 def test_source_priority_kokudo_suffix():
     assert config.source_priority("kokudo:medical") == 50
     assert config.source_priority("manual") == 100
-    assert config.source_priority("osm") == 10
+    assert config.source_priority("osm") == 30
+    assert config.source_priority("overture") == 20
     assert config.source_priority("csv") == 40
 
 

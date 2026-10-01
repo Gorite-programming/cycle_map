@@ -7,11 +7,11 @@ from tools.core.sources import overture
 
 class TestOvertureSource(unittest.TestCase):
     def test_source_priority(self):
-        """Overture の優先度が kokudo (50) より低く osm (10) より高い (30) ことを確認。"""
-        self.assertEqual(config.source_priority("overture"), 30)
-        self.assertEqual(config.source_priority("overture:places"), 30)
-        self.assertTrue(config.source_priority("kokudo") > config.source_priority("overture"))
-        self.assertTrue(config.source_priority("overture") > config.source_priority("osm"))
+        """Overture の優先度 (20) が kokudo (50) および osm (30) より低いことを確認 (OSMの正確な座標を勝者とするため)。"""
+        self.assertEqual(config.source_priority("overture"), 20)
+        self.assertEqual(config.source_priority("overture:places"), 20)
+        self.assertTrue(config.source_priority("kokudo") > config.source_priority("osm"))
+        self.assertTrue(config.source_priority("osm") > config.source_priority("overture"))
 
     def test_category_resolution_convenience(self):
         """コンビニ名称パターンによるカテゴリ判定。"""
