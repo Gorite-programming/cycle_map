@@ -23,8 +23,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # ------------------------------ CONFIG ---------------------------------
-SOURCE_PBF = Path("japan-latest.osm.pbf")
-OSM_IMPORTER = Path("osm-importer/build/install/osm-importer/bin/osm-importer")
+# SOURCE_PBF: ルート直下シンボリックリンク（macOS/Linux）を優先し、
+# Windows ではシンボリックリンクが機能しないため data/ 内の実体にフォールバックする。
+_root_pbf = Path("japan-latest.osm.pbf")
+_data_pbf = Path("data/japan-latest.osm.pbf")
+SOURCE_PBF = _root_pbf if _root_pbf.is_file() else _data_pbf
+
+# OSM_IMPORTER: macOS/Linux はシェルスクリプト、Windows は .bat を選択する。
+# スクリプト直下の osm-importer/ (シンボリックリンク) と application/ 配下の実体の両方を探索する。
+_importer_unix_candidates = [
+    Path("osm-importer/build/install/osm-importer/bin/osm-importer"),
+    Path("application/osm-importer/build/install/osm-importer/bin/osm-importer"),
+]
+if os.name == "nt":
+    _importer_candidates = [p.with_suffix(".bat") for p in _importer_unix_candidates]
+else:
+    _importer_candidates = _importer_unix_candidates
+OSM_IMPORTER = next((p for p in _importer_candidates if p.exists()), _importer_candidates[0])
 SEARCH_DB_CALLABLE = "build_search_db:build_search_db"  # module:function
 
 # Heap size passed to the Kotlin osm-importer subprocess (via JAVA_OPTS).

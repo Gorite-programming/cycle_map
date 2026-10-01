@@ -14,12 +14,12 @@ import kotlin.math.roundToInt
 // ---------------------------------------------------------------------------
 
 internal fun gsiTileSource() = XYTileSource(
-    "GSI Standard", 5, 18, 256, ".png",
+    "GSI Standard", 2, 18, 256, ".png",
     arrayOf("https://cyberjapandata.gsi.go.jp/xyz/std/"),
 )
 
 internal fun osmTileSource() = XYTileSource(
-    "OpenStreetMap", 5, 19, 256, ".png",
+    "OpenStreetMap", 2, 19, 256, ".png",
     arrayOf(
         "https://a.tile.openstreetmap.org/",
         "https://b.tile.openstreetmap.org/",
@@ -29,7 +29,7 @@ internal fun osmTileSource() = XYTileSource(
 
 /** 地理院 陰影起伏図 (等高線・地形の把握用。航空写真ではない)。 */
 internal fun gsiReliefTileSource() = XYTileSource(
-    "GSI Relief", 5, 15, 256, ".png",
+    "GSI Relief", 2, 15, 256, ".png",
     arrayOf("https://cyberjapandata.gsi.go.jp/xyz/relief/"),
 )
 

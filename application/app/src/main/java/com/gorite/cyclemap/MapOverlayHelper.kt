@@ -48,8 +48,8 @@ private val poiMarkerCache = HashMap<PoiCategory, android.graphics.drawable.Draw
 
 internal fun poiMarkerDrawable(context: Context, category: PoiCategory): android.graphics.drawable.Drawable {
     return poiMarkerCache.getOrPut(category) {
-        val sizePx = 112
-        val iconPx = 60
+        val sizePx = 64
+        val iconPx = 36
         val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
@@ -58,9 +58,9 @@ internal fun poiMarkerDrawable(context: Context, category: PoiCategory): android
         canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f, paint)
         // 白縁
         paint.style = android.graphics.Paint.Style.STROKE
-        paint.strokeWidth = 7f
+        paint.strokeWidth = 3.5f
         paint.color = android.graphics.Color.WHITE
-        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f - 4f, paint)
+        canvas.drawCircle(sizePx / 2f, sizePx / 2f, sizePx / 2f - 2f, paint)
         // 前景アイコン (白抜きLucide。minSdk 33のためVectorDrawableを直接利用可)
         val icon = ContextCompat.getDrawable(context, category.iconRes)?.mutate()
         if (icon != null) {

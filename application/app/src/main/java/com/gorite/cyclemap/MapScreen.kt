@@ -360,6 +360,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         view.invalidate()
     }
     val latestNavArrow by rememberUpdatedState(updateNavArrow)
+    val orientationAnimator = remember { MapOrientationAnimator({ mapView }, { latestNavArrow() }) }
 
     // Dialog & Download States
     var showPrefectureListDialog by remember { mutableStateOf(false) }
@@ -1105,7 +1106,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    CompassUpdates(context) { headingDegrees = it }
+    CompassUpdates(context) { heading ->
+        headingDegrees = heading
+        if (isHeadingUp) {
+            orientationAnimator.rotateTo(heading)
+        }
+    }
 
     val startNavigation: () -> Unit = {
         val loc = currentLocation
@@ -1432,7 +1438,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         setMultiTouchControls(true)
                         setBuiltInZoomControls(false)
                         setTilesScaledToDpi(true) // 高DPI画面(S21等)で背景道路・文字を太く拡大描画
-                        minZoomLevel = 5.0
+                        minZoomLevel = 2.0
                         maxZoomLevel = 18.0
                         isHorizontalMapRepetitionEnabled = false
                         isVerticalMapRepetitionEnabled = false
@@ -1613,7 +1619,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     },
                 )
                 val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 18.0)
-                val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 5.0)
+                val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
                 DarkControlStack(
                     layerLabel = when (selectedLayer) {
                         MapLayer.GSI -> "標準"
@@ -1732,7 +1738,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             val nextAfterThis = futureInstructions.getOrNull(1)
 
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = CyclingNavy.copy(alpha = 0.96f)),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A).copy(alpha = 0.96f)),
                                 shape = RoundedCornerShape(16.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                                 modifier = Modifier.fillMaxWidth(),
@@ -1746,10 +1752,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                     Icon(
                                         painterResource(guide.arrowIcon),
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = Color(0xFFFFD600),
                                         modifier = Modifier
                                             .padding(end = 14.dp)
-                                            .size(44.dp),
+                                            .size(52.dp),
                                     )
                                     Column(
                                         modifier = Modifier.weight(1f),
@@ -1757,7 +1763,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                     ) {
                                         Text(
                                             guide.text,
-                                            style = MaterialTheme.typography.titleMedium,
+                                            style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
                                         )
@@ -1765,15 +1771,16 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                             "${distanceMeters.roundToInt()}m",
                                             style = MaterialTheme.typography.headlineSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = CyclingPinkLight,
+                                            color = Color(0xFFFFD600),
                                         )
                                         nextAfterThis?.let { nextStep ->
-                                            val label = IconResolver.getLabel(nextStep.type)
+                                            val label = IconResolver.getLabel(nextStep.type, nextStep.turnAngleDegrees)
                                             val stepDist = (nextStep.distanceFromStartMeters - traveled).coerceAtLeast(0.0).roundToInt()
                                             Text(
                                                 "その先 (${stepDist}m): ${label}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = CyclingSubText,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFFE2E8F0),
                                                 modifier = Modifier.padding(top = 2.dp),
                                             )
                                         }
@@ -1785,7 +1792,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                                     "あと${formatDuration(stats.durationRemainingSeconds)}",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium,
-                                                color = CyclingSubText,
+                                                color = Color(0xFFCBD5E1),
                                             )
                                         }
                                     }
@@ -2385,6 +2392,15 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 showRecordPanel = false
                 bottomTab = CyclingTab.MAP
             },
+            onDeleteRide = {
+                mapView?.let { view ->
+                    gpxTrackOverlay?.let {
+                        view.overlays.remove(it)
+                        gpxTrackOverlay = null
+                        view.invalidate()
+                    }
+                }
+            },
             onDismiss = {
                 showRecordPanel = false
                 bottomTab = CyclingTab.MAP
@@ -2949,11 +2965,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
     // Compass Orientation: 端末コンパスは地図回転にだけ使う。矢印の向きには使わない。
     // (端末を回すと矢印が勝手に回る問題の分離)。矢印は GPS bearing から updateNavArrow が合成する。
-    LaunchedEffect(headingDegrees, mapView, isHeadingUp) {        mapView?.let { view ->
-            if (isHeadingUp) {
-                view.setMapOrientation(-headingDegrees)
-            }
-            latestNavArrow()
+    LaunchedEffect(isHeadingUp, mapView) {
+        if (isHeadingUp) {
+            orientationAnimator.rotateTo(headingDegrees)
+        } else {
+            orientationAnimator.reset()
         }
     }
 

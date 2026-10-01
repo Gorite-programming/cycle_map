@@ -23,7 +23,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -34,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,9 +70,11 @@ fun RideHistorySheet(
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
     onShowTrackOnMap: (RideHistorySummary) -> Unit,
+    onDeleteRide: ((RideHistorySummary) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
-    val histories = remember(isRecording) {
+    var refreshTrigger by remember { mutableIntStateOf(0) }
+    val histories = remember(isRecording, refreshTrigger) {
         if (!gpxDir.exists()) emptyList()
         else {
             gpxDir.listFiles { file -> file.extension.lowercase() == "gpx" }
@@ -80,6 +85,7 @@ fun RideHistorySheet(
     }
 
     var selectedRide by remember { mutableStateOf<RideHistorySummary?>(null) }
+    var rideToDelete by remember { mutableStateOf<RideHistorySummary?>(null) }
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.JAPAN) }
 
     ModalBottomSheet(
@@ -124,7 +130,7 @@ fun RideHistorySheet(
                         if (isRecording) {
                             Button(
                                 onClick = onStopRecording,
-                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = CyclingPink),
+                                colors = ButtonDefaults.buttonColors(containerColor = CyclingPink),
                             ) {
                                 Text("記録停止・保存")
                             }
@@ -173,7 +179,7 @@ fun RideHistorySheet(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(14.dp),
+                                    .padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -203,6 +209,14 @@ fun RideHistorySheet(
                                         )
                                     }
                                 }
+                                IconButton(onClick = { rideToDelete = ride }) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_lucide_trash_2),
+                                        contentDescription = "削除",
+                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                                 Icon(
                                     painterResource(R.drawable.ic_lucide_arrow_right),
                                     contentDescription = null,
@@ -217,6 +231,41 @@ fun RideHistorySheet(
         }
     }
 
+    // 削除確認ダイアログ
+    rideToDelete?.let { ride ->
+        AlertDialog(
+            onDismissRequest = { rideToDelete = null },
+            title = { Text("走行記録の削除", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "${dateFormat.format(ride.startTime)} の走行ログ (${"%.2f".format(Locale.US, ride.totalDistanceMeters / 1000.0)} km) を削除しますか？\n削除したファイルは元に戻せません。",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDel = ride
+                        rideToDelete = null
+                        if (selectedRide?.file == toDel.file) {
+                            selectedRide = null
+                        }
+                        toDel.file.delete()
+                        onDeleteRide?.invoke(toDel)
+                        refreshTrigger++
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Text("削除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { rideToDelete = null }) {
+                    Text("キャンセル")
+                }
+            },
+        )
+    }
+
     // ライド詳細ダイアログ
     selectedRide?.let { ride ->
         RideDetailDialog(
@@ -225,6 +274,9 @@ fun RideHistorySheet(
                 onShowTrackOnMap(ride)
                 selectedRide = null
                 onDismiss()
+            },
+            onDelete = {
+                rideToDelete = ride
             },
             onDismiss = { selectedRide = null },
         )
@@ -235,6 +287,7 @@ fun RideHistorySheet(
 fun RideDetailDialog(
     ride: RideHistorySummary,
     onShowOnMap: () -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.JAPAN) }
@@ -288,10 +341,20 @@ fun RideDetailDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onShowOnMap) {
-                Icon(painterResource(R.drawable.ic_lucide_map), contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("地図に軌跡を表示")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) {
+                    Icon(painterResource(R.drawable.ic_lucide_trash_2), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("削除")
+                }
+                Button(onClick = onShowOnMap) {
+                    Icon(painterResource(R.drawable.ic_lucide_map), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("地図に表示")
+                }
             }
         },
         dismissButton = {

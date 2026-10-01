@@ -313,7 +313,7 @@ enum class PoiCategory(
     FOOD("飲食", R.drawable.ic_lucide_utensils, "#C5221F", listOf("amenity:restaurant", "amenity:cafe", "amenity:fast_food"), false),
     TOURISM("観光・休憩", R.drawable.ic_lucide_camera, "#9334E6", listOf("tourism:"), true),
     PARKING("駐車場", R.drawable.ic_lucide_square_parking, "#5F6368", listOf("amenity:parking"), false),
-    HOSPITAL("病院", R.drawable.ic_lucide_hospital, "#D81B60", listOf("amenity:hospital", "amenity:clinic", "amenity:doctors"), false),
+    HOSPITAL("病院", R.drawable.ic_lucide_hospital, "#D81B60", listOf("amenity:hospital", "amenity:clinic", "amenity:doctors", "amenity:dentist"), false),
     FUEL("ガソリン", R.drawable.ic_lucide_fuel, "#F9AB00", listOf("amenity:fuel"), false),
     PARK("公園", R.drawable.ic_lucide_trees, "#34A853", listOf("leisure:park"), false),
     WATER("給水", R.drawable.ic_lucide_droplets, "#00ACC1", listOf("amenity:drinking_water"), false),

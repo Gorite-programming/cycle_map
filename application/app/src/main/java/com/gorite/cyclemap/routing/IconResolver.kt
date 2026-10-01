@@ -111,10 +111,31 @@ object IconResolver {
 
     /**
      * 方向を考慮したアイコン解決。
-     * ランプ・側道は転回角度の符号で左右を決定する (BUG-38 fix)。
+     * T字路・Y字路・十字路・ランプ・側道などは転回角度で左右/進行方向を決定する。
      */
     fun resolveIconResId(type: InstructionType, turnAngleDegrees: Double): Int {
         return when (type) {
+            InstructionType.T_JUNCTION -> when {
+                turnAngleDegrees < -10.0 -> R.drawable.ic_ms_turn_left
+                turnAngleDegrees > 10.0 -> R.drawable.ic_ms_turn_right
+                else -> R.drawable.ic_ms_call_split
+            }
+            InstructionType.Y_JUNCTION -> if (turnAngleDegrees < 0.0) R.drawable.ic_ms_fork_left else R.drawable.ic_ms_fork_right
+            InstructionType.CROSS_JUNCTION -> when {
+                turnAngleDegrees < -45.0 -> R.drawable.ic_ms_turn_left
+                turnAngleDegrees > 45.0 -> R.drawable.ic_ms_turn_right
+                turnAngleDegrees < -10.0 -> R.drawable.ic_ms_turn_slight_left
+                turnAngleDegrees > 10.0 -> R.drawable.ic_ms_turn_slight_right
+                else -> R.drawable.ic_ms_straight
+            }
+            InstructionType.MULTI_JUNCTION -> when {
+                turnAngleDegrees < -45.0 -> R.drawable.ic_ms_turn_left
+                turnAngleDegrees > 45.0 -> R.drawable.ic_ms_turn_right
+                turnAngleDegrees < -10.0 -> R.drawable.ic_ms_turn_slight_left
+                turnAngleDegrees > 10.0 -> R.drawable.ic_ms_turn_slight_right
+                else -> R.drawable.ic_ms_straight
+            }
+            InstructionType.FORK_BOTH -> if (turnAngleDegrees < 0.0) R.drawable.ic_ms_fork_left else R.drawable.ic_ms_fork_right
             InstructionType.RAMP_ENTRY -> if (turnAngleDegrees < 0.0) R.drawable.ic_ms_ramp_left else R.drawable.ic_ms_ramp_right
             InstructionType.RAMP_EXIT -> if (turnAngleDegrees < 0.0) R.drawable.ic_ms_ramp_left else R.drawable.ic_ms_ramp_right
             InstructionType.SIDE_ROAD_ENTER -> if (turnAngleDegrees < 0.0) R.drawable.ic_ms_turn_slight_left else R.drawable.ic_ms_turn_slight_right
@@ -127,7 +148,11 @@ object IconResolver {
     fun materialIconName(type: InstructionType): String =
         materialNameMap[type] ?: "straight"
 
-    fun getLabel(type: InstructionType): String = when (type) {
+    /**
+     * 交差点形状と転回角度に応じた分かりやすい案内ラベルを返す。
+     * 例: "T字路を左折", "T字路を右折", "Y字路を左方向", "十字路を直進"
+     */
+    fun getLabel(type: InstructionType, turnAngleDegrees: Double = 0.0): String = when (type) {
         InstructionType.STRAIGHT -> "直進"
         InstructionType.LEFT_TURN -> "左折"
         InstructionType.RIGHT_TURN -> "右折"
@@ -143,19 +168,35 @@ object IconResolver {
         InstructionType.FORK_DOWN_LEFT -> "左下分岐"
         InstructionType.FORK_UP_RIGHT -> "右上分岐"
         InstructionType.FORK_DOWN_RIGHT -> "右下分岐"
-        InstructionType.FORK_BOTH -> "左右両分岐"
-        InstructionType.Y_JUNCTION -> "Y字交差点"
-        InstructionType.T_JUNCTION -> "T字路"
-        InstructionType.CROSS_JUNCTION -> "十字路"
-        InstructionType.MULTI_JUNCTION -> "多差路"
+        InstructionType.FORK_BOTH -> if (turnAngleDegrees < 0.0) "分岐を左方向" else "分岐を右方向"
+        InstructionType.Y_JUNCTION -> if (turnAngleDegrees < 0.0) "Y字路を左方向" else "Y字路を右方向"
+        InstructionType.T_JUNCTION -> when {
+            turnAngleDegrees < -10.0 -> "T字路を左折"
+            turnAngleDegrees > 10.0 -> "T字路を右折"
+            else -> "T字路"
+        }
+        InstructionType.CROSS_JUNCTION -> when {
+            turnAngleDegrees < -45.0 -> "十字路を左折"
+            turnAngleDegrees > 45.0 -> "十字路を右折"
+            turnAngleDegrees < -10.0 -> "十字路を左斜め方向"
+            turnAngleDegrees > 10.0 -> "十字路を右斜め方向"
+            else -> "十字路を直進"
+        }
+        InstructionType.MULTI_JUNCTION -> when {
+            turnAngleDegrees < -45.0 -> "多差路を左折"
+            turnAngleDegrees > 45.0 -> "多差路を右折"
+            turnAngleDegrees < -10.0 -> "多差路を左斜め方向"
+            turnAngleDegrees > 10.0 -> "多差路を右斜め方向"
+            else -> "多差路を直進"
+        }
         InstructionType.MERGE -> "合流"
         InstructionType.LANE_INCREASE -> "車線増加"
         InstructionType.LANE_DECREASE -> "車線減少"
-        InstructionType.SIDE_ROAD_ENTER -> "側道へ"
-        InstructionType.SIDE_ROAD_EXIT -> "側道から本線へ"
+        InstructionType.SIDE_ROAD_ENTER -> if (turnAngleDegrees < 0.0) "左の側道へ" else "右の側道へ"
+        InstructionType.SIDE_ROAD_EXIT -> if (turnAngleDegrees < 0.0) "左から本線へ合流" else "右から本線へ合流"
         InstructionType.ROUNDABOUT -> "ラウンドアバウト"
-        InstructionType.RAMP_ENTRY -> "ランプ入口"
-        InstructionType.RAMP_EXIT -> "ランプ出口"
+        InstructionType.RAMP_ENTRY -> if (turnAngleDegrees < 0.0) "左のランプ入口へ" else "右のランプ入口へ"
+        InstructionType.RAMP_EXIT -> if (turnAngleDegrees < 0.0) "左のランプ出口へ" else "右のランプ出口へ"
         InstructionType.CONSECUTIVE_FORK -> "連続分岐"
     }
 }
