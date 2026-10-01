@@ -97,6 +97,7 @@ SOURCE_PRIORITY = {
     "manual": 100,
     "kokudo": 50,
     "csv": 40,
+    "overture": 30,
     "osm": 10,
 }
 

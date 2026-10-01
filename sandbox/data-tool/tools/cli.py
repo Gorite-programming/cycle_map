@@ -21,6 +21,7 @@ from tools.core import merge as merge_mod  # noqa: E402
 from tools.core import validate as validate_mod  # noqa: E402
 from tools.core.sources import kokudo as kokudo_src  # noqa: E402
 from tools.core.sources import osm as osm_src  # noqa: E402
+from tools.core.sources import overture as overture_src  # noqa: E402
 
 
 def cmd_import_osm(args):
@@ -76,6 +77,29 @@ def cmd_import_kokudo(args):
                 "skipped_closed", "skipped_noname", "assigned_elsewhere"):
         print("%s: %s" % (key, summary[key]))
     print("by_category: %s" % summary["by_category"])
+    return 0
+
+
+def cmd_import_overture(args):
+    print("Overture Maps から %s のPOIを取得中 (S3: %s)..." % (args.pref, args.s3_path or "default"))
+    try:
+        summary = overture_src.import_overture(
+            prefecture_id=args.pref,
+            db_path=args.db,
+            min_confidence=args.min_confidence,
+            s3_path=args.s3_path or overture_src.OVERTURE_S3_PATH,
+        )
+    except Exception as e:
+        print("失敗: %s" % e)
+        return 1
+    print("prefecture: %s" % summary["prefecture"])
+    print("fetched: %d" % summary["fetched"])
+    print("deleted: %d" % summary["deleted"])
+    print("inserted: %d" % summary["inserted"])
+    print("by_category (上位10):")
+    sorted_cats = sorted(summary["by_category"].items(), key=lambda x: x[1], reverse=True)[:10]
+    for cat, count in sorted_cats:
+        print("  %-28s: %d" % (cat, count))
     return 0
 
 
@@ -159,6 +183,14 @@ def build_parser():
                     choices=["medical", "school"])
     pk.add_argument("--pref", default="hiroshima")
     pk.set_defaults(func=cmd_import_kokudo)
+
+    po = sub.add_parser("import-overture", help="Overture Maps (Places) を取り込む")
+    po.add_argument("--pref", default="hiroshima", choices=list(config.PREFECTURES.keys()))
+    po.add_argument("--min-confidence", type=float, default=0.6,
+                    help="取り込む最低信頼度 (既定: 0.6)")
+    po.add_argument("--s3-path", default=None,
+                    help="Overture S3 Parquet パス (省略時は最新)")
+    po.set_defaults(func=cmd_import_overture)
 
     pm = sub.add_parser("merge", help="重複統合を適用する")
     pm.add_argument("--pref", default="hiroshima")

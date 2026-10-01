@@ -48,7 +48,7 @@ def connect(db_path=None):
 
 
 def init_db(db_path=None):
-    """poi テーブルとインデックスを作成する。既存データは消さない。"""
+    """poi テーブルとインデックス、overlay テーブルを作成する。既存データは消さない。"""
     db_path = db_path or config.MASTER_DB_PATH
     conn = connect(db_path)
     try:
@@ -56,6 +56,12 @@ def init_db(db_path=None):
         for stmt in POI_INDEXES:
             conn.execute(stmt)
         _migrate(conn)
+        # overlay テーブルも初期化
+        from . import overlay as overlay_mod
+        conn.execute(overlay_mod.OVERLAY_SCHEMA)
+        overlay_cols = {r[1] for r in conn.execute("PRAGMA table_info(overlay)")}
+        if "kana" not in overlay_cols:
+            conn.execute("ALTER TABLE overlay ADD COLUMN kana TEXT;")
         conn.commit()
     finally:
         conn.close()
