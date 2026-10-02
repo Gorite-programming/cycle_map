@@ -1439,7 +1439,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         setBuiltInZoomControls(false)
                         setTilesScaledToDpi(true) // 高DPI画面(S21等)で背景道路・文字を太く拡大描画
                         minZoomLevel = 2.0
-                        maxZoomLevel = 18.0
+                        maxZoomLevel = 21.0
                         isHorizontalMapRepetitionEnabled = false
                         isVerticalMapRepetitionEnabled = false
                         isFlingEnabled = true
@@ -1618,7 +1618,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         }
                     },
                 )
-                val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 18.0)
+                val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
                 val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
                 DarkControlStack(
                     layerLabel = when (selectedLayer) {
@@ -2437,6 +2437,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             },
             onLicense = { showLicense = true },
             onVersion = { showVersion = true },
+            onDeveloperOptions = {
+                showCyclingSettings = false
+                showDeveloperOptions = true
+            },
             onDismiss = {
                 showCyclingSettings = false
                 bottomTab = CyclingTab.MAP

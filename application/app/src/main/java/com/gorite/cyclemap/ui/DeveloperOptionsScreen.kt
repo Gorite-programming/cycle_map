@@ -14,14 +14,21 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import com.gorite.cyclemap.routing.HsaMode
+import com.gorite.cyclemap.speech.AndroidTextToSpeechEngine
+import com.gorite.cyclemap.speech.ShikokuMetanAudioEngine
+import com.gorite.cyclemap.speech.VoiceEngineType
+import com.gorite.cyclemap.speech.VoiceTestController
+import com.gorite.cyclemap.speech.VoiceTestPhrase
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -34,6 +41,7 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
@@ -70,6 +79,34 @@ fun DeveloperOptionsScreen(
     var startLongitude by remember { mutableStateOf("131.4737") }
     var goalLatitude by remember { mutableStateOf("34.1700") }
     var goalLongitude by remember { mutableStateOf("132.2200") }
+
+    var selectedVoiceEngine by remember { mutableStateOf(VoiceEngineType.VOICEVOX_METAN) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var lastSpokenText by remember { mutableStateOf<String?>(null) }
+    var ttsEngine by remember { mutableStateOf<AndroidTextToSpeechEngine?>(null) }
+    val metanEngine = remember(context) { ShikokuMetanAudioEngine(context) }
+
+    DisposableEffect(context) {
+        val engine = AndroidTextToSpeechEngine(context) { ready ->
+            ttsReady = ready
+        }
+        ttsEngine = engine
+        onDispose {
+            engine.shutdown()
+            metanEngine.shutdown()
+            ttsEngine = null
+        }
+    }
+
+    val activeEngine = remember(selectedVoiceEngine, ttsEngine, metanEngine) {
+        when (selectedVoiceEngine) {
+            VoiceEngineType.VOICEVOX_METAN -> metanEngine
+            VoiceEngineType.SYSTEM_TTS -> ttsEngine ?: metanEngine
+        }
+    }
+    val voiceController = remember(activeEngine) {
+        VoiceTestController(activeEngine)
+    }
 
     Dialog(
         onDismissRequest = onClose,
@@ -99,6 +136,109 @@ fun DeveloperOptionsScreen(
                         .padding(top = 12.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "音声案内テスト",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val isEngineReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
+                                Text(
+                                    if (isEngineReady) "● 準備完了 (オフライン)" else "○ 初期化中…",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isEngineReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+
+                            // 音声エンジン切替タブ
+                            ScrollableTabRow(
+                                selectedTabIndex = selectedVoiceEngine.ordinal,
+                                edgePadding = 0.dp,
+                            ) {
+                                VoiceEngineType.entries.forEach { engineType ->
+                                    Tab(
+                                        selected = selectedVoiceEngine == engineType,
+                                        onClick = {
+                                            selectedVoiceEngine = engineType
+                                            voiceController.stop()
+                                            lastSpokenText = null
+                                        },
+                                        text = { Text(engineType.label) },
+                                    )
+                                }
+                            }
+
+                            Text(
+                                if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) {
+                                    "VOICEVOX「四国めたん（ノーマル）」の音声です。完全オフライン・遅延ゼロ・超低負荷で自然に発声します。"
+                                } else {
+                                    "Android標準の音声合成エンジン（Google TTS）による再生です。"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                val isReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
+                                VoiceTestPhrase.entries.forEach { phrase ->
+                                    Button(
+                                        onClick = {
+                                            val ok = voiceController.playPhrase(phrase)
+                                            if (ok) {
+                                                lastSpokenText = phrase.text
+                                            }
+                                        },
+                                        enabled = isReady,
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(phrase.text, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    lastSpokenText?.let { "発声中: 「$it」" } ?: "待機中",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                val isReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
+                                TextButton(
+                                    onClick = {
+                                        voiceController.stop()
+                                        lastSpokenText = null
+                                    },
+                                    enabled = isReady && lastSpokenText != null,
+                                ) {
+                                    Text("停止")
+                                }
+                            }
+                        }
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),

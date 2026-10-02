@@ -46,6 +46,30 @@ class SearchHelperTest {
     }
 
     @Test
+    fun shouldShowFtsNotice_returnsFalseWhenSearchTextAvailableEvenIfFts5Unsupported() {
+        // FTS5非対応でも search_text カラムがあれば曖昧検索可能なのでバナーは表示しない
+        val shouldShow = shouldShowFtsNotice(ftsSupported = false, hasSearchText = true, hasShownThisSession = false)
+        assertEquals(false, shouldShow)
+    }
+
+    @Test
+    fun shouldShowFtsNotice_returnsTrueOnlyWhenBothFtsAndSearchTextUnavailable() {
+        // FTS5も非対応で search_text も無いレガシーDBの場合のみ通知
+        val shouldShow = shouldShowFtsNotice(ftsSupported = false, hasSearchText = false, hasShownThisSession = false)
+        assertEquals(true, shouldShow)
+
+        // ただしセッション中に既に表示済みの場合は再表示しない
+        val shouldShowSecondTime = shouldShowFtsNotice(ftsSupported = false, hasSearchText = false, hasShownThisSession = true)
+        assertEquals(false, shouldShowSecondTime)
+    }
+
+    @Test
+    fun shouldShowFtsNotice_returnsFalseWhenFtsSupported() {
+        val shouldShow = shouldShowFtsNotice(ftsSupported = true, hasSearchText = false, hasShownThisSession = false)
+        assertEquals(false, shouldShow)
+    }
+
+    @Test
     fun placesCacheAndNotice_resetSafely() {
         clearPlacesHasSearchTextCacheForTesting()
         resetFts5NoticeForTesting()

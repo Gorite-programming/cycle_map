@@ -127,6 +127,22 @@ internal fun resetFts5NoticeForTesting() {
     hasShownFts5NoticeThisSession = false
 }
 
+/**
+ * FTS5/曖昧検索の注意バナーを表示すべきかを判定する。
+ * - FTS5対応端末、または FTS5非対応でも検索DBに search_text 列（ひらがな・カタカナ・ローマ字対応）が存在する場合は false。
+ * - FTS5非対応かつ search_text 列が無い旧形式DBの場合のみ、セッション中1回 true を返す。
+ */
+@VisibleForTesting
+internal fun shouldShowFtsNotice(
+    ftsSupported: Boolean,
+    hasSearchText: Boolean,
+    hasShownThisSession: Boolean,
+): Boolean {
+    if (ftsSupported) return false
+    if (hasSearchText) return false
+    return !hasShownThisSession
+}
+
 @VisibleForTesting
 internal fun buildFtsQuery(trimmed: String): String {
     return trimmed
@@ -387,14 +403,7 @@ internal fun DestinationSearchDialog(
     var selectedCategory by remember { mutableStateOf(SearchCategory.ALL) }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var message by remember { mutableStateOf<String?>(null) }
-    var showFts5Notice by remember {
-        val unsupported = !Fts5SupportDetector.isSupported()
-        val shouldShow = unsupported && !hasShownFts5NoticeThisSession
-        if (shouldShow) {
-            hasShownFts5NoticeThisSession = true
-        }
-        mutableStateOf(shouldShow)
-    }
+    var showFts5Notice by remember { mutableStateOf(false) }
 
     // 現在地を取得（位置情報許可済みの場合）
     val userLocation = remember { mutableStateOf<Pair<Double, Double>?>(null) }
@@ -426,6 +435,31 @@ internal fun DestinationSearchDialog(
     }
     val searchDb = searchDbInfo.first
     val unsupportedPrefecture = searchDbInfo.second
+
+    // FTS5およびsearch_textの対応状況をチェック (旧DBのみセッション1回案内)
+    LaunchedEffect(searchDb) {
+        if (searchDb.isFile) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    SQLiteDatabase.openDatabase(searchDb.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                        val ftsSupported = Fts5SupportDetector.isSupported(db)
+                        val hasSearchText = hasSearchTextColumn(db)
+                        val shouldShow = shouldShowFtsNotice(
+                            ftsSupported = ftsSupported,
+                            hasSearchText = hasSearchText,
+                            hasShownThisSession = hasShownFts5NoticeThisSession,
+                        )
+                        if (shouldShow) {
+                            hasShownFts5NoticeThisSession = true
+                            withContext(Dispatchers.Main) {
+                                showFts5Notice = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         if (context.hasLocationPermission()) {
             withContext(Dispatchers.IO) {
@@ -503,7 +537,7 @@ internal fun DestinationSearchDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "この端末では高度な検索機能（ひらがな・ローマ字での曖昧検索）が利用できません。通常の検索に切り替えます",
+                                text = "旧形式の検索DBが使用されています。漢字または前方・部分一致で検索してください",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),

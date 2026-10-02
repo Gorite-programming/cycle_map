@@ -9,17 +9,43 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
 
+import org.osmdroid.util.MapTileIndex
+
 // ---------------------------------------------------------------------------
-// タイルソース定義
+// タイルソース定義 (最大ズーム21までのデジタル拡大・高画質タイル表示対応)
 // ---------------------------------------------------------------------------
 
-internal fun gsiTileSource() = XYTileSource(
-    "GSI Standard", 2, 18, 256, ".png",
+/**
+ * 通常の配信上限 (maxOnlineZoomLevel) を超えるズームレベル (最大21) での
+ * デジタル拡大 (overscaling) およびローカル高解像度タイルの表示を可能にするタイルソース。
+ * オンライン配信が無い上位ズームでは空文字を返すことで無駄なHTTP通信を遮断する。
+ */
+open class OverzoomingTileSource(
+    aName: String,
+    aZoomMinLevel: Int,
+    aZoomMaxLevel: Int,
+    val maxOnlineZoomLevel: Int,
+    aTileSizePixels: Int,
+    aImageFilenameEnding: String,
+    aBaseUrl: Array<String>,
+) : XYTileSource(aName, aZoomMinLevel, aZoomMaxLevel, aTileSizePixels, aImageFilenameEnding, aBaseUrl) {
+
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        val zoom = MapTileIndex.getZoom(pMapTileIndex)
+        if (zoom > maxOnlineZoomLevel) {
+            return ""
+        }
+        return super.getTileURLString(pMapTileIndex)
+    }
+}
+
+internal fun gsiTileSource() = OverzoomingTileSource(
+    "GSI Standard", 2, 21, 18, 256, ".png",
     arrayOf("https://cyberjapandata.gsi.go.jp/xyz/std/"),
 )
 
-internal fun osmTileSource() = XYTileSource(
-    "OpenStreetMap", 2, 19, 256, ".png",
+internal fun osmTileSource() = OverzoomingTileSource(
+    "OpenStreetMap", 2, 21, 19, 256, ".png",
     arrayOf(
         "https://a.tile.openstreetmap.org/",
         "https://b.tile.openstreetmap.org/",
@@ -28,8 +54,8 @@ internal fun osmTileSource() = XYTileSource(
 )
 
 /** 地理院 陰影起伏図 (等高線・地形の把握用。航空写真ではない)。 */
-internal fun gsiReliefTileSource() = XYTileSource(
-    "GSI Relief", 2, 15, 256, ".png",
+internal fun gsiReliefTileSource() = OverzoomingTileSource(
+    "GSI Relief", 2, 21, 15, 256, ".png",
     arrayOf("https://cyberjapandata.gsi.go.jp/xyz/relief/"),
 )
 

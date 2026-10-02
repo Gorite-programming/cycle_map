@@ -561,6 +561,7 @@ fun SettingsPanelSheet(
     onManageData: () -> Unit,
     onLicense: () -> Unit,
     onVersion: () -> Unit,
+    onDeveloperOptions: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -635,6 +636,9 @@ fun SettingsPanelSheet(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 TextButton(onClick = onLicense) { Text("ライセンス") }
                 TextButton(onClick = onVersion) { Text("バージョン情報") }
+                if (onDeveloperOptions != null) {
+                    TextButton(onClick = onDeveloperOptions) { Text("開発者") }
+                }
             }
         }
     }
