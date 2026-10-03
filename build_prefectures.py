@@ -57,6 +57,31 @@ BOUNDARY_SHA256 = "c823cde901bb077cd3f861632bbcdd3676283d9e6f30c76b0d0fab330ebf1
 WORK_DIR = Path("work")
 OUTPUT_DIR = Path("packages")
 LOG_DIR = Path("logs")
+DATA_TOOL_OUT_DIR = Path("sandbox/data-tool/out")
+
+PACKAGE_LICENSE_TEXT = """\
+CycleMap Data Package License & Attribution
+===========================================
+
+This package contains routing graphs and search database files for offline navigation.
+The data is compiled and derived from the following open data sources:
+
+1. OpenStreetMap (OSM)
+   - License: Open Database License (ODbL) 1.0
+   - Attribution: (c) OpenStreetMap contributors
+   - URL: https://www.openstreetmap.org/copyright
+
+2. Overture Maps Foundation (Places Theme)
+   - License: Community Data License Agreement - Permissive - Version 2.0 (CDLA-Permissive-2.0)
+   - Attribution: (c) Overture Maps Foundation
+   - URL: https://overturemaps.org/
+
+3. 国土数値情報 (National Land Numerical Information)
+   - 医療機関データ 第3.0版 (2020年)、学校データ 第2.0版 (2021年)
+   - 国土交通省 (https://nlftp.mlit.go.jp/ksj/) をもとに加工して作成
+   - License: 国土数値情報利用規約 (PDL1.0準拠)
+   - URL: https://nlftp.mlit.go.jp/ksj/other/agreement.html
+"""
 
 PREFECTURES = [
     {"name": "Tottori", "jp": "鳥取県", "code": "31"},
@@ -67,6 +92,98 @@ PREFECTURES = [
 ]
 
 LOG = logging.getLogger("pref-builder")
+
+
+def verify_search_db(db_path: Path) -> Dict[str, Any]:
+    """Validate schema, indexes, and integrity of search.db before packaging."""
+    if not db_path.is_file() or db_path.stat().st_size == 0:
+        raise FileNotFoundError(f"Search DB missing or empty: {db_path}")
+
+    con = sqlite3.connect(f"file:{db_path.resolve()}?mode=ro", uri=True)
+    try:
+        cur = con.cursor()
+        # 1. PRAGMA integrity_check
+        cur.execute("PRAGMA integrity_check")
+        row = cur.fetchone()
+        if not row or row[0] != "ok":
+            raise ValueError(f"SQLite PRAGMA integrity_check failed for {db_path}: {row}")
+
+        # 2. places table presence
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='places'")
+        if not cur.fetchone():
+            raise ValueError(f"Table 'places' not found in {db_path}")
+
+        # 3. Required columns
+        cur.execute("PRAGMA table_info(places)")
+        cols = {r[1] for r in cur.fetchall()}
+        required_cols = {"name", "category", "lat", "lon", "search_text"}
+        missing_cols = required_cols - cols
+        if missing_cols:
+            raise ValueError(f"Missing required columns in 'places' table of {db_path}: {missing_cols}")
+
+        # 4. places_coords_idx index presence
+        cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='places_coords_idx'")
+        if not cur.fetchone():
+            raise ValueError(f"Index 'places_coords_idx' not found in {db_path}")
+
+        # 5. Row count > 0
+        cur.execute("SELECT COUNT(*) FROM places")
+        row_count = cur.fetchone()[0]
+        if row_count <= 0:
+            raise ValueError(f"Search DB has no records in 'places': {db_path}")
+
+        # 6. meta table (optional, extract if present)
+        meta: Dict[str, Any] = {}
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meta'")
+        if cur.fetchone():
+            cur.execute("SELECT key, value FROM meta")
+            meta = dict(cur.fetchall())
+
+        return {
+            "path": db_path,
+            "row_count": row_count,
+            "columns": sorted(cols),
+            "meta": meta,
+        }
+    finally:
+        con.close()
+
+
+def generate_manifest(name: str, db_stats: Dict[str, Any]) -> str:
+    """Generate manifest.json content for prefecture package."""
+    manifest = {
+        "format_version": 1,
+        "prefecture": name,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "files": {
+            "search_db": f"{name}.search.db",
+            "graph": f"{name}.graph",
+            "graph_idx": f"{name}.graph.idx",
+        },
+        "search_db": {
+            "places_count": db_stats.get("row_count", 0),
+            "meta": db_stats.get("meta", {}),
+        },
+        "sources": [
+            {
+                "name": "OpenStreetMap",
+                "license": "ODbL 1.0",
+                "url": "https://www.openstreetmap.org/copyright",
+            },
+            {
+                "name": "Overture Maps Places",
+                "license": "CDLA-Permissive-2.0",
+                "url": "https://overturemaps.org/",
+            },
+            {
+                "name": "MLIT Kokudo Suuchi Jouhou (Medical/School)",
+                "license": "PDL1.0",
+                "url": "https://nlftp.mlit.go.jp/ksj/",
+            },
+        ],
+    }
+    return json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+
 
 
 def fmt_size(n: int) -> str:
@@ -259,17 +376,17 @@ def parse_importer_counts(text: str) -> Dict[str, int]:
 
 
 def valid_zip(path: Path, name: str) -> bool:
-    needed = {f"{name}.search.db", f"{name}.graph", f"{name}.graph.idx"}
+    needed = {f"{name}.search.db", f"{name}.graph", f"{name}.graph.idx", "manifest.json", "LICENSE.txt"}
     if not path.is_file() or path.stat().st_size == 0:
         return False
     try:
         with zipfile.ZipFile(path, "r") as z:
-            return z.testzip() is None and needed.issubset(z.namelist())
+            return z.testzip() is None and needed.issubset(set(z.namelist()))
     except (OSError, zipfile.BadZipFile):
         return False
 
 
-def make_zip(name: str, db: Path, graph: Path, idx: Path, out: Path) -> None:
+def make_zip(name: str, db: Path, graph: Path, idx: Path, out: Path, manifest_content: str) -> None:
     for p in (db, graph, idx):
         if not p.is_file() or p.stat().st_size == 0:
             raise FileNotFoundError(f"Missing/empty package input: {p}")
@@ -280,13 +397,15 @@ def make_zip(name: str, db: Path, graph: Path, idx: Path, out: Path) -> None:
         z.write(db, db.name)
         z.write(graph, graph.name)
         z.write(idx, idx.name)
+        z.writestr("manifest.json", manifest_content)
+        z.writestr("LICENSE.txt", PACKAGE_LICENSE_TEXT)
     os.replace(partial, out)
     if not valid_zip(out, name):
         out.unlink(missing_ok=True)
         raise RuntimeError(f"ZIP validation failed: {out}")
 
 
-def process(pref: Dict[str, str], force: bool, keep_work: bool) -> Tuple[bool, float]:
+def process(pref: Dict[str, str], force: bool, keep_work: bool, legacy_search_db: bool = False) -> Tuple[bool, float]:
     name = pref["name"]
     start = time.monotonic()
     final_zip = OUTPUT_DIR / f"{name}.zip"
@@ -325,9 +444,23 @@ def process(pref: Dict[str, str], force: bool, keep_work: bool) -> Tuple[bool, f
         LOG.info("[%s] extract: %s", name, psize(extract))
         log_osm_stats(name, osm_stats(extract))
 
-        # 2) Existing Python search DB logic.
-        build_search_db(extract, db)
-        log_search_db_stats(db, name)
+        # 2) Search DB selection (prefer data-tool/out integrated DB)
+        data_tool_db = DATA_TOOL_OUT_DIR / f"{name.lower()}.search.db"
+        if data_tool_db.is_file():
+            LOG.info("[%s] Using integrated search DB from %s", name, data_tool_db)
+            db_stats = verify_search_db(data_tool_db)
+            shutil.copy2(data_tool_db, db)
+            log_search_db_stats(db, name)
+        elif legacy_search_db:
+            LOG.warning("[%s] Integrated search DB not found. Falling back to legacy build_search_db.py", name)
+            build_search_db(extract, db)
+            db_stats = verify_search_db(db)
+            log_search_db_stats(db, name)
+        else:
+            raise FileNotFoundError(
+                f"[{name}] Integrated search DB not found at {data_tool_db}. "
+                f"Use --legacy-osm-search-db to fallback to basic OSM search DB."
+            )
 
         # 3) Existing Kotlin routing importer.
         #    Pass JAVA_OPTS via env so the installDist wrapper script picks up a
@@ -353,8 +486,9 @@ def process(pref: Dict[str, str], force: bool, keep_work: bool) -> Tuple[bool, f
         else:
             LOG.info("[%s] importer counts: not parseable from stdout/stderr", name)
 
-        # 4) Atomic ZIP package.
-        make_zip(name, db, graph, idx, final_zip)
+        # 4) Atomic ZIP package with manifest & license.
+        manifest_text = generate_manifest(name, db_stats)
+        make_zip(name, db, graph, idx, final_zip, manifest_text)
         LOG.info("[%s] package: %s (%s)", name, final_zip, psize(final_zip))
 
         if not keep_work:
@@ -403,6 +537,7 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="Rebuild even if final ZIP already exists")
     ap.add_argument("--keep-work", action="store_true", help="Keep intermediate files after success")
     ap.add_argument("--no-boundary-download", action="store_true", help="Fail instead of downloading missing boundary GeoJSON")
+    ap.add_argument("--legacy-osm-search-db", action="store_true", help="Fallback to legacy OSM-only search DB if integrated DB is missing")
     args = ap.parse_args()
 
     if not SOURCE_PBF.is_file():
@@ -424,7 +559,7 @@ def main() -> int:
 
     results = []
     for pref in selected:
-        results.append((pref["name"],) + process(pref, args.force, args.keep_work))
+        results.append((pref["name"],) + process(pref, args.force, args.keep_work, args.legacy_osm_search_db))
 
     LOG.info("========== SUMMARY ==========")
     failed = []
