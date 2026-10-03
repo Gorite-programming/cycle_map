@@ -10,11 +10,15 @@ import android.location.Location
 import android.util.Log
 import android.view.animation.DecelerateInterpolator
 import androidx.activity.ComponentActivity
-import org.osmdroid.views.MapView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import org.osmdroid.views.MapView
 import com.gorite.cyclemap.routing.IconResolver
 import com.gorite.cyclemap.routing.InstructionType
 import com.gorite.cyclemap.routing.LazyMappedRoadGraph
@@ -216,7 +220,6 @@ internal fun ServiceLocationUpdates(
     val onSpeed by rememberUpdatedState(onSpeedChanged)
     val onStatus by rememberUpdatedState(onGpsStatusChanged)
     DisposableEffect(context) {
-        LocationTrackingService.startTracking(context)
         var serviceRef: LocationTrackingService? = null
         val locationListener: (Location) -> Unit = { newLocation ->
             onSpeed(newLocation.speed.toDouble())
@@ -245,14 +248,24 @@ internal fun ServiceLocationUpdates(
 // ---------------------------------------------------------------------------
 
 @Composable
-internal fun CompassUpdates(context: Context, onHeadingChanged: (Float) -> Unit) {
+internal fun CompassUpdates(
+    context: Context,
+    enabled: Boolean = true,
+    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+    onHeadingChanged: (Float) -> Unit,
+) {
     val currentOnHeadingChanged by rememberUpdatedState(onHeadingChanged)
-    DisposableEffect(context) {
+    DisposableEffect(context, lifecycleOwner, enabled) {
+        if (!enabled) {
+            return@DisposableEffect onDispose {}
+        }
         val sensorManager = context.getSystemService(SensorManager::class.java)
         val rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
             ?: sensorManager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
         var smoothedHeading = 0f
         var initialized = false
+        var isRegistered = false
+
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val rotationMatrix = FloatArray(9)
@@ -297,10 +310,38 @@ internal fun CompassUpdates(context: Context, onHeadingChanged: (Float) -> Unit)
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
-        if (rotationSensor != null) {
-            sensorManager?.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+
+        fun register() {
+            if (!isRegistered && rotationSensor != null) {
+                sensorManager?.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI)
+                isRegistered = true
+            }
         }
-        onDispose { sensorManager?.unregisterListener(listener) }
+
+        fun unregister() {
+            if (isRegistered) {
+                sensorManager?.unregisterListener(listener)
+                isRegistered = false
+            }
+        }
+
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            register()
+        }
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> register()
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> unregister()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            unregister()
+        }
     }
 }
 

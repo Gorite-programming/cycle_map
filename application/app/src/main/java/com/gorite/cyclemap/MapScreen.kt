@@ -129,6 +129,8 @@ import com.gorite.cyclemap.speech.VoiceGuidanceNavigator
 import com.gorite.cyclemap.tracking.GpsHealthMonitor
 import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.tracking.LocationTrackingService
+import com.gorite.cyclemap.tracking.AppLifecycleState
+import com.gorite.cyclemap.tracking.TrackingStateController
 import com.gorite.cyclemap.ui.DeveloperOptionsScreen
 import com.gorite.cyclemap.ui.RoutingBenchmarkRequest
 import com.gorite.cyclemap.ui.cycling.CompassDial
@@ -312,6 +314,42 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     }
     val systemAnimEnabled = remember(context) { Motion.isSystemAnimationEnabled(context) }
     val effectiveAnimationEnabled = Motion.resolveEffectiveAnimation(animationEnabled, systemAnimEnabled)
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appLifecycleState by remember {
+        mutableStateOf(
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                AppLifecycleState.RESUMED
+            } else {
+                AppLifecycleState.PAUSED_OR_STOPPED
+            }
+        )
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    appLifecycleState = AppLifecycleState.RESUMED
+                }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    appLifecycleState = AppLifecycleState.PAUSED_OR_STOPPED
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val trackingController = remember(context) {
+        TrackingStateController(
+            onStartTracking = { LocationTrackingService.startTracking(context) },
+            onStopTracking = { LocationTrackingService.stopTracking(context) },
+        )
+    }
 
     var hasLocationPermission by remember { mutableStateOf(context.hasLocationPermission()) }
     var currentLocation by remember { mutableStateOf<android.location.Location?>(null) }
@@ -1008,6 +1046,21 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
     }
 
+    // 位置追跡サービス (Foreground Service) の起動・停止ポリシー制御
+    LaunchedEffect(hasLocationPermission, appLifecycleState, isNavigationActive, isRecording) {
+        if (!hasLocationPermission) {
+            if (trackingController.isTrackingActive) {
+                trackingController.update(AppLifecycleState.PAUSED_OR_STOPPED, isNavigating = false, isRecording = false)
+            }
+            return@LaunchedEffect
+        }
+        trackingController.update(
+            lifecycleState = appLifecycleState,
+            isNavigating = isNavigationActive,
+            isRecording = isRecording,
+        )
+    }
+
     if (hasLocationPermission) {
         ServiceLocationUpdates(
             context = context,
@@ -1099,8 +1152,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     // GPS 測位状態のタイムアウト監視および推測移動 (Dead Reckoning)
-    LaunchedEffect(hasLocationPermission, isNavigationActive, navigationRoute) {
+    // ナビ中以外でバックグラウンド/画面オフのときは動かさない (バッテリー保護)。ナビ中は画面オフでも継続。
+    LaunchedEffect(hasLocationPermission, isNavigationActive, navigationRoute, appLifecycleState) {
         if (!hasLocationPermission) return@LaunchedEffect
+        if (!isNavigationActive && appLifecycleState != AppLifecycleState.RESUMED) return@LaunchedEffect
         while (isActive) {
             delay(1000L)
             val updated = gpsHealthMonitor.tick()
@@ -1163,7 +1218,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    CompassUpdates(context) { heading ->
+    CompassUpdates(
+        context = context,
+        enabled = (appLifecycleState == AppLifecycleState.RESUMED),
+    ) { heading ->
         headingDegrees = heading
         if (isHeadingUp) {
             orientationAnimator.rotateTo(heading)
@@ -1672,7 +1730,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 horizontalAlignment = Alignment.End,
             ) {
                 CompassDial(
-                    headingDegrees = headingDegrees,
+                    headingDegrees = { headingDegrees },
                     headingUp = isHeadingUp,
                     onClick = {
                         isHeadingUp = !isHeadingUp
@@ -3005,7 +3063,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     // Location Animation & Map Centering
-    LaunchedEffect(currentLocation, mapView, followLocation, locationMarker, accuracyCircle) {
+    LaunchedEffect(currentLocation, mapView, followLocation, locationMarker, accuracyCircle, appLifecycleState, effectiveAnimationEnabled) {
         val targetLocation = currentLocation ?: return@LaunchedEffect
         val marker = locationMarker ?: return@LaunchedEffect
         val view = mapView ?: return@LaunchedEffect
@@ -3030,22 +3088,42 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             SystemClock.elapsedRealtime(),
         )
         latestNavArrow()
-        val start = marker.position
-        val durationNanos = 900_000_000L
-        val startTime = withFrameNanos { it }
-        while (true) {
-            val elapsed = withFrameNanos { it } - startTime
-            val value = (elapsed.toDouble() / durationNanos).coerceIn(0.0, 1.0)
-            val point = GeoPoint(
-                start.latitude + (target.latitude - start.latitude) * value,
-                start.longitude + (target.longitude - start.longitude) * value,
-            )
-            marker.position = point
+
+        // アプリが前面 (RESUMED) でないとき、およびアニメーション無効時は即時スナップ (GPU/CPU浪費防止)
+        val shouldAnimate = appLifecycleState == AppLifecycleState.RESUMED && effectiveAnimationEnabled
+        if (!shouldAnimate) {
+            marker.position = target
             if (followLocation) {
-                view.controller.setCenter(point)
+                view.controller.setCenter(target)
             }
             view.invalidate()
-            if (value >= 1.0) break
+            return@LaunchedEffect
+        }
+
+        val start = marker.position
+        val durationNanos = 900_000_000L
+        val minFrameIntervalNanos = 33_333_333L // 最大30fpsに間引き、120Hz/60Hzの毎フレーム全画面再描画を抑止
+        val startTime = withFrameNanos { it }
+        var lastRenderNanos = startTime
+        while (true) {
+            val frameTime = withFrameNanos { it }
+            val elapsed = frameTime - startTime
+            val value = (elapsed.toDouble() / durationNanos).coerceIn(0.0, 1.0)
+            val isFinal = value >= 1.0
+
+            if (isFinal || (frameTime - lastRenderNanos) >= minFrameIntervalNanos) {
+                val point = GeoPoint(
+                    start.latitude + (target.latitude - start.latitude) * value,
+                    start.longitude + (target.longitude - start.longitude) * value,
+                )
+                marker.position = point
+                if (followLocation) {
+                    view.controller.setCenter(point)
+                }
+                view.invalidate()
+                lastRenderNanos = frameTime
+            }
+            if (isFinal) break
         }
     }
 
@@ -3193,27 +3271,22 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(mapView, lifecycleOwner) {
-        val view = mapView
-        if (view == null) {
-            onDispose { }
-        } else {
-            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                view.onResume()
+        val view = mapView ?: return@DisposableEffect onDispose { }
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            view.onResume()
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> view.onResume()
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> view.onPause()
+                else -> Unit
             }
-            val observer = LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_RESUME -> view.onResume()
-                    Lifecycle.Event.ON_PAUSE -> view.onPause()
-                    else -> Unit
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                lifecycleOwner.lifecycle.removeObserver(observer)
-                view.onPause()
-            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            view.onPause()
         }
     }
 }

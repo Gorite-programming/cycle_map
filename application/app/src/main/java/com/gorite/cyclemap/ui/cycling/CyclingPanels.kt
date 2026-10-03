@@ -874,7 +874,7 @@ fun DarkCircleButton(
  */
 @Composable
 fun CompassDial(
-    headingDegrees: Float,
+    headingDegrees: () -> Float,
     headingUp: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -899,7 +899,7 @@ fun CompassDial(
                 .clip(CircleShape)
                 .clickable(onClick = onClick),
         ) {
-            val rotation = -headingDegrees
+            val rotation = -headingDegrees()
             rotate(rotation) {
                 val cx = size.width / 2
                 val cy = size.height / 2
@@ -951,6 +951,21 @@ fun CompassDial(
             }
         }
     }
+}
+
+@Composable
+fun CompassDial(
+    headingDegrees: Float,
+    headingUp: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    CompassDial(
+        headingDegrees = { headingDegrees },
+        headingUp = headingUp,
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 /** 右側コントロール (レイヤ / 現在地 / + / − の一体ピル)。 */
