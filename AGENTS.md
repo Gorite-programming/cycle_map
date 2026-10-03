@@ -8,7 +8,8 @@
   - `app/` — Android UI(Compose、osmdroid 6.1.20、play-services-location)。エントリーポイントは `MainActivity.kt`、データ設定は `data/Prefectures.kt`。
   - `routing-core/` — 純粋 JVM ライブラリ:`RoadGraph`、`AStarRouter`、`CyclingCostModel`、mmap リーダー(`LazyMappedRouting.kt`、`MappedRouting.kt`)。**本番ルーティングは A\* のみ。`HsaRouting.kt` / `AltRouting.kt` は実験用** (詳細は `HSA_STAR_EXTERNAL_REVIEW_REQUEST.md`)。
   - `osm-importer/` — JVM CLI(`OsmImporterKt`):OSM `.pbf` → 独自バイナリ `.graph` + サイドカー `.graph.idx`。
-- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` → `packages/<name>.zip`。`build_search_db.py` は FTS5 検索 DB ビルダー(OSMタグのみ使用。日本特化POIデータは `sandbox/data-tool/` 参照)。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
+- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` + `manifest.json` + `LICENSE.txt` → `packages/<name>.zip`。`sandbox/data-tool/out/` にあるOverture+国交省+OSM統合検索DBをスキーマ検証（PRAGMA integrity_check、必須列、インデックス、件数）の上で自動取り込み。`build_search_db.py` はフォールバック用（`--legacy-osm-search-db`）。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
+- `scripts/push_data.sh` — 実機（Galaxy S21等）へのオフラインデータ一括転送・SHA-256整合性検証スクリプト（`--dry-run` 対応）。
 - `sandbox/data-tool/` — 検索DB生成ツール(Python + Streamlit)。以前は独立Gitだったが現在は `cycle_map` リポジトリに統合済み。OSM PBFを道路基盤とし、POI（コンビニ・飲食店・病院・観光施設等）は Overture Maps Foundation (Placesテーマ、CDLA-Permissive-2.0) および 国土数値情報（医療機関第3.0版・学校第2.0版、PDL1.0）を統合・重複排除（同一敷地・同一住所マージ）して高精度化するパイプライン。表記ゆれ対応（ひらがな・カタカナ・ローマ字）も実装済み。ライセンス表記・出典規定の詳細は `application/DISTRIBUTION_NOTES.md` およびアプリ内「地図情報・ライセンス」ダイアログを参照。**重要**: Android 標準 SQLite は多くの実機で FTS5 非対応(`no such module: fts5`)のため、検索DBは `places.search_text` 列(LIKE検索用、表示名の `name` 列とは別)も保持して互換性を確保している(アプリ側の対応は `Fts5SupportDetector.kt`)。
 - 大容量データ(コミット・移動禁止):`data/japan-latest.osm.pbf`(約2.5 GB。ルート直下の `japan-latest.osm.pbf` はシンボリックリンク)、`work/` 中間生成物、`venv/`。
 
@@ -26,6 +27,8 @@ JAVA_OPTS="-Xmx6g" osm-importer/build/install/osm-importer/bin/osm-importer --bb
 # ルートパイプライン — venv の python を必ず使うこと(system python には osmium がない):
 venv/bin/python build_search_db.py --bbox none <in.osm.pbf> <out.search.db>   # --bbox: japan|yamaguchi|none
 venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 再ビルドは --force を追加。PATH に `osmium` CLI が必要
+./scripts/push_data.sh --dry-run                                              # 実機データ配置計画の確認
+./scripts/push_data.sh                                                        # 実機へデータ転送＋SHA-256検証
 ```
 
 ツールチェイン:AGP 8.10.1、Kotlin 2.0.21、compileSdk/target 35、minSdk 33、Java 11。`local.properties` の `sdk.dir` はマシン固有(`.gitignore`で除外済み、コミットされない) — 新しい環境(Windows含む)では Android Studio の初回起動時に自動生成されるか、手動で `sdk.dir=<自分のAndroid SDKパス>` を記載すること。
@@ -34,7 +37,7 @@ venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 
 
 - ルーティング用データ(OSM `.graph`)と表示用データ(地理院タイル)は厳密に分離。Google/OSM ラスターデータをグラフに混ぜない。OSM + 地理院の帰属表示(地図隅 + ライセンス画面)はオフラインでも表示を維持する。
 - データは APK に同梱しない。アプリはアプリ専用外部ストレージ `getExternalFilesDir(DOCUMENTS)/CycleMap/` を見る:`<name>.graph`、`<name>.graph.idx`、`tiles/cache.db`。県の動的切替は対応済み(`RoutingGraphSelector` / `SearchDbSelector` を `Prefectures.kt` に実装)。起動時は配置済みファイルから名前昇順で最初のものを自動探索し、現在地が確定したら対応する県のグラフ/検索DBに自動切替する。
-- `build_prefectures.py` の不変条件:`osmium extract --polygon <boundary> --strategy complete_ways` を使う。importer 呼び出しは `--bbox none`。ZIP 内容は `<name>.search.db` + `<name>.graph` + `<name>.graph.idx` の3点のみ。有効な ZIP があれば `--force` なしではスキップ。失敗時の作業ディレクトリはデバッグ用に残す。
+- `build_prefectures.py` の不変条件:`osmium extract --polygon <boundary> --strategy complete_ways` を使う。importer 呼び出しは `--bbox none`。ZIP 内容は `<name>.search.db` + `<name>.graph` + `<name>.graph.idx` + `manifest.json` + `LICENSE.txt` の5点。有効な ZIP があれば `--force` なしではスキップ。失敗時の作業ディレクトリはデバッグ用に残す。
 - `CyclingCostModel` は `motorway` を除外。最小倍率 0.90 は A\* ヒューリスティックの下限 — JVM 側と `LazyMappedRoadGraph` で同期を保つ。
 - `LazyMappedRouting.readEdge()` は 2 GB 超でオーバーフロー(`offset.toInt()`)。`nearestNodeIndex` は O(n) 線形走査。既知バグ集は `application/bugs.md` — 修正前に必ず確認すること。ただし Critical/High の大半はコミット `3a6faf2` で修正済みのため、着手前に `git -C application log --oneline` と現行コードで再確認する(盲目的な再修正を避ける)。
 - 実機手順:Samsung S21 + `adb push`、機内モードで検証。山口 z15–z16 全域タイル(約8.9万枚、1 GB 超)は見送り — 全域取得ではなく経路回廊のみ取得する方針。

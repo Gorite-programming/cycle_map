@@ -147,3 +147,26 @@ python3 -m venv .venv            # 専用venv（../../venv は使わない）
 - 統合実績（承認方針(a)〜(d)通り）: 医療359件＋学校839件→残差分を追加ラウンドで適用し計1,226件、候補残0。生存kokudo 1,197行。GUI/CLI双方で取消可（`merge --undo`）。
 - 生成: 73,475件（osm 67,772＋medical 4,291＋school 1,412）。検証11項目PASS。`meta.source_summary` に件数＋出典URL・年度・版・ライセンスを記録。READMEに出典表記を追加。
 - 4県展開（鳥取・島根・岡山・山口）: 広島と同一手順で完了。想定外なし（未知コード・SHAPE不足・休校該当いずれも0件）。全県合計238,307件、統合計3,883件、5県とも検証PASS。内訳は指揮担当への完了報告（2026-09-29）を参照。
+
+## 11. 第4・第5段階追記（Overture Maps統合 ＆ 本番パイプライン結合）
+
+- **Overture Maps Foundation Places 統合**:
+  - 中国5県で Overture Maps (CDLA-Permissive-2.0) を統合し、POI総件数が **475,483件**（約47.5万件）へ倍増。
+  - 各県内訳:
+    - 鳥取: 43,701件 (OSM: 27,204, Overture: 15,371, 医療: 800, 学校: 326)
+    - 島根: 94,248件 (OSM: 31,754, Overture: 60,997, 医療: 985, 学校: 512)
+    - 岡山: 113,866件 (OSM: 60,694, Overture: 49,281, 医療: 2,806, 学校: 1,085)
+    - 広島: 125,431件 (OSM: 67,854, Overture: 51,874, 医療: 4,291, 学校: 1,412)
+    - 山口: 98,237件 (OSM: 35,066, Overture: 60,262, 医療: 2,061, 学校: 848)
+- **本番パイプライン（`build_prefectures.py`）結合**:
+  - `build_prefectures.py` は `sandbox/data-tool/out/{name.lower()}.search.db` を優先検出。
+  - `verify_search_db` により整合性チェック（PRAGMA integrity_check）、必須カラム（`name, category, lat, lon, search_text`）、空間インデックス（`places_coords_idx`）、件数（>0）を自動検証。
+  - 検証合格後、大文字名 `{Prefecture}.search.db` として作業ディレクトリにコピーし、`{Prefecture}.graph` / `.graph.idx` とともにZIPパッケージ化。
+  - ZIP内に `manifest.json`（出典・版・件数・生成日時）および `LICENSE.txt`（ODbL 1.0, CDLA-Permissive-2.0, PDL1.0）を自動同梱。
+  - 統合DBが無い場合は明示的エラーで停止（`--legacy-osm-search-db` 指定時のみ旧OSM DB生成へフォールバック）。
+- **実機データ配置スクリプト（`scripts/push_data.sh`）**:
+  - `getExternalFilesDir(DOCUMENTS)/CycleMap/` への自動pushと、実機側 `sha256sum` によるSHA-256一致検証を実装。
+  - `--dry-run` モード対応。
+- **アプリ内表記・ライセンス**:
+  - `MapScreen.kt` のライセンスダイアログに Overture Maps および 国土数値情報の出典・ライセンス文を追加済み。
+
