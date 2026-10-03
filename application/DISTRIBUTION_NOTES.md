@@ -19,8 +19,16 @@ https://www.openstreetmap.org/copyright
 
 地理院タイル（国土地理院）
 https://maps.gsi.go.jp/development/
+利用規約: https://maps.gsi.go.jp/help/termsofuse.html
 
-音声：VOICEVOX:（使用したキャラクター名）
+Overture Maps Foundation (Places)
+CDLA-Permissive-2.0 (https://overturemaps.org)
+
+国土数値情報（医療機関データ 第3.0版、学校データ 第2.0版）
+（国土交通省）（https://nlftp.mlit.go.jp/ksj/）をもとに加工して作成
+
+音声案内：VOICEVOX:四国めたん
+https://voicevox.hiroshiba.jp/ / https://zunko.jp/con_ongen_kiyaku.html
 ```
 
 表示場所は、地図画面の隅または「情報／ライセンス」画面とする。オフラインでも表示できるよう、URLとライセンス情報をアプリ内に同梱する。
@@ -46,13 +54,34 @@ https://maps.gsi.go.jp/development/
 公式：<https://maps.gsi.go.jp/development/>  
 利用規約：<https://maps.gsi.go.jp/help/termsofuse.html>
 
-## VOICEVOX
+## VOICEVOX (四国めたん)
 
-- VOICEVOX本体のクレジットに加え、使用した各キャラクターの利用規約を確認する。
-- 基本形は `VOICEVOX:キャラクター名` を表示する。
-- キャラクターごとに商用利用、二次配布、クレジット省略などの条件が異なる場合がある。
+- 音声案内に VOICEVOX 音声ライブラリ「四国めたん（ノーマル）」を使用。
+- VOICEVOX ソフトウェア利用規約および東北ずん子・ずんだもんプロジェクト音源利用ガイドラインに従い、以下のクレジットを表示する：
+  `VOICEVOX:四国めたん`
+- 公式サイト：<https://voicevox.hiroshiba.jp/>
+- 音源利用規約：<https://zunko.jp/con_ongen_kiyaku.html>
 
-公式Q&A：<https://voicevox.hiroshiba.jp/qa/>
+## Overture Maps Foundation (Placesテーマ)
+
+- 検索DBのPOIデータとして、Overture Maps Foundation の Places テーマを取り込んで使用。
+- ライセンス: Community Data License Agreement – Permissive, Version 2.0 (CDLA-Permissive-2.0)。
+- 出典表記:
+  `Overture Maps Foundation, overturemaps.org`
+  `Contains data from Overture Maps Foundation, licensed under CDLA-Permissive-2.0`
+- 配布条件: CDLA-Permissive-2.0 Section 2.1 に従い、ライセンス全文を配布物・アプリ内に同梱する。
+- 公式ドキュメント：<https://docs.overturemaps.org/attribution/>
+- ライセンスURL：<https://cdla.dev/permissive-2-0/>
+
+## 国土数値情報（国土交通省）
+
+- 検索DBの施設データとして、国土数値情報の「医療機関データ（第3.0版）」および「学校データ（第2.0版）」を取り込んで使用。
+  ※旧版（医療機関第1.0/2.0版、学校第1.0版）は非商用利用限定のため使用禁止・排除済み。
+- 利用規約: 政府標準利用規約（第2.0版）/ PDL1.0 に準拠。
+- 出典・加工表記:
+  `「国土数値情報（医療機関データ 第3.0版、学校データ 第2.0版）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/）をもとに加工して作成`
+- 公式：<https://nlftp.mlit.go.jp/ksj/>
+- 利用規約：<https://nlftp.mlit.go.jp/ksj/other/yakkan.html>
 
 ## OSSライブラリ
 
@@ -138,3 +167,31 @@ osm-importer/build/install/osm-importer/bin/osm-importer \
   (県別 `<name>.search.db` を `search.db` 名で配備)。都道府県判定 (`findPrefectureName`) は
   bbox重なり解消のため最狭区域優先に変更済み。県境の屈曲部 (例: 岩国東端) はbbox近似の限界として残る。
 - GSIデータは道路グラフ・逆ジオコーディングには不使用 (表示タイルのみ)。GSI個別条件は従来通り確認する。
+
+## Community Data License Agreement – Permissive – Version 2.0 (CDLA-Permissive-2.0)
+
+```text
+Community Data License Agreement – Permissive – Version 2.0
+
+This is the Community Data License Agreement – Permissive, Version 2.0 (the “agreement”). Data Provider(s) and Data Recipient(s) agree as follows:
+
+1. Provision of the Data.
+1.1. A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.
+1.2. This agreement does not impose any restriction on a Data Recipient’s use, modification, or sharing of any portions of the Data that are in the public domain or that may be used, modified, or shared under any other legal exception or limitation.
+
+2. Conditions for Sharing Data.
+2.1. A Data Recipient may share Data, with or without modifications, so long as the Data Recipient makes available the text of this agreement with the shared Data.
+
+3. No Restrictions on Results.
+3.1. This agreement does not impose any restriction or obligations with respect to the use, modification, or sharing of Results.
+
+4. No Warranty; Limitation of Liability.
+4.1. All Data Recipients receive the Data subject to the following terms: THE DATA IS PROVIDED ON AN “AS IS” BASIS, WITHOUT REPRESENTATIONS, WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. NO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+5. Definitions.
+5.1. “Data” means the material received by a Data Recipient under this agreement.
+5.2. “Data Provider” means any person who is the source of Data provided under this agreement and in reliance on a Data Recipient’s agreement to its terms.
+5.3. “Data Recipient” means any person who receives Data directly or indirectly from a Data Provider under this agreement.
+5.4. “Results” means any work, analysis, data, or product that a Data Recipient creates using the Data, provided that such work, analysis, data, or product does not include more than a de minimis portion of the Data.
+5.5. “Use” means using, copying, modifying, preparing derivative works, or otherwise exploiting the Data.
+```

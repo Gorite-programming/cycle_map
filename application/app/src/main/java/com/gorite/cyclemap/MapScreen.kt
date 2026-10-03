@@ -116,6 +116,11 @@ import com.gorite.cyclemap.routing.MappedRouteResult
 import com.gorite.cyclemap.routing.Maneuver
 import com.gorite.cyclemap.routing.ManeuverType
 import com.gorite.cyclemap.routing.RoutePreference
+import com.gorite.cyclemap.speech.AndroidTextToSpeechEngine
+import com.gorite.cyclemap.speech.HybridVoiceGuidanceEngine
+import com.gorite.cyclemap.speech.ShikokuMetanAudioEngine
+import com.gorite.cyclemap.speech.VoiceGuidanceMode
+import com.gorite.cyclemap.speech.VoiceGuidanceNavigator
 import com.gorite.cyclemap.tracking.GpsHealthMonitor
 import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.tracking.LocationTrackingService
@@ -428,6 +433,26 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     val offRouteDetector = remember { OffRouteDetector() }
     val graphLock = remember { ReentrantReadWriteLock() }
     val routeJobRef = remember { AtomicReference<RouteCalculationJob?>(null) }
+
+    // 音声案内ナビゲーター (VOICEVOX四国めたん + Android標準TTSのハイブリッド)
+    var voiceGuidanceMode by remember { mutableStateOf(VoiceGuidanceMode.VOICEVOX) }
+    val metanAudioEngine = remember(context) { ShikokuMetanAudioEngine(context) }
+    val voiceNavigator = remember(context, metanAudioEngine) {
+        val tts = AndroidTextToSpeechEngine(context)
+        val hybrid = HybridVoiceGuidanceEngine(metanAudioEngine, tts, voiceGuidanceMode)
+        VoiceGuidanceNavigator(hybrid)
+    }
+
+    LaunchedEffect(voiceGuidanceMode) {
+        voiceNavigator.setMode(voiceGuidanceMode)
+    }
+
+    DisposableEffect(context) {
+        onDispose {
+            voiceNavigator.shutdown()
+        }
+    }
+
     // 県別グラフ選択の状態。loadedGraphName が現在 routing に使う実ファイル。
     var loadedGraphName by remember { mutableStateOf<String?>(null) }
     var isSwitchingGraph by remember { mutableStateOf(false) }
@@ -1007,9 +1032,22 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             isArrived = true
                             isNavigationActive = false
                             offRouteDetector.reset()
+                            voiceNavigator.onLocationUpdated(
+                                traveledMeters = progress?.distanceFromStartMeters ?: 0.0,
+                                remainingMeters = 0.0,
+                                instructions = navigationInstructions,
+                                isOffRoute = false,
+                            )
                         }
                     } else if (progress != null && !isRerouting) {
                         val offRoute = offRouteDetector.update(progress.distanceToRouteMeters)
+                        val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)
+                        voiceNavigator.onLocationUpdated(
+                            traveledMeters = progress.distanceFromStartMeters,
+                            remainingMeters = remaining,
+                            instructions = navigationInstructions,
+                            isOffRoute = offRoute,
+                        )
                         if (offRoute && autoRerouteEnabled) {
                             val now = SystemClock.elapsedRealtime()
                             val dest = destination
@@ -1099,6 +1137,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                 nowEpochMillis = System.currentTimeMillis(),
                                 arrivalRadiusMeters = ARRIVAL_RADIUS_METERS,
                             )
+                            val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)
+                            voiceNavigator.onLocationUpdated(
+                                traveledMeters = progress.distanceFromStartMeters,
+                                remainingMeters = remaining,
+                                instructions = navigationInstructions,
+                                isOffRoute = false,
+                            )
                         }
                     }
                 }
@@ -1131,6 +1176,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             isArrived = false
             navStats = null
             offRouteDetector.reset()
+            voiceNavigator.reset()
             isNavigationActive = true
             mapView?.controller?.setZoom(NAVIGATION_ZOOM)
             currentLocation?.let { location ->
@@ -1183,6 +1229,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         rerouteLimitWarned = false
         lastRerouteElapsedMs = 0L
         offRouteDetector.reset()
+        voiceNavigator.reset()
         isDownloadingCorridorTiles = false
         corridorTileProgressText = null
     }
@@ -2429,6 +2476,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             onPoiToggle = { cat ->
                 poiSelected = if (cat in poiSelected) poiSelected - cat else poiSelected + cat
             },
+            voiceGuidanceMode = voiceGuidanceMode,
+            onVoiceGuidanceModeChange = { mode ->
+                voiceGuidanceMode = mode
+                voiceNavigator.setMode(mode)
+            },
             hasLocationPermission = hasLocationPermission,
             onManageData = {
                 showCyclingSettings = false
@@ -2769,17 +2821,79 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             onDismissRequest = { showLicense = false },
             title = { Text("地図情報・ライセンス") },
             text = {
-                Text(
-                    "CycleMap App\n" +
-                        "© 2026 Gorite. All rights reserved.\n\n" +
-                        "【使用している地図データ・ライブラリ】\n" +
-                        "© OpenStreetMap contributors\n" +
-                        "ODbL 1.0 (https://www.openstreetmap.org/copyright)\n\n" +
-                        "地理院タイル（国土地理院）\nhttps://maps.gsi.go.jp/development/\n\n" +
-                        "地理院タイル利用規約\nhttps://maps.gsi.go.jp/help/termsofuse.html\n\n" +
-                        "地図表示：osmdroid (Apache License 2.0)\n" +
-                        "位置情報：Google Play services Location",
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "CycleMap App\n" +
+                            "© 2026 Gorite. All rights reserved.",
+                        fontWeight = FontWeight.Bold,
+                    )
+                    HorizontalDivider()
+                    Text("【地図・POIデータ・音声出典】", fontWeight = FontWeight.Bold)
+
+                    Text(
+                        "■ OpenStreetMap\n" +
+                            "© OpenStreetMap contributors\n" +
+                            "ODbL 1.0 (https://www.openstreetmap.org/copyright)",
+                    )
+
+                    Text(
+                        "■ 地理院タイル（国土地理院）\n" +
+                            "https://maps.gsi.go.jp/development/\n" +
+                            "利用規約: https://maps.gsi.go.jp/help/termsofuse.html",
+                    )
+
+                    Text(
+                        "■ Overture Maps Foundation (Places)\n" +
+                            "Overture Maps Foundation, overturemaps.org\n" +
+                            "Contains data from Overture Maps Foundation, licensed under CDLA-Permissive-2.0 (https://overturemaps.org)",
+                    )
+
+                    Text(
+                        "■ 国土数値情報（国土交通省）\n" +
+                            "「国土数値情報（医療機関データ 第3.0版、学校データ 第2.0版）」（国土交通省）（https://nlftp.mlit.go.jp/ksj/）をもとに加工して作成",
+                    )
+
+                    Text(
+                        "■ 音声案内\n" +
+                            "VOICEVOX:四国めたん\n" +
+                            "https://voicevox.hiroshiba.jp/\n" +
+                            "音源利用規約: https://zunko.jp/con_ongen_kiyaku.html",
+                    )
+
+                    Text(
+                        "■ ライブラリ\n" +
+                            "地図表示：osmdroid (Apache License 2.0)\n" +
+                            "位置情報：Google Play services Location",
+                    )
+
+                    HorizontalDivider()
+                    Text("【CDLA-Permissive-2.0 全文】", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Community Data License Agreement – Permissive – Version 2.0\n\n" +
+                            "This is the Community Data License Agreement – Permissive, Version 2.0 (the “agreement”). Data Provider(s) and Data Recipient(s) agree as follows:\n\n" +
+                            "1. Provision of the Data.\n" +
+                            "1.1. A Data Recipient may use, modify, and share the Data made available by Data Provider(s) under this agreement if that Data Recipient follows the terms of this agreement.\n" +
+                            "1.2. This agreement does not impose any restriction on a Data Recipient’s use, modification, or sharing of any portions of the Data that are in the public domain or that may be used, modified, or shared under any other legal exception or limitation.\n\n" +
+                            "2. Conditions for Sharing Data.\n" +
+                            "2.1. A Data Recipient may share Data, with or without modifications, so long as the Data Recipient makes available the text of this agreement with the shared Data.\n\n" +
+                            "3. No Restrictions on Results.\n" +
+                            "3.1. This agreement does not impose any restriction or obligations with respect to the use, modification, or sharing of Results.\n\n" +
+                            "4. No Warranty; Limitation of Liability.\n" +
+                            "4.1. All Data Recipients receive the Data subject to the following terms: THE DATA IS PROVIDED ON AN “AS IS” BASIS, WITHOUT REPRESENTATIONS, WARRANTIES OR CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. NO DATA PROVIDER SHALL HAVE ANY LIABILITY FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE DATA OR RESULTS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.\n\n" +
+                            "5. Definitions.\n" +
+                            "5.1. “Data” means the material received by a Data Recipient under this agreement.\n" +
+                            "5.2. “Data Provider” means any person who is the source of Data provided under this agreement and in reliance on a Data Recipient’s agreement to its terms.\n" +
+                            "5.3. “Data Recipient” means any person who receives Data directly or indirectly from a Data Provider under this agreement.\n" +
+                            "5.4. “Results” means any work, analysis, data, or product that a Data Recipient creates using the Data, provided that such work, analysis, data, or product does not include more than a de minimis portion of the Data.\n" +
+                            "5.5. “Use” means using, copying, modifying, preparing derivative works, or otherwise exploiting the Data.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             },
             confirmButton = { TextButton(onClick = { showLicense = false }) { Text("閉じる") } },
         )
