@@ -1,5 +1,7 @@
 package com.gorite.cyclemap.ui.cycling
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +24,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import com.gorite.cyclemap.ui.theme.Motion
+import com.gorite.cyclemap.ui.theme.LocalAnimationEnabled
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -560,6 +565,8 @@ fun SettingsPanelSheet(
     onPoiToggle: (PoiCategory) -> Unit,
     voiceGuidanceMode: VoiceGuidanceMode = VoiceGuidanceMode.VOICEVOX,
     onVoiceGuidanceModeChange: (VoiceGuidanceMode) -> Unit = {},
+    animationEnabled: Boolean = true,
+    onAnimationEnabledChange: (Boolean) -> Unit = {},
     hasLocationPermission: Boolean,
     onManageData: () -> Unit,
     onLicense: () -> Unit,
@@ -590,9 +597,20 @@ fun SettingsPanelSheet(
             ) {
                 VoiceGuidanceMode.entries.forEach { mode ->
                     val isSelected = mode == voiceGuidanceMode
+                    val animEnabled = LocalAnimationEnabled.current
+                    val bgColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+                        label = "VoiceModeBg",
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+                        label = "VoiceModeContent",
+                    )
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        color = bgColor,
                         modifier = Modifier
                             .weight(1f)
                             .height(36.dp)
@@ -607,7 +625,7 @@ fun SettingsPanelSheet(
                                 },
                                 fontSize = 13.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = contentColor,
                             )
                         }
                     }
@@ -658,6 +676,7 @@ fun SettingsPanelSheet(
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text("全般", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            SettingSwitch("アニメーション効果", animationEnabled, onAnimationEnabledChange)
             Text(
                 "位置情報: ${if (hasLocationPermission) "許可済み" else "未許可"} · 単位: km · テーマ: システム連動",
                 style = MaterialTheme.typography.bodySmall,
@@ -687,9 +706,20 @@ private fun PoiSelectChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val animEnabled = LocalAnimationEnabled.current
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+        label = "PoiChipBg",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+        label = "PoiChipContent",
+    )
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        color = bgColor,
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick),
@@ -701,10 +731,10 @@ private fun PoiSelectChip(
             Icon(
                 painterResource(cat.iconRes),
                 contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = contentColor,
                 modifier = Modifier.size(22.dp),
             )
-            Text(cat.label, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            Text(cat.label, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, color = contentColor)
         }
     }
 }
@@ -1000,11 +1030,21 @@ private fun DarkStackRepeatButton(
     }
 
     val alpha = if (enabled) 1.0f else 0.35f
+    val animEnabled = LocalAnimationEnabled.current
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed.value && enabled) 0.90f else 1.0f,
+        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+        label = "RepeatBtnScale",
+    )
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(60.dp, 56.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .clip(RoundedCornerShape(14.dp))
                 .then(
                     if (isPressed.value && enabled) {
@@ -1054,12 +1094,36 @@ private fun DarkStackButton(
     tint: Color = Color.White,
     showDivider: Boolean = true,
 ) {
+    val isPressed = remember { mutableStateOf(false) }
+    val animEnabled = LocalAnimationEnabled.current
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed.value) 0.90f else 1.0f,
+        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+        label = "StackBtnScale",
+    )
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Column(
             modifier = Modifier
                 .size(60.dp, 56.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
                 .clip(RoundedCornerShape(14.dp))
-                .clickable(onClick = onClick),
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed.value = true
+                            try {
+                                awaitRelease()
+                            } finally {
+                                isPressed.value = false
+                            }
+                        },
+                        onTap = { onClick() },
+                    )
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {

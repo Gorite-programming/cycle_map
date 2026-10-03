@@ -12,11 +12,16 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.CompositionLocalProvider
+import com.gorite.cyclemap.ui.theme.Motion
+import com.gorite.cyclemap.ui.theme.LocalAnimationEnabled
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -301,6 +306,13 @@ private data class RouteRequest(val start: GeoPoint, val goal: GeoPoint, val isR
 @Composable
 internal fun MapScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("cyclemap_prefs", Context.MODE_PRIVATE) }
+    var animationEnabled by remember {
+        mutableStateOf(prefs.getBoolean("animation_enabled", true))
+    }
+    val systemAnimEnabled = remember(context) { Motion.isSystemAnimationEnabled(context) }
+    val effectiveAnimationEnabled = Motion.resolveEffectiveAnimation(animationEnabled, systemAnimEnabled)
+
     var hasLocationPermission by remember { mutableStateOf(context.hasLocationPermission()) }
     var currentLocation by remember { mutableStateOf<android.location.Location?>(null) }
     val gpsHealthMonitor = remember { GpsHealthMonitor() }
@@ -1341,8 +1353,9 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
+    CompositionLocalProvider(LocalAnimationEnabled provides effectiveAnimationEnabled) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
         gesturesEnabled = false,
         drawerContent = {
             ModalDrawerSheet {
@@ -1632,16 +1645,20 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            if (!isNavigationActive) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isNavigationActive,
+                enter = Motion.topBarEnter(effectiveAnimationEnabled),
+                exit = Motion.topBarExit(effectiveAnimationEnabled),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .zIndex(2f),
+            ) {
                 // Top Search Bar (menu + 地名 + 検索)
                 TopSearchBar(
                     locationLabel = locationLabel,
                     onMenuClick = { scope.launch { drawerState.open() } },
                     onSearchClick = { showDestinationSearch = true },
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(horizontal = 12.dp, vertical = 12.dp)
-                        .zIndex(2f),
                 )
             }
 
@@ -1748,7 +1765,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (isNavigationActive) {
-                    if (isRerouting) {
+                    AnimatedVisibility(
+                        visible = isRerouting,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                             shape = RoundedCornerShape(12.dp),
@@ -1772,18 +1794,25 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                 )
                             }
                         }
-                    } else {
-                        val progress = navigationProgress
-                        val distanceMeters = progress?.distanceToNextManeuverMeters
-                            ?: progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
-                        if (distanceMeters != null) {
-                            val remaining = progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
-                            val guide = navigationInstruction(progress, remaining, navigationInstructions, ARRIVAL_RADIUS_METERS)
-                            // 2つ先の案内 (その先) を取得してプレビュー表示
-                            val traveled = progress?.distanceFromStartMeters ?: 0.0
-                            val futureInstructions = navigationInstructions.filter { it.distanceFromStartMeters > traveled }
-                            val nextAfterThis = futureInstructions.getOrNull(1)
+                    }
 
+                    val progress = navigationProgress
+                    val distanceMeters = progress?.distanceToNextManeuverMeters
+                        ?: progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
+                    if (!isRerouting && distanceMeters != null) {
+                        val remaining = progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
+                        val guide = navigationInstruction(progress, remaining, navigationInstructions, ARRIVAL_RADIUS_METERS)
+                        // 2つ先の案内 (その先) を取得してプレビュー表示
+                        val traveled = progress?.distanceFromStartMeters ?: 0.0
+                        val futureInstructions = navigationInstructions.filter { it.distanceFromStartMeters > traveled }
+                        val nextAfterThis = futureInstructions.getOrNull(1)
+
+                        AnimatedContent(
+                            targetState = guide,
+                            transitionSpec = { Motion.bannerContentTransform(effectiveAnimationEnabled) },
+                            label = "NavGuideTransition",
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { currentGuide ->
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A).copy(alpha = 0.96f)),
                                 shape = RoundedCornerShape(16.dp),
@@ -1797,7 +1826,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(
-                                        painterResource(guide.arrowIcon),
+                                        painterResource(currentGuide.arrowIcon),
                                         contentDescription = null,
                                         tint = Color(0xFFFFD600),
                                         modifier = Modifier
@@ -1809,7 +1838,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         Text(
-                                            guide.text,
+                                            currentGuide.text,
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
@@ -1847,8 +1876,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             }
                         }
                     }
-                    if (offRouteDetector.isOffRoute && !isRerouting) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                    AnimatedVisibility(
+                        visible = offRouteDetector.isOffRoute && !isRerouting,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
                             shape = RoundedCornerShape(12.dp),
@@ -1871,7 +1904,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 }
 
                 // Area-select mode instruction banner
-                if (isAreaSelectMode) {
+                AnimatedVisibility(
+                    visible = isAreaSelectMode,
+                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                    exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
                         shape = RoundedCornerShape(12.dp),
@@ -1899,7 +1937,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 }
 
                 // Permission Request
-                if (!hasLocationPermission) {
+                AnimatedVisibility(
+                    visible = !hasLocationPermission,
+                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                    exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         shape = RoundedCornerShape(12.dp),
@@ -1931,7 +1974,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 }
 
                 // GPS 精度低下・ロスト通知バナー (フェーズ1)
-                if (gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && gpsHealthMonitor.hasReceivedFirstFix) {
+                AnimatedVisibility(
+                    visible = gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && gpsHealthMonitor.hasReceivedFirstFix,
+                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                    exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     val isLost = gpsStatus == GpsSignalStatus.LOST
                     Card(
                         colors = CardDefaults.cardColors(
@@ -1955,61 +2003,75 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 }
 
                 // Warning / Error notification
-                warningMessage?.let { msg ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                AnimatedVisibility(
+                    visible = warningMessage != null,
+                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                    exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    warningMessage?.let { msg ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                         ) {
-                            Text(
-                                msg,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = { warningMessage = null }) { Text("閉じる") }
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    msg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { warningMessage = null }) { Text("閉じる") }
+                            }
                         }
                     }
                 }
 
                 // Prefecture Tile Download Progress Card
-                currentTileProgress?.let { progress ->
-                    val isDone = progress.completed >= progress.total
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
-                        shape = RoundedCornerShape(14.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    if (isDone) "${progress.prefName} 保存完了" else "${progress.prefName} (${progress.sourceName}) 保存中…",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${progress.completed} / ${progress.total}", style = MaterialTheme.typography.labelMedium)
-                                    if (isDone) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        TextButton(onClick = { currentTileProgress = null }) { Text("閉じる") }
+                AnimatedVisibility(
+                    visible = currentTileProgress != null,
+                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                    exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    currentTileProgress?.let { progress ->
+                        val isDone = progress.completed >= progress.total
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                            shape = RoundedCornerShape(14.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        if (isDone) "${progress.prefName} 保存完了" else "${progress.prefName} (${progress.sourceName}) 保存中…",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("${progress.completed} / ${progress.total}", style = MaterialTheme.typography.labelMedium)
+                                        if (isDone) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            TextButton(onClick = { currentTileProgress = null }) { Text("閉じる") }
+                                        }
                                     }
                                 }
-                            }
-                            if (!isDone) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                LinearProgressIndicator(
-                                    progress = { if (progress.total > 0) progress.completed.toFloat() / progress.total else 0f },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
+                                if (!isDone) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    LinearProgressIndicator(
+                                        progress = { if (progress.total > 0) progress.completed.toFloat() / progress.total else 0f },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -2043,8 +2105,8 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     // Graph Switch Indicator
                     AnimatedVisibility(
                         visible = isSwitchingGraph,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
                     ) {
                         Row(
                             modifier = Modifier
@@ -2062,8 +2124,8 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     // Route Calculation Indicator
                     AnimatedVisibility(
                         visible = isCalculatingRoute,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically(),
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
                     ) {
                         Row(
                             modifier = Modifier
@@ -2140,7 +2202,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     }
 
                     // Arrival Card
-                    if (isArrived) {
+                    AnimatedVisibility(
+                        visible = isArrived,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                    ) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                             shape = RoundedCornerShape(14.dp),
@@ -2457,6 +2523,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
     if (showCyclingSettings) {
         SettingsPanelSheet(
+            animationEnabled = animationEnabled,
+            onAnimationEnabledChange = { enabled ->
+                animationEnabled = enabled
+                prefs.edit().putBoolean("animation_enabled", enabled).apply()
+            },
             autoReroute = autoRerouteEnabled,
             onAutoReroute = { autoRerouteEnabled = it },
             headingUp = isHeadingUp,
@@ -2930,6 +3001,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 selectedMenu = "地図"
             },
         )
+    }
     }
 
     // Location Animation & Map Centering
