@@ -35,3 +35,8 @@ application/.cxx/
 application/captures/
 *.git.bak
 sandbox/data-tool/*.dmg
+
+# APKs (only application/apks/ is tracked)
+*.apk
+!application/apks/*.apk
+
