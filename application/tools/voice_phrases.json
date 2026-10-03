@@ -1,0 +1,1146 @@
+[
+  {
+    "id": "straight_far",
+    "filename": "voice_300m_straight",
+    "text": "およそ300メートル先、直進です",
+    "category": "guidance_far",
+    "key": "straight",
+    "stage": "FAR"
+  },
+  {
+    "id": "straight_near",
+    "filename": "voice_100m_straight",
+    "text": "およそ100メートル先、直進です",
+    "category": "guidance_near",
+    "key": "straight",
+    "stage": "NEAR"
+  },
+  {
+    "id": "straight_now",
+    "filename": "voice_now_straight",
+    "text": "まもなく、直進です",
+    "category": "guidance_now",
+    "key": "straight",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "turn_left_far",
+    "filename": "voice_300m_turn_left",
+    "text": "およそ300メートル先、左折です",
+    "category": "guidance_far",
+    "key": "turn_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "turn_left_near",
+    "filename": "voice_100m_turn_left",
+    "text": "およそ100メートル先、左折です",
+    "category": "guidance_near",
+    "key": "turn_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "turn_left_now",
+    "filename": "voice_now_turn_left",
+    "text": "まもなく、左折です",
+    "category": "guidance_now",
+    "key": "turn_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "turn_right_far",
+    "filename": "voice_300m_turn_right",
+    "text": "およそ300メートル先、右折です",
+    "category": "guidance_far",
+    "key": "turn_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "turn_right_near",
+    "filename": "voice_100m_turn_right",
+    "text": "およそ100メートル先、右折です",
+    "category": "guidance_near",
+    "key": "turn_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "turn_right_now",
+    "filename": "voice_now_turn_right",
+    "text": "まもなく、右折です",
+    "category": "guidance_now",
+    "key": "turn_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "sharp_left_far",
+    "filename": "voice_300m_sharp_left",
+    "text": "およそ300メートル先、急左折です",
+    "category": "guidance_far",
+    "key": "sharp_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "sharp_left_near",
+    "filename": "voice_100m_sharp_left",
+    "text": "およそ100メートル先、急左折です",
+    "category": "guidance_near",
+    "key": "sharp_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "sharp_left_now",
+    "filename": "voice_now_sharp_left",
+    "text": "まもなく、急左折です",
+    "category": "guidance_now",
+    "key": "sharp_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "sharp_right_far",
+    "filename": "voice_300m_sharp_right",
+    "text": "およそ300メートル先、急右折です",
+    "category": "guidance_far",
+    "key": "sharp_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "sharp_right_near",
+    "filename": "voice_100m_sharp_right",
+    "text": "およそ100メートル先、急右折です",
+    "category": "guidance_near",
+    "key": "sharp_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "sharp_right_now",
+    "filename": "voice_now_sharp_right",
+    "text": "まもなく、急右折です",
+    "category": "guidance_now",
+    "key": "sharp_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "u_turn_left_far",
+    "filename": "voice_300m_u_turn_left",
+    "text": "およそ300メートル先、左Uターンです",
+    "category": "guidance_far",
+    "key": "u_turn_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "u_turn_left_near",
+    "filename": "voice_100m_u_turn_left",
+    "text": "およそ100メートル先、左Uターンです",
+    "category": "guidance_near",
+    "key": "u_turn_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "u_turn_left_now",
+    "filename": "voice_now_u_turn_left",
+    "text": "まもなく、左Uターンです",
+    "category": "guidance_now",
+    "key": "u_turn_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "u_turn_right_far",
+    "filename": "voice_300m_u_turn_right",
+    "text": "およそ300メートル先、右Uターンです",
+    "category": "guidance_far",
+    "key": "u_turn_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "u_turn_right_near",
+    "filename": "voice_100m_u_turn_right",
+    "text": "およそ100メートル先、右Uターンです",
+    "category": "guidance_near",
+    "key": "u_turn_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "u_turn_right_now",
+    "filename": "voice_now_u_turn_right",
+    "text": "まもなく、右Uターンです",
+    "category": "guidance_now",
+    "key": "u_turn_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_left_far",
+    "filename": "voice_300m_fork_left",
+    "text": "およそ300メートル先、左分岐です",
+    "category": "guidance_far",
+    "key": "fork_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_left_near",
+    "filename": "voice_100m_fork_left",
+    "text": "およそ100メートル先、左分岐です",
+    "category": "guidance_near",
+    "key": "fork_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_left_now",
+    "filename": "voice_now_fork_left",
+    "text": "まもなく、左分岐です",
+    "category": "guidance_now",
+    "key": "fork_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_right_far",
+    "filename": "voice_300m_fork_right",
+    "text": "およそ300メートル先、右分岐です",
+    "category": "guidance_far",
+    "key": "fork_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_right_near",
+    "filename": "voice_100m_fork_right",
+    "text": "およそ100メートル先、右分岐です",
+    "category": "guidance_near",
+    "key": "fork_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_right_now",
+    "filename": "voice_now_fork_right",
+    "text": "まもなく、右分岐です",
+    "category": "guidance_now",
+    "key": "fork_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "diagonal_fork_left_far",
+    "filename": "voice_300m_diagonal_fork_left",
+    "text": "およそ300メートル先、左斜め分岐です",
+    "category": "guidance_far",
+    "key": "diagonal_fork_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "diagonal_fork_left_near",
+    "filename": "voice_100m_diagonal_fork_left",
+    "text": "およそ100メートル先、左斜め分岐です",
+    "category": "guidance_near",
+    "key": "diagonal_fork_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "diagonal_fork_left_now",
+    "filename": "voice_now_diagonal_fork_left",
+    "text": "まもなく、左斜め分岐です",
+    "category": "guidance_now",
+    "key": "diagonal_fork_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "diagonal_fork_right_far",
+    "filename": "voice_300m_diagonal_fork_right",
+    "text": "およそ300メートル先、右斜め分岐です",
+    "category": "guidance_far",
+    "key": "diagonal_fork_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "diagonal_fork_right_near",
+    "filename": "voice_100m_diagonal_fork_right",
+    "text": "およそ100メートル先、右斜め分岐です",
+    "category": "guidance_near",
+    "key": "diagonal_fork_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "diagonal_fork_right_now",
+    "filename": "voice_now_diagonal_fork_right",
+    "text": "まもなく、右斜め分岐です",
+    "category": "guidance_now",
+    "key": "diagonal_fork_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_up_left_far",
+    "filename": "voice_300m_fork_up_left",
+    "text": "およそ300メートル先、左上分岐です",
+    "category": "guidance_far",
+    "key": "fork_up_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_up_left_near",
+    "filename": "voice_100m_fork_up_left",
+    "text": "およそ100メートル先、左上分岐です",
+    "category": "guidance_near",
+    "key": "fork_up_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_up_left_now",
+    "filename": "voice_now_fork_up_left",
+    "text": "まもなく、左上分岐です",
+    "category": "guidance_now",
+    "key": "fork_up_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_down_left_far",
+    "filename": "voice_300m_fork_down_left",
+    "text": "およそ300メートル先、左下分岐です",
+    "category": "guidance_far",
+    "key": "fork_down_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_down_left_near",
+    "filename": "voice_100m_fork_down_left",
+    "text": "およそ100メートル先、左下分岐です",
+    "category": "guidance_near",
+    "key": "fork_down_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_down_left_now",
+    "filename": "voice_now_fork_down_left",
+    "text": "まもなく、左下分岐です",
+    "category": "guidance_now",
+    "key": "fork_down_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_up_right_far",
+    "filename": "voice_300m_fork_up_right",
+    "text": "およそ300メートル先、右上分岐です",
+    "category": "guidance_far",
+    "key": "fork_up_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_up_right_near",
+    "filename": "voice_100m_fork_up_right",
+    "text": "およそ100メートル先、右上分岐です",
+    "category": "guidance_near",
+    "key": "fork_up_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_up_right_now",
+    "filename": "voice_now_fork_up_right",
+    "text": "まもなく、右上分岐です",
+    "category": "guidance_now",
+    "key": "fork_up_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_down_right_far",
+    "filename": "voice_300m_fork_down_right",
+    "text": "およそ300メートル先、右下分岐です",
+    "category": "guidance_far",
+    "key": "fork_down_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_down_right_near",
+    "filename": "voice_100m_fork_down_right",
+    "text": "およそ100メートル先、右下分岐です",
+    "category": "guidance_near",
+    "key": "fork_down_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_down_right_now",
+    "filename": "voice_now_fork_down_right",
+    "text": "まもなく、右下分岐です",
+    "category": "guidance_now",
+    "key": "fork_down_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_both_left_far",
+    "filename": "voice_300m_fork_both_left",
+    "text": "およそ300メートル先、分岐を左方向です",
+    "category": "guidance_far",
+    "key": "fork_both_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_both_left_near",
+    "filename": "voice_100m_fork_both_left",
+    "text": "およそ100メートル先、分岐を左方向です",
+    "category": "guidance_near",
+    "key": "fork_both_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_both_left_now",
+    "filename": "voice_now_fork_both_left",
+    "text": "まもなく、分岐を左方向です",
+    "category": "guidance_now",
+    "key": "fork_both_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "fork_both_right_far",
+    "filename": "voice_300m_fork_both_right",
+    "text": "およそ300メートル先、分岐を右方向です",
+    "category": "guidance_far",
+    "key": "fork_both_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "fork_both_right_near",
+    "filename": "voice_100m_fork_both_right",
+    "text": "およそ100メートル先、分岐を右方向です",
+    "category": "guidance_near",
+    "key": "fork_both_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "fork_both_right_now",
+    "filename": "voice_now_fork_both_right",
+    "text": "まもなく、分岐を右方向です",
+    "category": "guidance_now",
+    "key": "fork_both_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "y_junction_left_far",
+    "filename": "voice_300m_y_junction_left",
+    "text": "およそ300メートル先、Y字路を左方向です",
+    "category": "guidance_far",
+    "key": "y_junction_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "y_junction_left_near",
+    "filename": "voice_100m_y_junction_left",
+    "text": "およそ100メートル先、Y字路を左方向です",
+    "category": "guidance_near",
+    "key": "y_junction_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "y_junction_left_now",
+    "filename": "voice_now_y_junction_left",
+    "text": "まもなく、Y字路を左方向です",
+    "category": "guidance_now",
+    "key": "y_junction_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "y_junction_right_far",
+    "filename": "voice_300m_y_junction_right",
+    "text": "およそ300メートル先、Y字路を右方向です",
+    "category": "guidance_far",
+    "key": "y_junction_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "y_junction_right_near",
+    "filename": "voice_100m_y_junction_right",
+    "text": "およそ100メートル先、Y字路を右方向です",
+    "category": "guidance_near",
+    "key": "y_junction_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "y_junction_right_now",
+    "filename": "voice_now_y_junction_right",
+    "text": "まもなく、Y字路を右方向です",
+    "category": "guidance_now",
+    "key": "y_junction_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "t_junction_left_far",
+    "filename": "voice_300m_t_junction_left",
+    "text": "およそ300メートル先、T字路を左折です",
+    "category": "guidance_far",
+    "key": "t_junction_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "t_junction_left_near",
+    "filename": "voice_100m_t_junction_left",
+    "text": "およそ100メートル先、T字路を左折です",
+    "category": "guidance_near",
+    "key": "t_junction_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "t_junction_left_now",
+    "filename": "voice_now_t_junction_left",
+    "text": "まもなく、T字路を左折です",
+    "category": "guidance_now",
+    "key": "t_junction_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "t_junction_right_far",
+    "filename": "voice_300m_t_junction_right",
+    "text": "およそ300メートル先、T字路を右折です",
+    "category": "guidance_far",
+    "key": "t_junction_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "t_junction_right_near",
+    "filename": "voice_100m_t_junction_right",
+    "text": "およそ100メートル先、T字路を右折です",
+    "category": "guidance_near",
+    "key": "t_junction_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "t_junction_right_now",
+    "filename": "voice_now_t_junction_right",
+    "text": "まもなく、T字路を右折です",
+    "category": "guidance_now",
+    "key": "t_junction_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "t_junction_far",
+    "filename": "voice_300m_t_junction",
+    "text": "およそ300メートル先、T字路です",
+    "category": "guidance_far",
+    "key": "t_junction",
+    "stage": "FAR"
+  },
+  {
+    "id": "t_junction_near",
+    "filename": "voice_100m_t_junction",
+    "text": "およそ100メートル先、T字路です",
+    "category": "guidance_near",
+    "key": "t_junction",
+    "stage": "NEAR"
+  },
+  {
+    "id": "t_junction_now",
+    "filename": "voice_now_t_junction",
+    "text": "まもなく、T字路です",
+    "category": "guidance_now",
+    "key": "t_junction",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "cross_left_far",
+    "filename": "voice_300m_cross_left",
+    "text": "およそ300メートル先、十字路を左折です",
+    "category": "guidance_far",
+    "key": "cross_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "cross_left_near",
+    "filename": "voice_100m_cross_left",
+    "text": "およそ100メートル先、十字路を左折です",
+    "category": "guidance_near",
+    "key": "cross_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "cross_left_now",
+    "filename": "voice_now_cross_left",
+    "text": "まもなく、十字路を左折です",
+    "category": "guidance_now",
+    "key": "cross_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "cross_right_far",
+    "filename": "voice_300m_cross_right",
+    "text": "およそ300メートル先、十字路を右折です",
+    "category": "guidance_far",
+    "key": "cross_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "cross_right_near",
+    "filename": "voice_100m_cross_right",
+    "text": "およそ100メートル先、十字路を右折です",
+    "category": "guidance_near",
+    "key": "cross_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "cross_right_now",
+    "filename": "voice_now_cross_right",
+    "text": "まもなく、十字路を右折です",
+    "category": "guidance_now",
+    "key": "cross_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "cross_slight_left_far",
+    "filename": "voice_300m_cross_slight_left",
+    "text": "およそ300メートル先、十字路を左斜め方向です",
+    "category": "guidance_far",
+    "key": "cross_slight_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "cross_slight_left_near",
+    "filename": "voice_100m_cross_slight_left",
+    "text": "およそ100メートル先、十字路を左斜め方向です",
+    "category": "guidance_near",
+    "key": "cross_slight_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "cross_slight_left_now",
+    "filename": "voice_now_cross_slight_left",
+    "text": "まもなく、十字路を左斜め方向です",
+    "category": "guidance_now",
+    "key": "cross_slight_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "cross_slight_right_far",
+    "filename": "voice_300m_cross_slight_right",
+    "text": "およそ300メートル先、十字路を右斜め方向です",
+    "category": "guidance_far",
+    "key": "cross_slight_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "cross_slight_right_near",
+    "filename": "voice_100m_cross_slight_right",
+    "text": "およそ100メートル先、十字路を右斜め方向です",
+    "category": "guidance_near",
+    "key": "cross_slight_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "cross_slight_right_now",
+    "filename": "voice_now_cross_slight_right",
+    "text": "まもなく、十字路を右斜め方向です",
+    "category": "guidance_now",
+    "key": "cross_slight_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "cross_straight_far",
+    "filename": "voice_300m_cross_straight",
+    "text": "およそ300メートル先、十字路を直進です",
+    "category": "guidance_far",
+    "key": "cross_straight",
+    "stage": "FAR"
+  },
+  {
+    "id": "cross_straight_near",
+    "filename": "voice_100m_cross_straight",
+    "text": "およそ100メートル先、十字路を直進です",
+    "category": "guidance_near",
+    "key": "cross_straight",
+    "stage": "NEAR"
+  },
+  {
+    "id": "cross_straight_now",
+    "filename": "voice_now_cross_straight",
+    "text": "まもなく、十字路を直進です",
+    "category": "guidance_now",
+    "key": "cross_straight",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "multi_left_far",
+    "filename": "voice_300m_multi_left",
+    "text": "およそ300メートル先、多差路を左折です",
+    "category": "guidance_far",
+    "key": "multi_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "multi_left_near",
+    "filename": "voice_100m_multi_left",
+    "text": "およそ100メートル先、多差路を左折です",
+    "category": "guidance_near",
+    "key": "multi_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "multi_left_now",
+    "filename": "voice_now_multi_left",
+    "text": "まもなく、多差路を左折です",
+    "category": "guidance_now",
+    "key": "multi_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "multi_right_far",
+    "filename": "voice_300m_multi_right",
+    "text": "およそ300メートル先、多差路を右折です",
+    "category": "guidance_far",
+    "key": "multi_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "multi_right_near",
+    "filename": "voice_100m_multi_right",
+    "text": "およそ100メートル先、多差路を右折です",
+    "category": "guidance_near",
+    "key": "multi_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "multi_right_now",
+    "filename": "voice_now_multi_right",
+    "text": "まもなく、多差路を右折です",
+    "category": "guidance_now",
+    "key": "multi_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "multi_slight_left_far",
+    "filename": "voice_300m_multi_slight_left",
+    "text": "およそ300メートル先、多差路を左斜め方向です",
+    "category": "guidance_far",
+    "key": "multi_slight_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "multi_slight_left_near",
+    "filename": "voice_100m_multi_slight_left",
+    "text": "およそ100メートル先、多差路を左斜め方向です",
+    "category": "guidance_near",
+    "key": "multi_slight_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "multi_slight_left_now",
+    "filename": "voice_now_multi_slight_left",
+    "text": "まもなく、多差路を左斜め方向です",
+    "category": "guidance_now",
+    "key": "multi_slight_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "multi_slight_right_far",
+    "filename": "voice_300m_multi_slight_right",
+    "text": "およそ300メートル先、多差路を右斜め方向です",
+    "category": "guidance_far",
+    "key": "multi_slight_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "multi_slight_right_near",
+    "filename": "voice_100m_multi_slight_right",
+    "text": "およそ100メートル先、多差路を右斜め方向です",
+    "category": "guidance_near",
+    "key": "multi_slight_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "multi_slight_right_now",
+    "filename": "voice_now_multi_slight_right",
+    "text": "まもなく、多差路を右斜め方向です",
+    "category": "guidance_now",
+    "key": "multi_slight_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "multi_straight_far",
+    "filename": "voice_300m_multi_straight",
+    "text": "およそ300メートル先、多差路を直進です",
+    "category": "guidance_far",
+    "key": "multi_straight",
+    "stage": "FAR"
+  },
+  {
+    "id": "multi_straight_near",
+    "filename": "voice_100m_multi_straight",
+    "text": "およそ100メートル先、多差路を直進です",
+    "category": "guidance_near",
+    "key": "multi_straight",
+    "stage": "NEAR"
+  },
+  {
+    "id": "multi_straight_now",
+    "filename": "voice_now_multi_straight",
+    "text": "まもなく、多差路を直進です",
+    "category": "guidance_now",
+    "key": "multi_straight",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "merge_far",
+    "filename": "voice_300m_merge",
+    "text": "およそ300メートル先、合流です",
+    "category": "guidance_far",
+    "key": "merge",
+    "stage": "FAR"
+  },
+  {
+    "id": "merge_near",
+    "filename": "voice_100m_merge",
+    "text": "およそ100メートル先、合流です",
+    "category": "guidance_near",
+    "key": "merge",
+    "stage": "NEAR"
+  },
+  {
+    "id": "merge_now",
+    "filename": "voice_now_merge",
+    "text": "まもなく、合流です",
+    "category": "guidance_now",
+    "key": "merge",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "lane_increase_far",
+    "filename": "voice_300m_lane_increase",
+    "text": "およそ300メートル先、車線増加です",
+    "category": "guidance_far",
+    "key": "lane_increase",
+    "stage": "FAR"
+  },
+  {
+    "id": "lane_increase_near",
+    "filename": "voice_100m_lane_increase",
+    "text": "およそ100メートル先、車線増加です",
+    "category": "guidance_near",
+    "key": "lane_increase",
+    "stage": "NEAR"
+  },
+  {
+    "id": "lane_increase_now",
+    "filename": "voice_now_lane_increase",
+    "text": "まもなく、車線増加です",
+    "category": "guidance_now",
+    "key": "lane_increase",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "lane_decrease_far",
+    "filename": "voice_300m_lane_decrease",
+    "text": "およそ300メートル先、車線減少です",
+    "category": "guidance_far",
+    "key": "lane_decrease",
+    "stage": "FAR"
+  },
+  {
+    "id": "lane_decrease_near",
+    "filename": "voice_100m_lane_decrease",
+    "text": "およそ100メートル先、車線減少です",
+    "category": "guidance_near",
+    "key": "lane_decrease",
+    "stage": "NEAR"
+  },
+  {
+    "id": "lane_decrease_now",
+    "filename": "voice_now_lane_decrease",
+    "text": "まもなく、車線減少です",
+    "category": "guidance_now",
+    "key": "lane_decrease",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "side_road_enter_left_far",
+    "filename": "voice_300m_side_road_enter_left",
+    "text": "およそ300メートル先、左の側道へ進みます",
+    "category": "guidance_far",
+    "key": "side_road_enter_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "side_road_enter_left_near",
+    "filename": "voice_100m_side_road_enter_left",
+    "text": "およそ100メートル先、左の側道へ進みます",
+    "category": "guidance_near",
+    "key": "side_road_enter_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "side_road_enter_left_now",
+    "filename": "voice_now_side_road_enter_left",
+    "text": "まもなく、左の側道へ進みます",
+    "category": "guidance_now",
+    "key": "side_road_enter_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "side_road_enter_right_far",
+    "filename": "voice_300m_side_road_enter_right",
+    "text": "およそ300メートル先、右の側道へ進みます",
+    "category": "guidance_far",
+    "key": "side_road_enter_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "side_road_enter_right_near",
+    "filename": "voice_100m_side_road_enter_right",
+    "text": "およそ100メートル先、右の側道へ進みます",
+    "category": "guidance_near",
+    "key": "side_road_enter_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "side_road_enter_right_now",
+    "filename": "voice_now_side_road_enter_right",
+    "text": "まもなく、右の側道へ進みます",
+    "category": "guidance_now",
+    "key": "side_road_enter_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "side_road_exit_left_far",
+    "filename": "voice_300m_side_road_exit_left",
+    "text": "およそ300メートル先、本線へ合流します",
+    "category": "guidance_far",
+    "key": "side_road_exit_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "side_road_exit_left_near",
+    "filename": "voice_100m_side_road_exit_left",
+    "text": "およそ100メートル先、本線へ合流します",
+    "category": "guidance_near",
+    "key": "side_road_exit_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "side_road_exit_left_now",
+    "filename": "voice_now_side_road_exit_left",
+    "text": "まもなく、本線へ合流します",
+    "category": "guidance_now",
+    "key": "side_road_exit_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "side_road_exit_right_far",
+    "filename": "voice_300m_side_road_exit_right",
+    "text": "およそ300メートル先、本線へ合流します",
+    "category": "guidance_far",
+    "key": "side_road_exit_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "side_road_exit_right_near",
+    "filename": "voice_100m_side_road_exit_right",
+    "text": "およそ100メートル先、本線へ合流します",
+    "category": "guidance_near",
+    "key": "side_road_exit_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "side_road_exit_right_now",
+    "filename": "voice_now_side_road_exit_right",
+    "text": "まもなく、本線へ合流します",
+    "category": "guidance_now",
+    "key": "side_road_exit_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "roundabout_far",
+    "filename": "voice_300m_roundabout",
+    "text": "およそ300メートル先、ラウンドアバウトです",
+    "category": "guidance_far",
+    "key": "roundabout",
+    "stage": "FAR"
+  },
+  {
+    "id": "roundabout_near",
+    "filename": "voice_100m_roundabout",
+    "text": "およそ100メートル先、ラウンドアバウトです",
+    "category": "guidance_near",
+    "key": "roundabout",
+    "stage": "NEAR"
+  },
+  {
+    "id": "roundabout_now",
+    "filename": "voice_now_roundabout",
+    "text": "まもなく、ラウンドアバウトです",
+    "category": "guidance_now",
+    "key": "roundabout",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "ramp_entry_left_far",
+    "filename": "voice_300m_ramp_entry_left",
+    "text": "およそ300メートル先、ランプへ進みます",
+    "category": "guidance_far",
+    "key": "ramp_entry_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "ramp_entry_left_near",
+    "filename": "voice_100m_ramp_entry_left",
+    "text": "およそ100メートル先、ランプへ進みます",
+    "category": "guidance_near",
+    "key": "ramp_entry_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "ramp_entry_left_now",
+    "filename": "voice_now_ramp_entry_left",
+    "text": "まもなく、ランプへ進みます",
+    "category": "guidance_now",
+    "key": "ramp_entry_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "ramp_entry_right_far",
+    "filename": "voice_300m_ramp_entry_right",
+    "text": "およそ300メートル先、ランプへ進みます",
+    "category": "guidance_far",
+    "key": "ramp_entry_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "ramp_entry_right_near",
+    "filename": "voice_100m_ramp_entry_right",
+    "text": "およそ100メートル先、ランプへ進みます",
+    "category": "guidance_near",
+    "key": "ramp_entry_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "ramp_entry_right_now",
+    "filename": "voice_now_ramp_entry_right",
+    "text": "まもなく、ランプへ進みます",
+    "category": "guidance_now",
+    "key": "ramp_entry_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "ramp_exit_left_far",
+    "filename": "voice_300m_ramp_exit_left",
+    "text": "およそ300メートル先、ランプを出ます",
+    "category": "guidance_far",
+    "key": "ramp_exit_left",
+    "stage": "FAR"
+  },
+  {
+    "id": "ramp_exit_left_near",
+    "filename": "voice_100m_ramp_exit_left",
+    "text": "およそ100メートル先、ランプを出ます",
+    "category": "guidance_near",
+    "key": "ramp_exit_left",
+    "stage": "NEAR"
+  },
+  {
+    "id": "ramp_exit_left_now",
+    "filename": "voice_now_ramp_exit_left",
+    "text": "まもなく、ランプを出ます",
+    "category": "guidance_now",
+    "key": "ramp_exit_left",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "ramp_exit_right_far",
+    "filename": "voice_300m_ramp_exit_right",
+    "text": "およそ300メートル先、ランプを出ます",
+    "category": "guidance_far",
+    "key": "ramp_exit_right",
+    "stage": "FAR"
+  },
+  {
+    "id": "ramp_exit_right_near",
+    "filename": "voice_100m_ramp_exit_right",
+    "text": "およそ100メートル先、ランプを出ます",
+    "category": "guidance_near",
+    "key": "ramp_exit_right",
+    "stage": "NEAR"
+  },
+  {
+    "id": "ramp_exit_right_now",
+    "filename": "voice_now_ramp_exit_right",
+    "text": "まもなく、ランプを出ます",
+    "category": "guidance_now",
+    "key": "ramp_exit_right",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "consecutive_fork_far",
+    "filename": "voice_300m_consecutive_fork",
+    "text": "およそ300メートル先、連続分岐です",
+    "category": "guidance_far",
+    "key": "consecutive_fork",
+    "stage": "FAR"
+  },
+  {
+    "id": "consecutive_fork_near",
+    "filename": "voice_100m_consecutive_fork",
+    "text": "およそ100メートル先、連続分岐です",
+    "category": "guidance_near",
+    "key": "consecutive_fork",
+    "stage": "NEAR"
+  },
+  {
+    "id": "consecutive_fork_now",
+    "filename": "voice_now_consecutive_fork",
+    "text": "まもなく、連続分岐です",
+    "category": "guidance_now",
+    "key": "consecutive_fork",
+    "stage": "IMMEDIATE"
+  },
+  {
+    "id": "arrived",
+    "filename": "voice_arrived",
+    "text": "目的地に到着しました",
+    "category": "special",
+    "key": "arrived",
+    "stage": "ARRIVED"
+  },
+  {
+    "id": "reroute",
+    "filename": "voice_reroute",
+    "text": "ルートから外れました。再探索します",
+    "category": "special",
+    "key": "reroute",
+    "stage": "REROUTE"
+  },
+  {
+    "id": "straight_continue_1",
+    "filename": "voice_straight_continue_1",
+    "text": "このまま直進です",
+    "category": "special",
+    "key": "straight_continue_1",
+    "stage": "CONTINUE"
+  },
+  {
+    "id": "straight_continue_2",
+    "filename": "voice_straight_continue_2",
+    "text": "道なりに直進してください",
+    "category": "special",
+    "key": "straight_continue_2",
+    "stage": "CONTINUE"
+  },
+  {
+    "id": "straight_continue_3",
+    "filename": "voice_straight_continue_3",
+    "text": "この先しばらく直進です",
+    "category": "special",
+    "key": "straight_continue_3",
+    "stage": "CONTINUE"
+  },
+  {
+    "id": "legacy_straight",
+    "filename": "voice_straight",
+    "text": "直進です",
+    "category": "legacy",
+    "key": "legacy_straight",
+    "stage": "LEGACY"
+  },
+  {
+    "id": "legacy_turn_left",
+    "filename": "voice_turn_left",
+    "text": "左折です",
+    "category": "legacy",
+    "key": "legacy_turn_left",
+    "stage": "LEGACY"
+  },
+  {
+    "id": "legacy_turn_right",
+    "filename": "voice_turn_right",
+    "text": "右折です",
+    "category": "legacy",
+    "key": "legacy_turn_right",
+    "stage": "LEGACY"
+  }
+]
