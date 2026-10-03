@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.delay
 import com.gorite.cyclemap.routing.RoutePreference
+import com.gorite.cyclemap.speech.VoiceGuidanceMode
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -557,6 +558,8 @@ fun SettingsPanelSheet(
     onPoiVisible: (Boolean) -> Unit,
     poiSelected: Set<PoiCategory>,
     onPoiToggle: (PoiCategory) -> Unit,
+    voiceGuidanceMode: VoiceGuidanceMode = VoiceGuidanceMode.VOICEVOX,
+    onVoiceGuidanceModeChange: (VoiceGuidanceMode) -> Unit = {},
     hasLocationPermission: Boolean,
     onManageData: () -> Unit,
     onLicense: () -> Unit,
@@ -578,6 +581,39 @@ fun SettingsPanelSheet(
             Text("ナビ", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             SettingSwitch("自動リルート", autoReroute, onAutoReroute)
             SettingSwitch("ヘディングアップ", headingUp, onHeadingUp)
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("音声案内 (四国めたん)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                VoiceGuidanceMode.entries.forEach { mode ->
+                    val isSelected = mode == voiceGuidanceMode
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onVoiceGuidanceModeChange(mode) },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                when (mode) {
+                                    VoiceGuidanceMode.VOICEVOX -> "めたん"
+                                    VoiceGuidanceMode.OFF -> "なし"
+                                },
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text("地図レイヤー (オフライン・航空写真なし)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             layerLabels.forEachIndexed { index, label ->

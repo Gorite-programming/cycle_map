@@ -13,12 +13,11 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
+import com.gorite.cyclemap.R
 import com.gorite.cyclemap.routing.HsaMode
-import com.gorite.cyclemap.speech.AndroidTextToSpeechEngine
 import com.gorite.cyclemap.speech.ShikokuMetanAudioEngine
-import com.gorite.cyclemap.speech.VoiceEngineType
+import com.gorite.cyclemap.speech.VoicePhraseCatalog
 import com.gorite.cyclemap.speech.VoiceTestController
-import com.gorite.cyclemap.speech.VoiceTestPhrase
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -80,32 +79,14 @@ fun DeveloperOptionsScreen(
     var goalLatitude by remember { mutableStateOf("34.1700") }
     var goalLongitude by remember { mutableStateOf("132.2200") }
 
-    var selectedVoiceEngine by remember { mutableStateOf(VoiceEngineType.VOICEVOX_METAN) }
-    var ttsReady by remember { mutableStateOf(false) }
     var lastSpokenText by remember { mutableStateOf<String?>(null) }
-    var ttsEngine by remember { mutableStateOf<AndroidTextToSpeechEngine?>(null) }
     val metanEngine = remember(context) { ShikokuMetanAudioEngine(context) }
+    val voiceController = remember(metanEngine) { VoiceTestController(metanEngine) }
 
     DisposableEffect(context) {
-        val engine = AndroidTextToSpeechEngine(context) { ready ->
-            ttsReady = ready
-        }
-        ttsEngine = engine
         onDispose {
-            engine.shutdown()
             metanEngine.shutdown()
-            ttsEngine = null
         }
-    }
-
-    val activeEngine = remember(selectedVoiceEngine, ttsEngine, metanEngine) {
-        when (selectedVoiceEngine) {
-            VoiceEngineType.VOICEVOX_METAN -> metanEngine
-            VoiceEngineType.SYSTEM_TTS -> ttsEngine ?: metanEngine
-        }
-    }
-    val voiceController = remember(activeEngine) {
-        VoiceTestController(activeEngine)
     }
 
     Dialog(
@@ -156,7 +137,7 @@ fun DeveloperOptionsScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                val isEngineReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
+                                val isEngineReady = true
                                 Text(
                                     if (isEngineReady) "● 準備完了 (オフライン)" else "○ 初期化中…",
                                     style = MaterialTheme.typography.labelSmall,
@@ -166,51 +147,83 @@ fun DeveloperOptionsScreen(
                             }
 
                             // 音声エンジン切替タブ
-                            ScrollableTabRow(
-                                selectedTabIndex = selectedVoiceEngine.ordinal,
-                                edgePadding = 0.dp,
-                            ) {
-                                VoiceEngineType.entries.forEach { engineType ->
-                                    Tab(
-                                        selected = selectedVoiceEngine == engineType,
-                                        onClick = {
-                                            selectedVoiceEngine = engineType
-                                            voiceController.stop()
-                                            lastSpokenText = null
-                                        },
-                                        text = { Text(engineType.label) },
-                                    )
-                                }
-                            }
-
                             Text(
-                                if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) {
-                                    "VOICEVOX「四国めたん（ノーマル）」の音声です。完全オフライン・遅延ゼロ・超低負荷で自然に発声します。"
-                                } else {
-                                    "Android標準の音声合成エンジン（Google TTS）による再生です。"
-                                },
+                                "VOICEVOX「四国めたん（ノーマル）」の事前生成音声 (MP3) です。全143フレーズを完全オフライン・遅延ゼロで再生します。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                             )
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                val isReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
-                                VoiceTestPhrase.entries.forEach { phrase ->
+                            // クイック試聴ボタン (代表的なフレーズ)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
                                     Button(
                                         onClick = {
-                                            val ok = voiceController.playPhrase(phrase)
-                                            if (ok) {
-                                                lastSpokenText = phrase.text
-                                            }
+                                            voiceController.playResId(R.raw.voice_straight, "直進です")
+                                            lastSpokenText = "直進です"
                                         },
-                                        enabled = isReady,
                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                                         modifier = Modifier.weight(1f),
                                     ) {
-                                        Text(phrase.text, fontSize = 13.sp, maxLines = 1, softWrap = false)
+                                        Text("直進", fontSize = 13.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            voiceController.playResId(R.raw.voice_turn_left, "左折です")
+                                            lastSpokenText = "左折です"
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("左折", fontSize = 13.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            voiceController.playResId(R.raw.voice_turn_right, "右折です")
+                                            lastSpokenText = "右折です"
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("右折", fontSize = 13.sp)
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            voiceController.playResId(R.raw.voice_now_t_junction_left, "まもなく、T字路を左折です")
+                                            lastSpokenText = "まもなく、T字路を左折です"
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("まもなくT字路", fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            voiceController.playResId(R.raw.voice_300m_turn_right, "およそ300メートル先、右折です")
+                                            lastSpokenText = "およそ300メートル先、右折です"
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("300m先右折", fontSize = 12.sp, maxLines = 1)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            voiceController.playResId(R.raw.voice_arrived, "目的地に到着しました")
+                                            lastSpokenText = "目的地に到着しました"
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("到着", fontSize = 12.sp, maxLines = 1)
                                     }
                                 }
                             }
@@ -225,13 +238,12 @@ fun DeveloperOptionsScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                val isReady = if (selectedVoiceEngine == VoiceEngineType.VOICEVOX_METAN) true else ttsReady
                                 TextButton(
                                     onClick = {
                                         voiceController.stop()
                                         lastSpokenText = null
                                     },
-                                    enabled = isReady && lastSpokenText != null,
+                                    enabled = lastSpokenText != null,
                                 ) {
                                     Text("停止")
                                 }

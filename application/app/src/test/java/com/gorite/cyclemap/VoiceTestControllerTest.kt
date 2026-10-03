@@ -1,8 +1,8 @@
 package com.gorite.cyclemap
 
-import com.gorite.cyclemap.speech.FakeTextToSpeechEngine
+import com.gorite.cyclemap.speech.FakeVoiceAudioPlayer
+import com.gorite.cyclemap.speech.VoicePhraseCatalog
 import com.gorite.cyclemap.speech.VoiceTestController
-import com.gorite.cyclemap.speech.VoiceTestPhrase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -12,66 +12,71 @@ import org.junit.Test
 class VoiceTestControllerTest {
 
     @Test
-    fun voiceTestPhrases_containRequiredThreePhrases() {
-        assertEquals(3, VoiceTestPhrase.entries.size)
-        assertEquals("直進です", VoiceTestPhrase.STRAIGHT.text)
-        assertEquals("左折です", VoiceTestPhrase.LEFT.text)
-        assertEquals("右折です", VoiceTestPhrase.RIGHT.text)
-    }
+    fun playPhrase_playsResourceWhenPlayerReady() {
+        val fakePlayer = FakeVoiceAudioPlayer(ready = true)
+        val controller = VoiceTestController(fakePlayer)
 
-    @Test
-    fun playPhrase_speaksTextWhenEngineReady() {
-        val fakeEngine = FakeTextToSpeechEngine(ready = true)
-        val controller = VoiceTestController(fakeEngine)
+        val straightEntry = VoicePhraseCatalog.PHRASES["straight_now"]!!
+        val success = controller.playPhrase(straightEntry)
 
-        val success = controller.playPhrase(VoiceTestPhrase.STRAIGHT)
         assertTrue(success)
-        assertEquals("直進です", controller.lastSpokenText)
-        assertEquals(listOf("直進です"), fakeEngine.spokenTexts)
+        assertEquals("まもなく、直進です", controller.lastSpokenText)
+        assertEquals(listOf(straightEntry.rawResId), fakePlayer.playedResIds)
 
-        controller.playPhrase(VoiceTestPhrase.LEFT)
-        assertEquals("左折です", controller.lastSpokenText)
-        assertEquals(listOf("直進です", "左折です"), fakeEngine.spokenTexts)
-
-        controller.playPhrase(VoiceTestPhrase.RIGHT)
-        assertEquals("右折です", controller.lastSpokenText)
-        assertEquals(listOf("直進です", "左折です", "右折です"), fakeEngine.spokenTexts)
+        val leftEntry = VoicePhraseCatalog.PHRASES["turn_left_now"]!!
+        controller.playPhrase(leftEntry)
+        assertEquals("まもなく、左折です", controller.lastSpokenText)
+        assertEquals(listOf(straightEntry.rawResId, leftEntry.rawResId), fakePlayer.playedResIds)
     }
 
     @Test
-    fun playPhrase_failsWhenEngineNotReady() {
-        val fakeEngine = FakeTextToSpeechEngine(ready = false)
-        val controller = VoiceTestController(fakeEngine)
+    fun playResId_playsSpecifiedResourceId() {
+        val fakePlayer = FakeVoiceAudioPlayer(ready = true)
+        val controller = VoiceTestController(fakePlayer)
 
-        val success = controller.playPhrase(VoiceTestPhrase.STRAIGHT)
+        val success = controller.playResId(R.raw.voice_arrived, "目的地に到着しました")
+        assertTrue(success)
+        assertEquals("目的地に到着しました", controller.lastSpokenText)
+        assertEquals(listOf(R.raw.voice_arrived), fakePlayer.playedResIds)
+    }
+
+    @Test
+    fun playPhrase_failsWhenPlayerNotReady() {
+        val fakePlayer = FakeVoiceAudioPlayer(ready = false)
+        val controller = VoiceTestController(fakePlayer)
+
+        val straightEntry = VoicePhraseCatalog.PHRASES["straight_now"]!!
+        val success = controller.playPhrase(straightEntry)
         assertFalse(success)
         assertNull(controller.lastSpokenText)
-        assertTrue(fakeEngine.spokenTexts.isEmpty())
+        assertTrue(fakePlayer.playedResIds.isEmpty())
     }
 
     @Test
-    fun stop_delegatesToEngine() {
-        val fakeEngine = FakeTextToSpeechEngine(ready = true)
-        val controller = VoiceTestController(fakeEngine)
+    fun stop_delegatesToPlayer() {
+        val fakePlayer = FakeVoiceAudioPlayer(ready = true)
+        val controller = VoiceTestController(fakePlayer)
 
         controller.stop()
-        assertTrue(fakeEngine.stopCalled)
+        assertTrue(fakePlayer.stopCalled)
     }
 
     @Test
-    fun setEngine_stopsOldEngineAndUsesNewEngine() {
-        val oldEngine = FakeTextToSpeechEngine(ready = true)
-        val newEngine = FakeTextToSpeechEngine(ready = true)
-        val controller = VoiceTestController(oldEngine)
+    fun setPlayer_stopsOldPlayerAndUsesNewPlayer() {
+        val oldPlayer = FakeVoiceAudioPlayer(ready = true)
+        val newPlayer = FakeVoiceAudioPlayer(ready = true)
+        val controller = VoiceTestController(oldPlayer)
 
-        controller.playPhrase(VoiceTestPhrase.STRAIGHT)
-        assertEquals(listOf("直進です"), oldEngine.spokenTexts)
+        val straightEntry = VoicePhraseCatalog.PHRASES["straight_now"]!!
+        controller.playPhrase(straightEntry)
+        assertEquals(listOf(straightEntry.rawResId), oldPlayer.playedResIds)
 
-        controller.setEngine(newEngine)
-        assertTrue(oldEngine.stopCalled)
+        controller.setPlayer(newPlayer)
+        assertTrue(oldPlayer.stopCalled)
 
-        controller.playPhrase(VoiceTestPhrase.LEFT)
-        assertEquals(listOf("左折です"), newEngine.spokenTexts)
-        assertEquals(listOf("直進です"), oldEngine.spokenTexts)
+        val leftEntry = VoicePhraseCatalog.PHRASES["turn_left_now"]!!
+        controller.playPhrase(leftEntry)
+        assertEquals(listOf(leftEntry.rawResId), newPlayer.playedResIds)
+        assertEquals(listOf(straightEntry.rawResId), oldPlayer.playedResIds)
     }
 }
