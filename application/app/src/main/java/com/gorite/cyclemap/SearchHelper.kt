@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.VisibleForTesting
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -80,10 +83,169 @@ internal data class SearchResult(
 internal enum class SearchCategory(val label: String, val categoryPrefixes: List<String>) {
     ALL("すべて", emptyList()),
     CONVENIENCE("コンビニ", listOf("shop:convenience")),
+    BICYCLE("自転車", listOf("shop:bicycle")),
     STATION("駅・バス停", listOf("railway:station", "public_transport:station", "amenity:bus_station", "highway:bus_stop", "public_transport:stop_position")),
     TOILET("トイレ", listOf("amenity:toilets")),
     FOOD("飲食", listOf("amenity:restaurant", "amenity:cafe", "amenity:fast_food")),
     TOURISM("観光", listOf("tourism:")),
+    BATH("温泉", listOf("amenity:public_bath")),
+}
+
+/**
+ * OSMカテゴリ文字列を直感的な日本語ラベルに変換する。
+ */
+fun formatCategoryLabel(category: String): String {
+    return when {
+        category.startsWith("railway:station") -> "鉄道駅"
+        category.startsWith("public_transport:station") -> "駅・ターミナル"
+        category.startsWith("highway:bus_stop") -> "バス停"
+        category.startsWith("amenity:bus") -> "バスターミナル"
+        category.startsWith("public_transport:stop_position") -> "停留所"
+        category.startsWith("shop:convenience") -> "コンビニ"
+        category.startsWith("shop:supermarket") -> "スーパー"
+        category.startsWith("shop:bicycle") -> "自転車店"
+        category.startsWith("shop:bakery") -> "パン屋"
+        category.startsWith("amenity:public_bath") -> "温泉・銭湯"
+        category.startsWith("amenity:toilets") -> "トイレ"
+        category.startsWith("amenity:restaurant") -> "飲食店"
+        category.startsWith("amenity:cafe") -> "カフェ"
+        category.startsWith("amenity:fast_food") -> "ファストフード"
+        category.startsWith("tourism:attraction") -> "観光名所"
+        category.startsWith("tourism:viewpoint") -> "展望台"
+        category.startsWith("tourism:museum") -> "博物館・美術館"
+        category.startsWith("tourism:") -> "観光"
+        category.startsWith("amenity:parking") -> "駐車場"
+        category.startsWith("amenity:hospital") -> "総合病院"
+        category.startsWith("amenity:clinic") || category.startsWith("amenity:doctors") -> "クリニック"
+        category.startsWith("amenity:dentist") -> "歯科医院"
+        category.startsWith("amenity:fuel") -> "ガソリンスタンド"
+        category.startsWith("leisure:park") -> "公園"
+        category.startsWith("amenity:drinking_water") -> "給水スポット"
+        category.startsWith("amenity:post_office") -> "郵便局"
+        category.startsWith("amenity:bank") || category.startsWith("amenity:atm") -> "銀行・ATM"
+        category.startsWith("amenity:school") -> "学校"
+        category.startsWith("amenity:university") || category.startsWith("amenity:college") -> "大学・高専"
+        category.startsWith("amenity:library") -> "図書館"
+        category.startsWith("amenity:police") -> "警察・交番"
+        category.startsWith("amenity:fire_station") -> "消防署"
+        category.startsWith("place:city") || category.startsWith("place:town") -> "市区町村"
+        else -> category
+    }
+}
+
+/**
+ * 「〜駅」「〜えき」「〜eki」検索クエリからベース駅名（例: "広島駅" → "広島"）を抽出する。
+ */
+@VisibleForTesting
+internal fun extractStationQuery(query: String): String? {
+    val trimmed = query.trim()
+    return when {
+        trimmed.endsWith("駅") && trimmed.length > 1 -> trimmed.removeSuffix("駅").trim()
+        trimmed.endsWith("えき") && trimmed.length > 2 -> trimmed.removeSuffix("えき").trim()
+        trimmed.lowercase().endsWith("eki") && trimmed.length > 3 -> trimmed.dropLast(3).trim()
+        else -> null
+    }
+}
+
+/**
+ * カテゴリの優先度ランク（数値が小さいほど高優先度）。
+ */
+@VisibleForTesting
+internal fun categoryPriority(category: String): Int {
+    return when {
+        category.startsWith("railway:station") ||
+            category.startsWith("public_transport:station") -> 1 // 鉄道駅・ターミナル
+        category.startsWith("place:") -> 2 // 自治体・地名
+        category.startsWith("tourism:") ||
+            category.startsWith("shop:") ||
+            category.startsWith("amenity:restaurant") ||
+            category.startsWith("amenity:cafe") ||
+            category.startsWith("amenity:fast_food") ||
+            category.startsWith("amenity:hospital") ||
+            category.startsWith("amenity:clinic") -> 3 // 施設・店舗
+        category.startsWith("amenity:toilets") ||
+            category.startsWith("amenity:drinking_water") ||
+            category.startsWith("leisure:park") -> 4 // トイレ・給水・公園
+        category.startsWith("highway:bus_stop") ||
+            category.startsWith("amenity:bus") ||
+            category.startsWith("public_transport:stop_position") -> 5 // バス停
+        else -> 4
+    }
+}
+
+/**
+ * 同一名称で近接（デフォルト300m以内）するバス停を代表1件にクラスタリング（集約）する。
+ */
+@VisibleForTesting
+internal fun clusterBusStops(
+    items: List<SearchResult>,
+    clusterRadiusM: Double = 300.0,
+): List<SearchResult> {
+    val isBusStop = { r: SearchResult ->
+        r.category.startsWith("highway:bus_stop") ||
+            r.category.startsWith("amenity:bus") ||
+            r.category.startsWith("public_transport:stop_position")
+    }
+
+    val nonBusStops = mutableListOf<SearchResult>()
+    val busStops = mutableListOf<SearchResult>()
+
+    for (item in items) {
+        if (isBusStop(item)) {
+            busStops.add(item)
+        } else {
+            nonBusStops.add(item)
+        }
+    }
+
+    val clusteredBusStops = mutableListOf<SearchResult>()
+    for (bus in busStops) {
+        val existing = clusteredBusStops.firstOrNull {
+            it.name == bus.name && haversineMeters(it.latitude, it.longitude, bus.latitude, bus.longitude) <= clusterRadiusM
+        }
+        if (existing == null) {
+            clusteredBusStops.add(bus)
+        }
+    }
+
+    return nonBusStops + clusteredBusStops
+}
+
+/**
+ * 検索クエリとの一致度、カテゴリ優先度、距離を総合してソートする。
+ */
+@VisibleForTesting
+internal fun rankSearchResults(
+    items: List<SearchResult>,
+    query: String,
+    userLat: Double?,
+    userLon: Double?,
+): List<SearchResult> {
+    val trimmed = query.trim()
+    val stationBase = extractStationQuery(trimmed)
+
+    return items.sortedWith { a, b ->
+        // 1. クエリ完全一致 または 駅名一致（「広島駅」検索で駅名「広島」の鉄道駅）を最優先
+        val aExactMatch = a.name.equals(trimmed, ignoreCase = true) ||
+            (stationBase != null && a.name.equals(stationBase, ignoreCase = true) && a.category.startsWith("railway:station"))
+        val bExactMatch = b.name.equals(trimmed, ignoreCase = true) ||
+            (stationBase != null && b.name.equals(stationBase, ignoreCase = true) && b.category.startsWith("railway:station"))
+        if (aExactMatch != bExactMatch) {
+            return@sortedWith if (aExactMatch) -1 else 1
+        }
+
+        // 2. カテゴリ優先度 (鉄道駅=1 > 観光・店舗=3 > バス停=5)
+        val aCat = categoryPriority(a.category)
+        val bCat = categoryPriority(b.category)
+        if (aCat != bCat) {
+            return@sortedWith aCat.compareTo(bCat)
+        }
+
+        // 3. 距離（近い順）
+        val aDist = a.distanceMeters ?: Double.MAX_VALUE
+        val bDist = b.distanceMeters ?: Double.MAX_VALUE
+        aDist.compareTo(bDist)
+    }
 }
 
 private val placesHasSearchTextCache = ConcurrentHashMap<String, Boolean>()
@@ -277,6 +439,54 @@ internal fun searchPlaces(
                     }
                 }
             }
+
+            // 「〜駅」検索時、OSM上で「広島」のように駅名のみで登録されている鉄道駅を救済
+            val stationBase = extractStationQuery(trimmed)
+            if (stationBase != null) {
+                val stationWhereFts = "AND (p.category LIKE 'railway:station%' OR p.category LIKE 'public_transport:station%')"
+                val stationWherePlain = "AND (category LIKE 'railway:station%' OR category LIKE 'public_transport:station%')"
+                if (ftsSupported) {
+                    try {
+                        val stationFtsQuery = buildFtsQuery(stationBase)
+                        db.rawQuery(
+                            """
+                            SELECT p.name, p.category, p.lat, p.lon
+                            FROM places_fts f
+                            JOIN places p ON p.id = f.rowid
+                            WHERE places_fts MATCH ? $stationWhereFts
+                            $orderBy
+                            LIMIT 10
+                            """.trimIndent(),
+                            (listOf(stationFtsQuery) + orderArgs).toTypedArray(),
+                        ).use { cursor ->
+                            while (cursor.moveToNext()) {
+                                val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                                results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                            }
+                        }
+                    } catch (e: SQLiteException) {
+                        Log.w("CycleMap", "Station FTS query failed: ${e.message}")
+                    }
+                }
+                val hasSearchText = hasSearchTextColumn(db)
+                val targetColumn = if (hasSearchText) "search_text" else "name"
+                val (stTextWhereClause, stTextArgs) = buildLikeTextConditions(stationBase, targetColumn)
+                db.rawQuery(
+                    """
+                    SELECT name, category, lat, lon
+                    FROM places
+                    WHERE ($stTextWhereClause) $stationWherePlain
+                    $orderBy
+                    LIMIT 10
+                    """.trimIndent(),
+                    (stTextArgs + orderArgs).toTypedArray(),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val r = SearchResult(cursor.getString(0), cursor.getString(1), cursor.getDouble(2), cursor.getDouble(3))
+                        results["${r.name}:${r.latitude}:${r.longitude}"] = r
+                    }
+                }
+            }
         } else if (category != SearchCategory.ALL && category.categoryPrefixes.isNotEmpty()) {
             // クエリ未入力でカテゴリ選択中 → 近傍カテゴリ一覧を表示。
             // 遠方行を拾わないよう現在地bboxで事前絞りする (逆ジオコーディングと同型の BETWEEN 方式)。
@@ -312,7 +522,7 @@ internal fun searchPlaces(
         }
     }
 
-    // 距離計算と近い順ソート
+    // 距離計算
     val withDistance = results.values.map { r ->
         if (userLat != null && userLon != null) {
             val dist = haversineMeters(userLat, userLon, r.latitude, r.longitude)
@@ -321,11 +531,13 @@ internal fun searchPlaces(
             r
         }
     }
-    return if (userLat != null && userLon != null) {
-        withDistance.sortedBy { it.distanceMeters ?: Double.MAX_VALUE }
-    } else {
-        withDistance
-    }
+
+    // バス停クラスタリング（同名・300m以内を代表1件に集約）
+    val clustered = clusterBusStops(withDistance)
+
+    // クエリ一致度・カテゴリ優先度・距離によるランキング
+    val ranked = rankSearchResults(clustered, query, userLat, userLon)
+    return ranked.take(limit)
 }
 
 /**
@@ -362,7 +574,9 @@ internal fun searchNearbyPlaces(
                 category LIKE 'amenity:parking%' OR category LIKE 'amenity:hospital%' OR
                 category LIKE 'amenity:clinic%' OR category LIKE 'amenity:doctors%' OR
                 category LIKE 'amenity:dentist%' OR category LIKE 'amenity:fuel%' OR
-                category LIKE 'leisure:park%' OR category LIKE 'amenity:drinking_water%'
+                category LIKE 'leisure:park%' OR category LIKE 'amenity:drinking_water%' OR
+                category LIKE 'shop:bicycle%' OR category LIKE 'shop:bakery%' OR
+                category LIKE 'amenity:public_bath%'
               )
             $orderNearby
             LIMIT ?
@@ -511,9 +725,19 @@ internal fun DestinationSearchDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            decorFitsSystemWindows = false,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .imePadding(),
         title = { Text("目的地検索") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth().height(480.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 280.dp, max = 520.dp),
+            ) {
                 // FTS5非対応時の案内バナー（セッション中1回のみ）
                 if (showFts5Notice) {
                     Card(
@@ -645,7 +869,7 @@ internal fun DestinationSearchDialog(
                         }
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
                         items(results) { result ->
                         Surface(
                             modifier = Modifier
@@ -663,7 +887,7 @@ internal fun DestinationSearchDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        result.category,
+                                        formatCategoryLabel(result.category),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.weight(1f),
