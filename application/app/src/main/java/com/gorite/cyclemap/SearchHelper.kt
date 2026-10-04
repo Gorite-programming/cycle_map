@@ -355,13 +355,14 @@ internal fun searchNearbyPlaces(
               AND lon BETWEEN ? AND ?
               AND (
                 category LIKE 'shop:convenience%' OR category LIKE 'amenity:toilets%' OR
+                category LIKE 'railway:station%' OR category LIKE 'public_transport%' OR
+                category LIKE 'amenity:bus%' OR category LIKE 'highway:bus_stop%' OR
                 category LIKE 'amenity:restaurant%' OR category LIKE 'amenity:cafe%' OR
-                category LIKE 'amenity:fast_food%' OR category LIKE 'railway:station%' OR
-                category LIKE 'tourism:%' OR category LIKE 'amenity:parking%' OR
-                category LIKE 'amenity:hospital%' OR category LIKE 'amenity:clinic%' OR
-                category LIKE 'amenity:doctors%' OR
-                category LIKE 'amenity:fuel%' OR category LIKE 'leisure:park%' OR
-                category LIKE 'amenity:drinking_water%'
+                category LIKE 'amenity:fast_food%' OR category LIKE 'tourism:%' OR
+                category LIKE 'amenity:parking%' OR category LIKE 'amenity:hospital%' OR
+                category LIKE 'amenity:clinic%' OR category LIKE 'amenity:doctors%' OR
+                category LIKE 'amenity:dentist%' OR category LIKE 'amenity:fuel%' OR
+                category LIKE 'leisure:park%' OR category LIKE 'amenity:drinking_water%'
               )
             $orderNearby
             LIMIT ?
