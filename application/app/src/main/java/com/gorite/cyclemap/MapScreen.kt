@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Paint
+import android.graphics.Point
+import android.graphics.Rect
 import android.os.Debug
 import android.os.SystemClock
 import android.util.Log
@@ -207,17 +209,16 @@ private data class RouteSummary(val distanceMeters: Double, val stepCount: Int)
 
 private const val NAVIGATION_ZOOM = 16.0
 
-// 回転式ナビ矢印の調整値 (端末コンパスは使わない。GPS bearing + 連続fixの移動方向のみ)
-// osmdroid Markerは非flat時に画面上で -(mapOrientation + rotation) だけ回転して
-// 描画される (6.1.20 の Marker.draw バイトコードで確認)。画面上で進行方向 bearing
-// (北=0°) を指すには rotation = -bearing - 2 * mapOrientation とする。
-// north-up (orientation=0): rotation=-bearing / heading-up (orientation=-heading): 逆回転を相殺。
-private const val NAV_ARROW_MIN_SPEED_MPS = 2.0f
+// 回転式ナビ矢印の調整値
+// osmdroid Marker は isFlat = true のとき、MapView.dispatchDraw の Canvas 回転に乗るため、
+// 地図上の真北に対して時計回りに bearingDeg 度向けるには marker.rotation = -bearingDeg とする。
+// これにより、ノースアップでもコンパス動的追従 (ヘディングアップ) でも、道路・進行方向に完全に一致する。
+private const val NAV_ARROW_MIN_SPEED_MPS = 1.0f
 private const val NAV_ARROW_BEARING_MAX_AGE_MS = 5_000L
 private const val NAV_ARROW_LOW_ACCURACY_M = 50f
 private const val NAV_ARROW_DIM_ALPHA = 0.45f
 // 連続fixから移動方向を推定する際の条件。GPS誤差に埋もれる微動はノイズとして捨てる。
-private const val NAV_COURSE_MIN_DIST_M = 8.0
+private const val NAV_COURSE_MIN_DIST_M = 5.0
 private const val NAV_COURSE_MAX_DT_MS = 10_000L
 
 /**
@@ -229,6 +230,7 @@ private class NavArrowCache {
     var courseDeg: Float = Float.NaN
     var courseElapsedMs: Long = 0L
     var courseSpeedMps: Float = Float.NaN
+    var lastKnownBearingDeg: Float = Float.NaN
     private var baseLat = Double.NaN
     private var baseLon = Double.NaN
     private var baseElapsedMs: Long = 0L
@@ -382,12 +384,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     val navDotDrawable = remember(context) {
         ContextCompat.getDrawable(context, R.drawable.ic_location_dot)
     }
-    // 画面上の矢印向きは常にGPS進行方向。端末コンパス(heading)は地図回転にのみ使い、
-    // 矢印の向きには使わない。方位源はハードbearing優先、無ければ連続fixの推定コース。
-    // north-up/heading-up共通: rotation=-bearing-2*mapOrientation。
+    // ナビ矢印の更新 (位置更新・コンパス回転アニメーション・方角変更から呼び出される)。
+    // isFlat = true によりマーカーは地図上に平らに描画され、Canvas回転と同期する。
+    // 方位源は ハードGPS bearing ＞ 推定コース ＞ コンパス動的時(端末heading) ＞ 直前有効進行方向。
     val updateNavArrow: () -> Unit = arrowUpdate@{
         val view = mapView ?: return@arrowUpdate
         val marker = locationMarker ?: return@arrowUpdate
+        if (!marker.isFlat) marker.isFlat = true
         val location = currentLocation
         val nowMs = SystemClock.elapsedRealtime()
         val fixAgeMs = nowMs - navArrowCache.lastFixElapsedMs
@@ -401,13 +404,29 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             navArrowCache.courseSpeedMps.isFinite() &&
             navArrowCache.courseSpeedMps >= NAV_ARROW_MIN_SPEED_MPS
         val bearingDeg: Float? = when {
-            hwBearingOk -> location!!.bearing
-            courseOk -> navArrowCache.courseDeg
+            hwBearingOk -> {
+                val b = location!!.bearing
+                navArrowCache.lastKnownBearingDeg = b
+                b
+            }
+            courseOk -> {
+                val b = navArrowCache.courseDeg
+                navArrowCache.lastKnownBearingDeg = b
+                b
+            }
+            isHeadingUp && headingDegrees.isFinite() -> {
+                headingDegrees
+            }
+            navArrowCache.lastKnownBearingDeg.isFinite() -> {
+                navArrowCache.lastKnownBearingDeg
+            }
+            headingDegrees.isFinite() && headingDegrees != 0f -> {
+                headingDegrees
+            }
             else -> null
         }
         if (bearingDeg != null) {
-            val orientation = view.mapOrientation
-            var rotation = -bearingDeg - 2f * orientation
+            var rotation = -bearingDeg
             rotation = ((rotation + 540f) % 360f) - 180f
             marker.rotation = rotation
             if (marker.icon !== navArrowDrawable) marker.icon = navArrowDrawable
@@ -1583,6 +1602,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             // 初期はドットのみ。矢印への切替は updateNavArrow が行う。
                             icon = navDotDrawable
                             setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            isFlat = true
                         }
                         // Googleマップ風の精度円 (薄青フィルタ+青枠)。現在地ドットの下に重ねる。
                         accuracyCircle = Polygon().apply {
@@ -3274,26 +3294,62 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
         val pois = if (dbFile != null && dbFile.isFile) {
             withContext(Dispatchers.IO) {
-                searchNearbyPlaces(dbFile, center.latitude, center.longitude, radius, limit = limit * 2)
+                // バス停 (highway:bus_stop) の密集で画面が圧迫されるのを防ぎ、駅 (railway:station) を優先
+                val rawList = searchNearbyPlaces(dbFile, center.latitude, center.longitude, radius, limit = limit * 4)
                     .mapNotNull { spot ->
+                        if (spot.category.startsWith("highway:bus_stop") && zoom < 16.5) return@mapNotNull null
                         val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
                         if (cat !in activeCategories) null else spot to cat
                     }
-                    .sortedBy { (spot, _) -> spot.distanceM }
-                    .take(limit)
+                    .sortedWith(
+                        // 駅・重要スポットを最優先し、同一重要度内では距離順
+                        compareByDescending<Pair<NearbySpot, PoiCategory>> { (_, cat) -> cat.important }
+                            .thenBy { (spot, _) -> spot.distanceM }
+                    )
+                rawList
             }
         } else {
             emptyList()
         }
         view.overlays.removeAll { it is Marker && (it.title?.startsWith("POI:") == true) }
-        pois.forEach { (poi, cat) ->
+        val showLabel = zoom >= 15.0
+        val density = context.resources.displayMetrics.density
+        val projection = view.projection
+        val screenBounds = Rect(0, 0, view.width.coerceAtLeast(1080), view.height.coerceAtLeast(1920))
+        val placedRects = ArrayList<Rect>()
+        val point = Point()
+
+        for ((poi, cat) in pois) {
+            if (placedRects.size >= limit) break
+            val geo = GeoPoint(poi.latitude, poi.longitude)
+            projection.toPixels(geo, point)
+
+            // 画面外はスキップ
+            if (!screenBounds.contains(point.x, point.y)) continue
+
+            val visual = googlePoiMarker(context, cat, poi.name, showLabel = showLabel)
+            val w = visual.drawable.intrinsicWidth
+            val h = visual.drawable.intrinsicHeight
+            val left = (point.x - w * visual.anchorU).toInt()
+            val top = (point.y - h * visual.anchorV).toInt()
+            val right = left + w
+            val bottom = top + h
+            // Googleマップ風の適度な余白 (マージン) を持った衝突判定矩形
+            val margin = (5f * density).toInt()
+            val poiRect = Rect(left - margin, top - margin, right + margin, bottom + margin)
+
+            // 画面空間衝突判定 (Screen-Space Collision Detection): 既に配置されたPOIと重なる場合はスキップ
+            val collides = placedRects.any { Rect.intersects(it, poiRect) }
+            if (collides) continue
+
+            placedRects.add(poiRect)
             view.overlays.add(
                 Marker(view).apply {
-                    position = GeoPoint(poi.latitude, poi.longitude)
+                    position = geo
                     title = "POI:${poi.name}"
                     snippet = cat.label
-                    icon = poiMarkerDrawable(context, cat)
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    icon = visual.drawable
+                    setAnchor(visual.anchorU, visual.anchorV)
                 },
             )
         }
