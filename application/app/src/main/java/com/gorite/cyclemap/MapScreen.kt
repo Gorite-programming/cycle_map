@@ -298,8 +298,13 @@ private class RouteCalculationJob {    private val cancelled = AtomicBoolean(fal
     fun isCancelled(): Boolean = cancelled.get() || Thread.currentThread().isInterrupted
 }
 
-/** グラフ切替完了後に再実行するための routing 要求 (graph選択とは独立に保持)。 */
-private data class RouteRequest(val start: GeoPoint, val goal: GeoPoint, val isReroute: Boolean)
+private data class RouteRequest(
+    val start: GeoPoint,
+    val goal: GeoPoint,
+    val isReroute: Boolean,
+    val waypoints: List<GeoPoint>?,
+    val preference: RoutePreference?,
+)
 
 // ---------------------------------------------------------------------------
 // MapScreen Composable
@@ -583,7 +588,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     )
                 }
                 if (loadedGraphName != selection.fileName || graph == null) {
-                    pendingRouteRef.set(RouteRequest(start, goal, isReroute))
+                    pendingRouteRef.set(RouteRequest(start, goal, isReroute, waypointsOverride, preferenceOverride))
                     if (!isSwitchingGraph) switchRef.get()?.invoke(selection)
                     isCalculatingRoute = false
                     isRerouting = false
@@ -914,7 +919,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         "nodes=${loaded.first.nodeCount} edges=${loaded.first.edgeCount}",
                 )
                 pendingRouteRef.getAndSet(null)?.let { req ->
-                    runRouteCalculation(req.start, req.goal, req.isReroute, null, null)
+                    runRouteCalculation(req.start, req.goal, req.isReroute, req.waypoints, req.preference)
                 }
             } catch (t: Throwable) {
                 pendingRouteRef.set(null)
