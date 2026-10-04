@@ -317,12 +317,15 @@ enum class PoiCategory(
     FUEL("ガソリン", R.drawable.ic_lucide_fuel, "#F9AB00", listOf("amenity:fuel"), false),
     PARK("公園", R.drawable.ic_lucide_trees, "#34A853", listOf("leisure:park"), false),
     WATER("給水", R.drawable.ic_lucide_droplets, "#00ACC1", listOf("amenity:drinking_water"), false),
+    BICYCLE("自転車店", R.drawable.ic_lucide_wrench, "#0288D1", listOf("shop:bicycle"), true),
+    BAKERY("パン屋", R.drawable.ic_lucide_store, "#E65100", listOf("shop:bakery"), false),
+    BATH("温泉・銭湯", R.drawable.ic_lucide_droplets, "#00897B", listOf("amenity:public_bath"), true),
     ;
 
     companion object {
-        /** サイクリスト向けデフォルト選択 (トイレ・コンビニ・駅・飲食・観光)。 */
+        /** サイクリスト向けデフォルト選択 (トイレ・コンビニ・駅・飲食・観光・自転車店)。 */
         fun defaults(): Set<PoiCategory> =
-            setOf(CONVENIENCE, TOILET, STATION, FOOD, TOURISM)
+            setOf(CONVENIENCE, TOILET, STATION, FOOD, TOURISM, BICYCLE)
 
         /** OSMカテゴリ文字列から最も近い分類を返す。 */
         fun forCategory(category: String): PoiCategory? =
@@ -352,4 +355,6 @@ enum class SpotQuickCategory(
     STATION("駅・バス停", PoiCategory.STATION),
     FOOD("飲食", PoiCategory.FOOD),
     TOURISM("観光・休憩", PoiCategory.TOURISM),
+    BICYCLE("自転車店", PoiCategory.BICYCLE),
+    BATH("温泉", PoiCategory.BATH),
 }

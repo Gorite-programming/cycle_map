@@ -2494,32 +2494,38 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
             }
 
-            // サイクリング下部ナビ (地図/ルート/スポット/記録/設定)
-            CyclingBottomBar(
-                selected = bottomTab,
-                onSelect = { tab ->
-                    bottomTab = tab
-                    when (tab) {
-                        CyclingTab.MAP -> {
-                            showRoutePanel = false
-                            showSpotPanel = false
-                            showRecordPanel = false
-                            showCyclingSettings = false
-                        }
-                        CyclingTab.ROUTE -> showRoutePanel = true
-                        CyclingTab.SPOT -> showSpotPanel = true
-                        CyclingTab.RECORD -> {
-                            showRecordPanel = true
-                            scope.launch(Dispatchers.IO) {
-                                val dataDir = cycleMapDataDir(context)
-                                val loaded = loadGpxHistory(dataDir)
-                                (context as? ComponentActivity)?.runOnUiThread { gpxHistory = loaded }
+            // サイクリング下部ナビ (地図/ルート/スポット/記録/設定) - ナビ案内中は自動格納してフルスクリーンHUD化
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isNavigationActive,
+                enter = Motion.bottomBarEnter(effectiveAnimationEnabled),
+                exit = Motion.bottomBarExit(effectiveAnimationEnabled),
+            ) {
+                CyclingBottomBar(
+                    selected = bottomTab,
+                    onSelect = { tab ->
+                        bottomTab = tab
+                        when (tab) {
+                            CyclingTab.MAP -> {
+                                showRoutePanel = false
+                                showSpotPanel = false
+                                showRecordPanel = false
+                                showCyclingSettings = false
                             }
+                            CyclingTab.ROUTE -> showRoutePanel = true
+                            CyclingTab.SPOT -> showSpotPanel = true
+                            CyclingTab.RECORD -> {
+                                showRecordPanel = true
+                                scope.launch(Dispatchers.IO) {
+                                    val dataDir = cycleMapDataDir(context)
+                                    val loaded = loadGpxHistory(dataDir)
+                                    (context as? ComponentActivity)?.runOnUiThread { gpxHistory = loaded }
+                                }
+                            }
+                            CyclingTab.SETTINGS -> showCyclingSettings = true
                         }
-                        CyclingTab.SETTINGS -> showCyclingSettings = true
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
     }
 
