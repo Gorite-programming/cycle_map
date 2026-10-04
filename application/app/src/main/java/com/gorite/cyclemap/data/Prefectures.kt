@@ -256,9 +256,13 @@ object TileDownloader {
             userAgentValue = "CycleMap/1.0 (Android; cycling navigator; personal use)"
         }
 
-        val baseUrl = when (sourceType) {
-            MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
-            MapSourceType.OSM -> "https://tile.openstreetmap.org"
+        val baseUrl = when (source.name()) {
+            "GSI Relief" -> "https://cyberjapandata.gsi.go.jp/xyz/relief"
+            "OpenStreetMap" -> "https://tile.openstreetmap.org"
+            else -> when (sourceType) {
+                MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
+                MapSourceType.OSM -> "https://tile.openstreetmap.org"
+            }
         }
 
         val jobSet = LinkedHashSet<TileJob>()
@@ -363,9 +367,13 @@ object TileDownloader {
             userAgentValue = context.packageName
         }
 
-        val baseUrl = when (sourceType) {
-            MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
-            MapSourceType.OSM -> "https://tile.openstreetmap.org"
+        val baseUrl = when (source.name()) {
+            "GSI Relief" -> "https://cyberjapandata.gsi.go.jp/xyz/relief"
+            "OpenStreetMap" -> "https://tile.openstreetmap.org"
+            else -> when (sourceType) {
+                MapSourceType.GSI -> "https://cyberjapandata.gsi.go.jp/xyz/std"
+                MapSourceType.OSM -> "https://tile.openstreetmap.org"
+            }
         }
 
         // 低ズーム→高ズーム、各ズーム内は中心out順
