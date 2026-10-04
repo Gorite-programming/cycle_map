@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.delay
 import com.gorite.cyclemap.routing.RoutePreference
 import com.gorite.cyclemap.speech.VoiceGuidanceMode
+import com.gorite.cyclemap.formatCategoryLabel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -416,7 +417,7 @@ fun SpotPanelSheet(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(spot.name, fontWeight = FontWeight.Medium)
                                 Text(
-                                    spot.category,
+                                    formatCategoryLabel(spot.category),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -767,6 +768,19 @@ fun formatHMM(seconds: Double): String {
     if (!seconds.isFinite()) return "--:--"
     val totalMin = (seconds / 60).toInt().coerceAtLeast(0)
     return "${totalMin / 60}:${"%02d".format(totalMin % 60)}"
+}
+
+/** 秒 → 自然な日本語の残り時間表記 (例: "約5分", "約1時間15分")。 */
+fun formatRemainingTime(seconds: Double): String {
+    if (!seconds.isFinite() || seconds < 0) return "--"
+    val totalMin = ((seconds + 30) / 60).toInt().coerceAtLeast(1)
+    val hours = totalMin / 60
+    val mins = totalMin % 60
+    return when {
+        hours > 0 && mins > 0 -> "約${hours}時間${mins}分"
+        hours > 0 -> "約${hours}時間"
+        else -> "約${mins}分"
+    }
 }
 
 /** 上部サーチバー (メニュー + 県名バッジ＋地名 + 検索)。 */
@@ -1242,7 +1256,7 @@ fun RouteInfoCardContent(
                         maxLines = 1,
                     )
                     Text(
-                        "残り ${metrics.remainingS?.let { formatHMM(it) } ?: "--:--"}",
+                        "残り ${metrics.remainingS?.let { formatRemainingTime(it) } ?: "--"}",
                         color = CyclingSubText,
                         fontSize = 12.sp,
                         maxLines = 1,
@@ -1348,7 +1362,7 @@ fun RouteInfoCardContent(
             RouteStatCell(
                 R.drawable.ic_lucide_clock,
                 "残り時間",
-                metrics.remainingS?.let { formatHMM(it) } ?: "--:--",
+                metrics.remainingS?.let { formatRemainingTime(it) } ?: "--",
                 Modifier.weight(1f),
             )
             RouteStatCell(
