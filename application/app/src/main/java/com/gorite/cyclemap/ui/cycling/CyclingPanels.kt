@@ -968,7 +968,7 @@ fun CompassDial(
     )
 }
 
-/** 右側コントロール (レイヤ / 現在地 / + / − の一体ピル)。 */
+/** 右側コントロール (レイヤ / 現在地 / + / − の一体ピル)。横画面時は horizontal = true で横並びに切り替え可能。 */
 @Composable
 fun DarkControlStack(
     layerLabel: String,
@@ -980,6 +980,7 @@ fun DarkControlStack(
     modifier: Modifier = Modifier,
     canZoomIn: Boolean = true,
     canZoomOut: Boolean = true,
+    horizontal: Boolean = false,
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -987,24 +988,27 @@ fun DarkControlStack(
         shadowElevation = 6.dp,
         modifier = modifier,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        val buttons = @Composable {
             DarkStackButton(
                 iconRes = R.drawable.ic_lucide_layers,
                 description = "地図レイヤー切替",
                 sublabel = layerLabel,
                 onClick = onLayerClick,
+                showDivider = !horizontal,
             )
             DarkStackButton(
                 iconRes = R.drawable.ic_lucide_locate_fixed,
                 description = "現在地へ移動",
                 onClick = onTargetClick,
                 tint = if (following) Color.White else Color(0xFF64B5F6),
+                showDivider = !horizontal,
             )
             DarkStackRepeatButton(
                 iconRes = R.drawable.ic_ms_add,
                 description = "ズームイン",
                 onAction = onZoomIn,
                 enabled = canZoomIn,
+                showDivider = !horizontal,
             )
             DarkStackRepeatButton(
                 iconRes = R.drawable.ic_ms_remove,
@@ -1013,6 +1017,15 @@ fun DarkControlStack(
                 enabled = canZoomOut,
                 showDivider = false,
             )
+        }
+        if (horizontal) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                buttons()
+            }
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                buttons()
+            }
         }
     }
 }

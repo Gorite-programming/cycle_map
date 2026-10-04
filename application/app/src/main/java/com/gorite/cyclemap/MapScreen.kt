@@ -78,6 +78,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -1725,91 +1726,190 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 )
             }
 
-            // Right-Side Controls: Compass + Layers/Target/Zoom stack (dark)
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
-                    .zIndex(2f),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                CompassDial(
-                    headingDegrees = { headingDegrees },
-                    headingUp = isHeadingUp,
-                    onClick = {
-                        isHeadingUp = !isHeadingUp
-                        if (!isHeadingUp) {
-                            mapView?.setMapOrientation(0f)
-                            updateNavArrow()
-                        }
-                    },
-                )
-                val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
-                val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
-                DarkControlStack(
-                    layerLabel = when (selectedLayer) {
-                        MapLayer.GSI -> "標準"
-                        MapLayer.OSM -> "自転車"
-                        MapLayer.TERRAIN -> "地形"
-                    },
-                    following = followLocation,
-                    canZoomIn = canZoomIn,
-                    canZoomOut = canZoomOut,
-                    onLayerClick = {
-                        val layers = MapLayer.entries
-                        selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
-                    },
-                    onTargetClick = {
-                        followLocation = true
-                        currentLocation?.let { loc ->
-                            mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                        }
-                    },
-                    onZoomIn = { mapView?.controller?.zoomIn(150L) },
-                    onZoomOut = { mapView?.controller?.zoomOut(150L) },
-                )
+            val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
-                // Area-select (high-zoom download) toggle button (案内中は非表示)
-                if (!isNavigationActive) {
-                    Surface(
-                        shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
-                        color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
-                        shadowElevation = 6.dp,
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .clickable {
-                                    isAreaSelectMode = !isAreaSelectMode
-                                    if (!isAreaSelectMode) {
-                                        // Cancel: clear drag state and any pending bbox
-                                        areaDragState = AreaDragState()
-                                        selectedAreaBounds = null
-                                    }
-                                }
-                                .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
+            // Right-Side Controls: Compass + Layers/Target/Zoom stack (dark)
+            // 横画面時は上部に横並び配置して、下部パネルとの潜り込み・重なりを完全に防止する
+            if (isLandscape) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            end = 12.dp,
+                            top = if (isNavigationActive) 12.dp else 68.dp,
+                        )
+                        .zIndex(2f),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Area-select (high-zoom download) toggle button (案内中は非表示)
+                    if (!isNavigationActive) {
+                        Surface(
+                            shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
+                            color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
+                            shadowElevation = 6.dp,
                         ) {
-                            Box(
-                                modifier = Modifier.size(48.dp),
-                                contentAlignment = Alignment.Center,
+                            Row(
+                                modifier = Modifier
+                                    .clickable {
+                                        isAreaSelectMode = !isAreaSelectMode
+                                        if (!isAreaSelectMode) {
+                                            areaDragState = AreaDragState()
+                                            selectedAreaBounds = null
+                                        }
+                                    }
+                                    .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
                             ) {
-                                Icon(
-                                    painterResource(R.drawable.ic_lucide_square_dashed),
-                                    contentDescription = "エリア選択",
-                                    tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
-                                    modifier = Modifier.size(22.dp),
-                                )
+                                Box(
+                                    modifier = Modifier.size(48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_lucide_square_dashed),
+                                        contentDescription = "エリア選択",
+                                        tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                if (isAreaSelectMode) {
+                                    Text(
+                                        text = "選択中",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiary,
+                                        modifier = Modifier.padding(end = 4.dp),
+                                    )
+                                }
                             }
-                            if (isAreaSelectMode) {
-                                Text(
-                                    text = "選択中",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onTertiary,
-                                    modifier = Modifier.padding(end = 4.dp),
-                                )
+                        }
+                    }
+
+                    CompassDial(
+                        headingDegrees = { headingDegrees },
+                        headingUp = isHeadingUp,
+                        onClick = {
+                            isHeadingUp = !isHeadingUp
+                            if (!isHeadingUp) {
+                                mapView?.setMapOrientation(0f)
+                                updateNavArrow()
+                            }
+                        },
+                    )
+
+                    val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
+                    val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
+                    DarkControlStack(
+                        layerLabel = when (selectedLayer) {
+                            MapLayer.GSI -> "標準"
+                            MapLayer.OSM -> "自転車"
+                            MapLayer.TERRAIN -> "地形"
+                        },
+                        following = followLocation,
+                        canZoomIn = canZoomIn,
+                        canZoomOut = canZoomOut,
+                        horizontal = true,
+                        onLayerClick = {
+                            val layers = MapLayer.entries
+                            selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
+                        },
+                        onTargetClick = {
+                            followLocation = true
+                            currentLocation?.let { loc ->
+                                mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
+                            }
+                        },
+                        onZoomIn = { mapView?.controller?.zoomIn(150L) },
+                        onZoomOut = { mapView?.controller?.zoomOut(150L) },
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp)
+                        .zIndex(2f),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    CompassDial(
+                        headingDegrees = { headingDegrees },
+                        headingUp = isHeadingUp,
+                        onClick = {
+                            isHeadingUp = !isHeadingUp
+                            if (!isHeadingUp) {
+                                mapView?.setMapOrientation(0f)
+                                updateNavArrow()
+                            }
+                        },
+                    )
+                    val canZoomIn = currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
+                    val canZoomOut = currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
+                    DarkControlStack(
+                        layerLabel = when (selectedLayer) {
+                            MapLayer.GSI -> "標準"
+                            MapLayer.OSM -> "自転車"
+                            MapLayer.TERRAIN -> "地形"
+                        },
+                        following = followLocation,
+                        canZoomIn = canZoomIn,
+                        canZoomOut = canZoomOut,
+                        horizontal = false,
+                        onLayerClick = {
+                            val layers = MapLayer.entries
+                            selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
+                        },
+                        onTargetClick = {
+                            followLocation = true
+                            currentLocation?.let { loc ->
+                                mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
+                            }
+                        },
+                        onZoomIn = { mapView?.controller?.zoomIn(150L) },
+                        onZoomOut = { mapView?.controller?.zoomOut(150L) },
+                    )
+
+                    // Area-select (high-zoom download) toggle button (案内中は非表示)
+                    if (!isNavigationActive) {
+                        Surface(
+                            shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
+                            color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
+                            shadowElevation = 6.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .clickable {
+                                        isAreaSelectMode = !isAreaSelectMode
+                                        if (!isAreaSelectMode) {
+                                            areaDragState = AreaDragState()
+                                            selectedAreaBounds = null
+                                        }
+                                    }
+                                    .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_lucide_square_dashed),
+                                        contentDescription = "エリア選択",
+                                        tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                if (isAreaSelectMode) {
+                                    Text(
+                                        text = "選択中",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiary,
+                                        modifier = Modifier.padding(end = 4.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -2163,7 +2263,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = 16.dp, vertical = if (isLandscape) 8.dp else 16.dp),
                 ) {
                     // Graph Switch Indicator
                     AnimatedVisibility(
@@ -2311,7 +2411,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text(
                                     text = "%.1f".format(Locale.US, speedKmh),
-                                    fontSize = 42.sp,
+                                    fontSize = if (isLandscape) 32.sp else 42.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.SansSerif,
                                     color = MaterialTheme.colorScheme.onSurface,
