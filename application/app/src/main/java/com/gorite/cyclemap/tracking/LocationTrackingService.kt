@@ -214,14 +214,19 @@ class LocationTrackingService : Service() {
 
         val oldLocation = previousLocation
         var speed = 0.0
-        if (oldLocation != null) {
-            val elapsedSeconds = (newLocation.time - oldLocation.time) / 1_000.0
+        val timeDiffMs = if (oldLocation != null) newLocation.time - oldLocation.time else 0L
+        val isLostOrStale = oldLocation == null || timeDiffMs > 8_000L || timeDiffMs < 0L
+
+        if (!isLostOrStale && oldLocation != null) {
+            val elapsedSeconds = timeDiffMs / 1_000.0
             val distanceMeters = oldLocation.distanceTo(newLocation).toDouble()
             val calculatedSpeed = if (elapsedSeconds > 0.0) distanceMeters / elapsedSeconds else Double.POSITIVE_INFINITY
             
             val isTooFast = calculatedSpeed > 25.0
-            val isOutOfOrder = elapsedSeconds <= 0.0
-            if (isTooFast || isOutOfOrder) return
+            if (isTooFast && elapsedSeconds < 3.0) {
+                // Short-interval jump is noise; drop it
+                return
+            }
 
             // 1. Calculate raw speed
             val rawSpeed = when {
@@ -244,7 +249,7 @@ class LocationTrackingService : Service() {
             smoothedSpeed = smoothedSpeed * 0.7 + finalRawSpeed * 0.3
             speed = smoothedSpeed
         } else {
-            // First location
+            // First location or recovering from GPS loss / gap
             val rawSpeed = if (newLocation.hasSpeed()) newLocation.speed.toDouble() else 0.0
             smoothedSpeed = if (rawSpeed < 0.5) 0.0 else rawSpeed
             speed = smoothedSpeed

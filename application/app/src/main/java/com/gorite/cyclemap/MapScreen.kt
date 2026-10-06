@@ -56,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -134,6 +135,10 @@ import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.tracking.LocationTrackingService
 import com.gorite.cyclemap.tracking.AppLifecycleState
 import com.gorite.cyclemap.tracking.TrackingStateController
+import com.gorite.cyclemap.data.ElevationRepository
+import com.gorite.cyclemap.data.FavoritesManager
+import com.gorite.cyclemap.data.FavoriteSpot
+import com.gorite.cyclemap.ui.cycling.ElevationSample
 import com.gorite.cyclemap.ui.DeveloperOptionsScreen
 import com.gorite.cyclemap.ui.RoutingBenchmarkRequest
 import com.gorite.cyclemap.ui.cycling.CompassDial
@@ -166,6 +171,8 @@ import com.gorite.cyclemap.ui.cycling.forwardGradeAt
 import com.gorite.cyclemap.ui.cycling.gradeAt
 import com.gorite.cyclemap.ui.cycling.gradeSummary
 import com.gorite.cyclemap.ui.cycling.mockElevationProfile
+import com.gorite.cyclemap.ui.cycling.formatKm
+import androidx.compose.ui.text.style.TextOverflow
 import com.gorite.cyclemap.ui.theme.CycleMapTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -209,11 +216,10 @@ private data class RouteSummary(val distanceMeters: Double, val stepCount: Int)
 
 private const val NAVIGATION_ZOOM = 16.0
 
-// 回転式ナビ矢印の調整値
-// osmdroid Marker は isFlat = true のとき、MapView.dispatchDraw の Canvas 回転に乗るため、
-// 地図上の真北に対して時計回りに bearingDeg 度向けるには marker.rotation = -bearingDeg とする。
-// これにより、ノースアップでもコンパス動的追従 (ヘディングアップ) でも、道路・進行方向に完全に一致する。
-private const val NAV_ARROW_MIN_SPEED_MPS = 1.0f
+// 回転式ナビ矢印・ヘディングアップ方位の調整値
+private const val SPEED_HEADING_THRESHOLD_KMH = 5.0
+private const val SPEED_HEADING_THRESHOLD_MPS = (5.0f / 3.6f) // 5.0 km/h = 1.389 m/s
+private const val NAV_ARROW_MIN_SPEED_MPS = SPEED_HEADING_THRESHOLD_MPS
 private const val NAV_ARROW_BEARING_MAX_AGE_MS = 5_000L
 private const val NAV_ARROW_LOW_ACCURACY_M = 50f
 private const val NAV_ARROW_DIM_ALPHA = 0.45f
@@ -268,8 +274,7 @@ private class NavArrowCache {
 
 // ナビ案内の調整値
 private const val ARRIVAL_RADIUS_METERS = 30.0
-private const val REROUTE_MIN_INTERVAL_MS = 10_000L
-private const val REROUTE_MAX_COUNT = 5
+private const val REROUTE_MIN_INTERVAL_MS = 6_000L
 private const val ROUTE_MAX_EXPANDED_NODES = 4_000_000
 private const val FALLBACK_LATITUDE = 34.1785 // 山口市役所 (GPS不通時の起点)
 private const val FALLBACK_LONGITUDE = 131.4737
@@ -403,6 +408,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             courseAgeMs <= NAV_ARROW_BEARING_MAX_AGE_MS &&
             navArrowCache.courseSpeedMps.isFinite() &&
             navArrowCache.courseSpeedMps >= NAV_ARROW_MIN_SPEED_MPS
+        val isMovingFast = (location != null && location.hasSpeed() && location.speed >= SPEED_HEADING_THRESHOLD_MPS) ||
+            (navArrowCache.courseSpeedMps.isFinite() && navArrowCache.courseSpeedMps >= SPEED_HEADING_THRESHOLD_MPS) ||
+            (speedKmh >= SPEED_HEADING_THRESHOLD_KMH)
+
         val bearingDeg: Float? = when {
             hwBearingOk -> {
                 val b = location!!.bearing
@@ -414,7 +423,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 navArrowCache.lastKnownBearingDeg = b
                 b
             }
+            isMovingFast && navArrowCache.lastKnownBearingDeg.isFinite() -> {
+                // 5km/h以上の移動中は直前の進行方向を最優先し、地磁気コンパスの揺れを排除
+                navArrowCache.lastKnownBearingDeg
+            }
             isHeadingUp && headingDegrees.isFinite() -> {
+                // 停止・微動時はヘディングアップであればコンパス方位
                 headingDegrees
             }
             navArrowCache.lastKnownBearingDeg.isFinite() -> {
@@ -465,6 +479,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     var poiRefreshTick by remember { mutableIntStateOf(0) }
     var currentZoomLevel by remember { mutableDoubleStateOf(15.0) }
     var startMarker by remember { mutableStateOf<Marker?>(null) }
+    var selectedPoiSpot by remember { mutableStateOf<NearbySpot?>(null) }
     var spotCategory by remember { mutableStateOf<SpotQuickCategory?>(null) }
     var spotResults by remember { mutableStateOf<List<NearbySpot>>(emptyList()) }
     var spotLoading by remember { mutableStateOf(false) }
@@ -508,6 +523,24 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     val offRouteDetector = remember { OffRouteDetector() }
     val graphLock = remember { ReentrantReadWriteLock() }
     val routeJobRef = remember { AtomicReference<RouteCalculationJob?>(null) }
+
+    val elevationRepository = remember(context) { ElevationRepository.getInstance(context) }
+    var realElevProfile by remember { mutableStateOf<List<ElevationSample>>(emptyList()) }
+
+    LaunchedEffect(routeSummary, navigationRoute) {
+        val summary = routeSummary
+        if (summary != null && navigationRoute.isNotEmpty()) {
+            val coords = navigationRoute.map { it.latitude to it.longitude }
+            val initial = buildRouteElevationProfile(coords, summary.distanceMeters)
+            realElevProfile = initial
+            val real = elevationRepository.getRouteElevationProfile(coords, summary.distanceMeters)
+            if (real.isNotEmpty()) {
+                realElevProfile = real
+            }
+        } else {
+            realElevProfile = emptyList()
+        }
+    }
 
     // 音声案内ナビゲーター (VOICEVOX四国めたん + Android標準TTSのハイブリッド)
     var voiceGuidanceMode by remember { mutableStateOf(VoiceGuidanceMode.VOICEVOX) }
@@ -1097,6 +1130,18 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 if (location.hasBearing() && location.bearing != 0f) {
                     lastValidBearingDegrees = location.bearing
                 }
+                if (isHeadingUp && (speedKmh >= SPEED_HEADING_THRESHOLD_KMH || (location.hasSpeed() && location.speed >= SPEED_HEADING_THRESHOLD_MPS))) {
+                    val moveBearing = if (location.hasBearing() && location.bearing != 0f) {
+                        location.bearing
+                    } else if (navArrowCache.courseDeg.isFinite()) {
+                        navArrowCache.courseDeg
+                    } else if (lastValidBearingDegrees != 0f) {
+                        lastValidBearingDegrees
+                    } else null
+                    if (moveBearing != null) {
+                        orientationAnimator.rotateTo(moveBearing)
+                    }
+                }
                 isRecording = recording
                 if (recording) gpxPointCount = points
                 if (isNavigationActive && navigationRoute.isNotEmpty()) {
@@ -1141,9 +1186,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         if (offRoute && autoRerouteEnabled) {
                             val now = SystemClock.elapsedRealtime()
                             val dest = destination
-                            if (dest != null && rerouteCount < REROUTE_MAX_COUNT &&
-                                now - lastRerouteElapsedMs >= REROUTE_MIN_INTERVAL_MS
-                            ) {
+                            if (dest != null && now - lastRerouteElapsedMs >= REROUTE_MIN_INTERVAL_MS) {
                                 lastRerouteElapsedMs = now
                                 runRouteCalculation(
                                     GeoPoint(location.latitude, location.longitude),
@@ -1152,9 +1195,6 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                     null,
                                     null,
                                 )
-                            } else if (dest != null && rerouteCount >= REROUTE_MAX_COUNT && !rerouteLimitWarned) {
-                                rerouteLimitWarned = true
-                                warningMessage = "自動リルートの上限に達しました。手動で目的地を再設定してください"
                             }
                         }
                     }
@@ -1249,7 +1289,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     ) { heading ->
         headingDegrees = heading
         if (isHeadingUp) {
-            orientationAnimator.rotateTo(heading)
+            // 5km/h以上の走行中はGPS進行方向に従うため、低速・停止時のみ地磁気コンパスで回転
+            if (speedKmh < SPEED_HEADING_THRESHOLD_KMH) {
+                orientationAnimator.rotateTo(heading)
+            }
         }
     }
 
@@ -1632,7 +1675,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         overlays.add(
                             MapEventsOverlay(
                                 object : MapEventsReceiver {
-                                    override fun singleTapConfirmedHelper(p: GeoPoint): Boolean = false
+                                    override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                                        if (selectedPoiSpot != null) {
+                                            selectedPoiSpot = null
+                                            return true
+                                        }
+                                        return false
+                                    }
 
                                     override fun longPressHelper(p: GeoPoint): Boolean {
                                         if (areaSelectMode) return false
@@ -2325,7 +2374,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
                     // Route Summary Section (When route is active) — 見本準拠ダークカード
                     routeSummary?.let { summary ->
-                        val elevProfile = remember(summary, navigationRoute) {
+                        val elevProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(summary, navigationRoute) {
                             buildRouteElevationProfile(navigationRoute.map { it.latitude to it.longitude }, summary.distanceMeters)
                         }
                         val progressM = navigationProgress?.distanceFromStartMeters
@@ -2514,6 +2563,50 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
             }
 
+            androidx.compose.animation.AnimatedVisibility(
+                visible = selectedPoiSpot != null,
+                enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+            ) {
+                selectedPoiSpot?.let { spot ->
+                    val favManager = remember(context) { FavoritesManager.getInstance(context) }
+                    val isFav = favManager.isFavorite(spot.latitude, spot.longitude)
+                    PoiDetailCard(
+                        spot = spot,
+                        isFavorite = isFav,
+                        onToggleFavorite = {
+                            favManager.toggleFavorite(
+                                FavoriteSpot(
+                                    id = "${spot.name}_${spot.latitude}_${spot.longitude}",
+                                    name = spot.name,
+                                    category = spot.category,
+                                    latitude = spot.latitude,
+                                    longitude = spot.longitude,
+                                ),
+                            )
+                        },
+                        onStartRoute = {
+                            val target = GeoPoint(spot.latitude, spot.longitude)
+                            selectedPoiSpot = null
+                            startRouteToDestination(target)
+                        },
+                        onAddWaypoint = {
+                            val target = GeoPoint(spot.latitude, spot.longitude)
+                            val newWaypoints = waypoints + target
+                            waypoints = newWaypoints
+                            selectedPoiSpot = null
+                            val loc = latestLocation
+                            val start = if (loc != null) GeoPoint(loc.latitude, loc.longitude) else GeoPoint(FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
+                            destination?.let { dest ->
+                                runRouteCalculation(start, dest, false, newWaypoints, null)
+                            }
+                        },
+                        onClose = { selectedPoiSpot = null },
+                        hasActiveRoute = destination != null,
+                    )
+                }
+            }
+
             // サイクリング下部ナビ (地図/ルート/スポット/記録/設定) - ナビ案内中は自動格納してフルスクリーンHUD化
             androidx.compose.animation.AnimatedVisibility(
                 visible = !isNavigationActive,
@@ -2599,8 +2692,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     }
 
     if (showRoutePanel) {
-        val routeProfile = remember(routeSummary) {
-            routeSummary?.let { mockElevationProfile(it.distanceMeters) } ?: emptyList()
+        val routeProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(routeSummary, navigationRoute) {
+            routeSummary?.let {
+                if (navigationRoute.isNotEmpty()) buildRouteElevationProfile(navigationRoute.map { pt -> pt.latitude to pt.longitude }, it.distanceMeters)
+                else mockElevationProfile(it.distanceMeters)
+            } ?: emptyList()
         }
         val routeGradeSummary = remember(routeProfile) {
             routeProfile.takeIf { it.size >= 2 }?.let { gradeSummary(it) }
@@ -3343,15 +3439,26 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             if (collides) continue
 
             placedRects.add(poiRect)
-            view.overlays.add(
-                Marker(view).apply {
-                    position = geo
-                    title = "POI:${poi.name}"
-                    snippet = cat.label
-                    icon = visual.drawable
-                    setAnchor(visual.anchorU, visual.anchorV)
-                },
-            )
+            val marker = Marker(view).apply {
+                position = geo
+                icon = visual.drawable
+                setAnchor(visual.anchorU, visual.anchorV)
+                infoWindow = null // osmdroid 標準吹き出しを完全に無効化
+                setOnMarkerClickListener { _, _ ->
+                    val dist = currentLocation?.let { loc ->
+                        haversineMeters(loc.latitude, loc.longitude, poi.latitude, poi.longitude)
+                    } ?: 0.0
+                    selectedPoiSpot = NearbySpot(
+                        name = poi.name,
+                        category = cat.name.lowercase(),
+                        latitude = poi.latitude,
+                        longitude = poi.longitude,
+                        distanceM = dist,
+                    )
+                    true
+                }
+            }
+            view.overlays.add(marker)
         }
         view.invalidate()
     }
@@ -3552,3 +3659,136 @@ internal fun saveRoutingBenchmarkLog(
 internal fun Context.hasLocationPermission(): Boolean =
     ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+@Composable
+private fun PoiDetailCard(
+    spot: NearbySpot,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    onStartRoute: () -> Unit,
+    onAddWaypoint: () -> Unit,
+    onClose: () -> Unit,
+    hasActiveRoute: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val cat = PoiCategory.forCategory(spot.category)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(android.graphics.Color.parseColor(cat?.colorHex ?: "#1A73E8")),
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painterResource(cat?.iconRes ?: R.drawable.ic_lucide_map_pin),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = spot.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = formatCategoryLabel(spot.category),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (spot.distanceM > 0.0) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "・ " + formatKm(spot.distanceM),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+                IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        painterResource(R.drawable.ic_lucide_x),
+                        contentDescription = "閉じる",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = onStartRoute,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_lucide_navigation),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("ここへ行く", fontWeight = FontWeight.Bold)
+                }
+                if (hasActiveRoute) {
+                    OutlinedButton(
+                        onClick = onAddWaypoint,
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("経由地")
+                    }
+                }
+                OutlinedButton(
+                    onClick = onToggleFavorite,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(
+                        painterResource(if (isFavorite) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
+                        contentDescription = null,
+                        tint = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isFavorite) "登録済み" else "お気に入り")
+                }
+            }
+        }
+    }
+}

@@ -27,6 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.graphicsLayer
 import com.gorite.cyclemap.ui.theme.Motion
 import com.gorite.cyclemap.ui.theme.LocalAnimationEnabled
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.IconButton
+import com.gorite.cyclemap.data.FavoritesManager
+import com.gorite.cyclemap.data.FavoriteSpot
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
@@ -190,7 +195,7 @@ private fun MiniStat(label: String, value: String) {
     }
 }
 
-private fun formatKm(meters: Double): String =
+internal fun formatKm(meters: Double): String =
     if (meters >= 1000.0) "%.2fkm".format(java.util.Locale.US, meters / 1000.0)
     else "${meters.toInt()}m"
 
@@ -359,6 +364,11 @@ fun SpotPanelSheet(
     onSpotClick: (NearbySpot) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val favoritesManager = remember(context) { FavoritesManager.getInstance(context) }
+    val favorites by favoritesManager.favorites.collectAsState()
+    var showFavoritesOnly by remember { mutableStateOf(false) }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
@@ -367,66 +377,184 @@ fun SpotPanelSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("スポット", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    if (showFavoritesOnly) "お気に入りスポット" else "周辺スポット",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                TextButton(onClick = { showFavoritesOnly = !showFavoritesOnly }) {
+                    Icon(
+                        painter = painterResource(if (showFavoritesOnly) R.drawable.ic_lucide_store else R.drawable.ic_star_filled),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (showFavoritesOnly) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color(0xFFFFB300),
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (showFavoritesOnly) "周辺検索へ" else "★ お気に入り (${favorites.size})")
+                }
+            }
             Text(
-                "トイレ・コンビニ・休憩場所をオフラインDBから検索",
+                if (showFavoritesOnly) "登録したお気に入りの場所一覧 (タップで目的地に設定)"
+                else "トイレ・コンビニ・休憩場所をオフラインDBから検索",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SpotQuickCategory.entries.take(3).forEach { cat ->
-                    SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+            if (!showFavoritesOnly) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SpotQuickCategory.entries.take(3).forEach { cat ->
+                        SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+                    }
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SpotQuickCategory.entries.drop(3).forEach { cat ->
-                    SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SpotQuickCategory.entries.drop(3).forEach { cat ->
+                        SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+                    }
                 }
             }
             HorizontalDivider()
-            when {
-                isLoading -> Text("検索中…", style = MaterialTheme.typography.bodyMedium)
-                message != null -> Text(message, style = MaterialTheme.typography.bodyMedium)
-                else -> LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                    items(spots, key = { "${it.name}:${it.latitude}:${it.longitude}" }) { spot ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { onSpotClick(spot) }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                painterResource(
-                                    PoiCategory.forCategory(spot.category)?.iconRes
-                                        ?: R.drawable.ic_lucide_map_pin,
-                                ),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(spot.name, fontWeight = FontWeight.Medium)
-                                Text(
-                                    formatCategoryLabel(spot.category),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (showFavoritesOnly) {
+                if (favorites.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "お気に入りはまだ登録されていません。\nスポット一覧の★アイコンから登録できます。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 340.dp)) {
+                        items(favorites, key = { it.id }) { fav ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        onSpotClick(
+                                            NearbySpot(
+                                                name = fav.name,
+                                                category = fav.category,
+                                                latitude = fav.latitude,
+                                                longitude = fav.longitude,
+                                                distanceM = 0.0,
+                                            ),
+                                        )
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painterResource(
+                                        PoiCategory.forCategory(fav.category)?.iconRes
+                                            ?: R.drawable.ic_lucide_map_pin,
+                                    ),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
                                 )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(fav.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        fav.address ?: formatCategoryLabel(fav.category),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { favoritesManager.removeFavorite(fav.id) },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_star_filled),
+                                        contentDescription = "お気に入り解除",
+                                        tint = androidx.compose.ui.graphics.Color(0xFFFFB300),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
-                            Text(
-                                formatKm(spot.distanceM),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                        }
+                    }
+                }
+            } else {
+                when {
+                    isLoading -> Text("検索中…", style = MaterialTheme.typography.bodyMedium)
+                    message != null -> Text(message, style = MaterialTheme.typography.bodyMedium)
+                    else -> LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                        items(spots, key = { "${it.name}:${it.latitude}:${it.longitude}" }) { spot ->
+                            val isFav = favoritesManager.isFavorite(spot.latitude, spot.longitude)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onSpotClick(spot) }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painterResource(
+                                        PoiCategory.forCategory(spot.category)?.iconRes
+                                            ?: R.drawable.ic_lucide_map_pin,
+                                    ),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(spot.name, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        formatCategoryLabel(spot.category),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Text(
+                                    formatKm(spot.distanceM),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(end = 6.dp),
+                                )
+                                IconButton(
+                                    onClick = {
+                                        favoritesManager.toggleFavorite(
+                                            FavoriteSpot(
+                                                id = "${spot.name}_${spot.latitude}_${spot.longitude}",
+                                                name = spot.name,
+                                                category = spot.category,
+                                                latitude = spot.latitude,
+                                                longitude = spot.longitude,
+                                            ),
+                                        )
+                                    },
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Icon(
+                                        painterResource(if (isFav) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
+                                        contentDescription = if (isFav) "お気に入り解除" else "お気に入り追加",
+                                        tint = if (isFav) androidx.compose.ui.graphics.Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }

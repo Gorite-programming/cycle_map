@@ -58,6 +58,9 @@ import com.gorite.cyclemap.data.SearchDbSelector
 import com.gorite.cyclemap.data.TileDownloader
 import com.gorite.cyclemap.data.TileProgress
 import com.gorite.cyclemap.ui.cycling.NearbySpot
+import com.gorite.cyclemap.data.FavoritesManager
+import com.gorite.cyclemap.data.FavoriteSpot
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.osmdroid.tileprovider.tilesource.XYTileSource
@@ -620,6 +623,9 @@ internal fun DestinationSearchDialog(
     var message by remember { mutableStateOf<String?>(null) }
     var showFts5Notice by remember { mutableStateOf(false) }
 
+    val favoritesManager = remember(context) { FavoritesManager.getInstance(context) }
+    val favorites by favoritesManager.favorites.collectAsState()
+
     // 現在地を取得（位置情報許可済みの場合）
     val userLocation = remember { mutableStateOf<Pair<Double, Double>?>(null) }
     // live位置を優先し、無ければ最終既知位置を使う。
@@ -853,56 +859,154 @@ internal fun DestinationSearchDialog(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 if (query.isEmpty() && results.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                painterResource(R.drawable.ic_lucide_search),
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                "目的地を検索してください",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    if (favorites.isNotEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "★ お気に入り (${favorites.size}件)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                items(favorites, key = { it.id }) { fav ->
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 3.dp)
+                                            .clickable {
+                                                onResultSelected(
+                                                    SearchResult(
+                                                        name = fav.name,
+                                                        category = fav.category,
+                                                        latitude = fav.latitude,
+                                                        longitude = fav.longitude,
+                                                        distanceMeters = null,
+                                                    ),
+                                                )
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(fav.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                                Text(
+                                                    fav.address ?: formatCategoryLabel(fav.category),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { favoritesManager.removeFavorite(fav.id) },
+                                                modifier = Modifier.size(36.dp),
+                                            ) {
+                                                Icon(
+                                                    painterResource(R.drawable.ic_star_filled),
+                                                    contentDescription = "お気に入り解除",
+                                                    tint = androidx.compose.ui.graphics.Color(0xFFFFB300),
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    painterResource(R.drawable.ic_lucide_search),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    "目的地を検索してください",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
                         items(results) { result ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { onResultSelected(result) },
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Text(result.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            val isFav = favoritesManager.isFavorite(result.latitude, result.longitude)
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable { onResultSelected(result) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        formatCategoryLabel(result.category),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    result.distanceMeters?.let { dist ->
-                                        val distStr = if (dist >= 1000.0) {
-                                            String.format(Locale.US, "%.1f km", dist / 1000.0)
-                                        } else {
-                                            String.format(Locale.US, "%.0f m", dist)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(result.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                formatCategoryLabel(result.category),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            result.distanceMeters?.let { dist ->
+                                                val distStr = if (dist >= 1000.0) {
+                                                    String.format(Locale.US, "%.1f km", dist / 1000.0)
+                                                } else {
+                                                    String.format(Locale.US, "%.0f m", dist)
+                                                }
+                                                Text(
+                                                    distStr,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
                                         }
-                                        Text(
-                                            distStr,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            favoritesManager.toggleFavorite(
+                                                FavoriteSpot(
+                                                    id = "${result.name}_${result.latitude}_${result.longitude}",
+                                                    name = result.name,
+                                                    category = result.category,
+                                                    latitude = result.latitude,
+                                                    longitude = result.longitude,
+                                                ),
+                                            )
+                                        },
+                                        modifier = Modifier.size(36.dp),
+                                    ) {
+                                        Icon(
+                                            painterResource(if (isFav) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
+                                            contentDescription = if (isFav) "お気に入り解除" else "お気に入り追加",
+                                            tint = if (isFav) androidx.compose.ui.graphics.Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp),
                                         )
                                     }
                                 }
@@ -910,7 +1014,6 @@ internal fun DestinationSearchDialog(
                         }
                     }
                 }
-            }
         }
     },
     confirmButton = {
