@@ -40,6 +40,13 @@ if os.name == "nt":
 else:
     _importer_candidates = _importer_unix_candidates
 OSM_IMPORTER = next((p for p in _importer_candidates if p.exists()), _importer_candidates[0])
+
+# BUILD_SEARCH_DB: ルート直下のシンボリックリンクではなく実体を優先（Windows対応）。
+_search_db_candidates = [
+    Path("application/osm-importer/build_search_db.py"),
+    Path("build_search_db.py"),
+]
+BUILD_SEARCH_DB = next((p for p in _search_db_candidates if p.is_file() and p.stat().st_size > 0), _search_db_candidates[0])
 SEARCH_DB_CALLABLE = "build_search_db:build_search_db"  # module:function
 
 # Heap size passed to the Kotlin osm-importer subprocess (via JAVA_OPTS).
@@ -321,13 +328,13 @@ def log_osm_stats(name: str, info: Dict[str, Any]) -> None:
 def build_search_db(input_pbf: Path, output_db: Path) -> None:
     LOG.info("Building search DB: %s", output_db)
     rc = subprocess.run(
-        [sys.executable, "build_search_db.py", "--bbox", "none", str(input_pbf), str(output_db)],
+        [sys.executable, str(BUILD_SEARCH_DB), "--bbox", "none", str(input_pbf), str(output_db)],
         capture_output=True, text=True,
     )
     if rc.returncode != 0:
-        raise RuntimeError(f"build_search_db.py failed (exit {rc.returncode}):\n{rc.stdout}\n{rc.stderr}")
+        raise RuntimeError(f"{BUILD_SEARCH_DB} failed (exit {rc.returncode}):\n{rc.stdout}\n{rc.stderr}")
     if not output_db.exists():
-        raise RuntimeError(f"build_search_db.py did not create {output_db}")
+        raise RuntimeError(f"{BUILD_SEARCH_DB} did not create {output_db}")
 
 
 def db_count(db: Path, table: str) -> Optional[int]:

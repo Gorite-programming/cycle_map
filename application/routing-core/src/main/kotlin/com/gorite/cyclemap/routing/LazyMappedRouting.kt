@@ -55,6 +55,7 @@ class LazyMappedRoadGraph private constructor(
     }
 
     fun nearestNodeIndex(latitude: Double, longitude: Double): Int {
+        if (nodeCount == 0) return -1
         // 2パス探索: haversineは三角関数4回で重いため、1パス目で安価な
         // 等距円筒近似の最良点を求め、2パス目では近似距離が暫定最良を
         // 下回る候補にだけhaversineを計算する。結果は全走査と同一。
@@ -186,15 +187,16 @@ class LazyMappedRoadGraph private constructor(
                 val multiplier = multiplier(record.type)
                 val target = edgeTargets[ordinal]
                 if (multiplier != null && (!arterialOnly || isArterial(record.type) || current == start || target == goal)) {
-                        if (target >= 0 && (target == goal || bounds == null ||
-                            bounds.contains(latitudes[target], longitudes[target]))) {
-                        val newCost = cost.getValue(current) + record.distance * multiplier * gradePenalty(record.grade, preference)
+                    if (target >= 0 && (target == goal || bounds == null ||
+                        bounds.contains(latitudes[target], longitudes[target]))) {
+                        val arterialBias = if (isArterial(record.type)) 1.0 else arterialPenaltyMultiplier
+                        val stepCost = record.distance * multiplier * gradePenalty(record.grade, preference) * arterialBias
+                        val newCost = cost.getValue(current) + stepCost
                         if (newCost < cost.getOrDefault(target, Double.POSITIVE_INFINITY)) {
                             cost[target] = newCost
                             distance[target] = distance.getValue(current) + record.distance
                             cameFrom[target] = current
-                            val arterialBias = if (isArterial(record.type)) 1.0 else arterialPenaltyMultiplier
-                            open += Entry(target, newCost * arterialBias + heuristic(target, goal, heuristicMultiplier))
+                            open += Entry(target, newCost + heuristic(target, goal, heuristicMultiplier))
                         }
                     }
                 }

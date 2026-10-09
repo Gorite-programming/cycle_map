@@ -118,7 +118,8 @@ internal fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Dou
     val a = Math.sin(dLat / 2).let { it * it } +
         Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
         Math.sin(dLon / 2).let { it * it }
-    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    val clampedA = a.coerceIn(0.0, 1.0)
+    return r * 2 * Math.atan2(Math.sqrt(clampedA), Math.sqrt(1.0 - clampedA))
 }
 
 /** 2点間の初方位 (北=0°・時計回り)。連続GPS fixからの移動方向推定用。 */

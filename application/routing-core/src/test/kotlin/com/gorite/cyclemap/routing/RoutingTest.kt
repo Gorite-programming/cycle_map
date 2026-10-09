@@ -43,4 +43,24 @@ class RoutingTest {
         val result = AStarRouter(graph).route(1, 2)
         assertTrue(!result.isReachable)
     }
+
+    @Test
+    fun haversineMeters_neverReturnsNanForAntipodalOrIdenticalPoints() {
+        // Identical points -> distance 0.0
+        val distIdentical = haversineMeters(34.178, 131.473, 34.178, 131.473)
+        assertEquals(0.0, distIdentical, 1e-6)
+        assertTrue(distIdentical.isFinite())
+
+        // Antipodal points along equator -> approx half circumference of Earth ~ 20,015 km
+        val distEquator = haversineMeters(0.0, 0.0, 0.0, 180.0)
+        assertTrue(distEquator.isFinite())
+        assertTrue(!distEquator.isNaN())
+        assertEquals(Math.PI * 6_371_000.0, distEquator, 1000.0)
+
+        // Antipodal points at poles
+        val distPoles = haversineMeters(90.0, 0.0, -90.0, 0.0)
+        assertTrue(distPoles.isFinite())
+        assertTrue(!distPoles.isNaN())
+        assertEquals(Math.PI * 6_371_000.0, distPoles, 1000.0)
+    }
 }

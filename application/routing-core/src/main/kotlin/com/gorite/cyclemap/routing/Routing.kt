@@ -141,5 +141,6 @@ fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Dou
     val dLon = Math.toRadians(lon2 - lon1)
     val a = sin(dLat / 2) * sin(dLat / 2) +
         cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2)
-    return earthRadius * 2 * atan2(sqrt(a), sqrt(1 - a))
+    val clampedA = a.coerceIn(0.0, 1.0)
+    return earthRadius * 2 * atan2(sqrt(clampedA), sqrt(1.0 - clampedA))
 }

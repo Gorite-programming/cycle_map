@@ -318,7 +318,9 @@ object TileDownloader {
                         }
                         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                             connection.inputStream.use { input ->
-                                writer.saveFile(source, tileIndex, input, null)
+                                synchronized(writer) {
+                                    writer.saveFile(source, tileIndex, input, null)
+                                }
                             }
                             saved = true
                         }
@@ -333,8 +335,13 @@ object TileDownloader {
         }
         executor.shutdown()
         try {
-            executor.awaitTermination(60, TimeUnit.SECONDS)
-        } catch (_: InterruptedException) {}
+            val timeoutSeconds = maxOf(60L, (total / 10).toLong())
+            executor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            writer.onDetach()
+        }
         onDone?.invoke(total)
     }
 

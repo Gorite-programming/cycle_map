@@ -285,6 +285,7 @@ internal fun CompassUpdates(
                 SensorManager.remapCoordinateSystem(rotationMatrix, axisX, axisY, remappedMatrix)
                 SensorManager.getOrientation(remappedMatrix, orientation)
                 val rawHeading = ((Math.toDegrees(orientation[0].toDouble()).toFloat() + 360f) % 360f)
+                if (!rawHeading.isFinite() || rawHeading.isNaN()) return
 
                 if (!initialized) {
                     smoothedHeading = rawHeading

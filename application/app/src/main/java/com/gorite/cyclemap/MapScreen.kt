@@ -1697,6 +1697,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 update = { view ->
                     (view as? CycleMapView)?.areaSelectMode = isAreaSelectMode
                 },
+                onRelease = { view ->
+                    view.onPause()
+                    view.onDetach()
+                },
             )
 
             // Area-select touch capture + rectangle drawing overlay (Compose layer, above map)
@@ -3560,6 +3564,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             when (event) {
                 Lifecycle.Event.ON_RESUME -> view.onResume()
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> view.onPause()
+                Lifecycle.Event.ON_DESTROY -> view.onDetach()
                 else -> Unit
             }
         }
@@ -3567,6 +3572,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             view.onPause()
+            view.onDetach()
         }
     }
 }

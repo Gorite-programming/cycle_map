@@ -173,7 +173,7 @@ class Pass1Handler(osmium.SimpleHandler):
         if not in_bbox(lat, lon, self.bbox):
             return
         cat = category_for(n.tags)
-        self._db_buffer.append(("node", n.id, name, cat, lat, lon))
+        self._db_buffer.append(("node", n.id, name, cat, lat, lon, name))
         self._node_total += 1
         if len(self._db_buffer) >= DB_BATCH:
             self._flush_nodes()
@@ -206,7 +206,7 @@ class Pass1Handler(osmium.SimpleHandler):
         if not self._db_buffer:
             return
         self._con.executemany(
-            "INSERT INTO places(osm_type,osm_id,name,category,lat,lon) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO places(osm_type,osm_id,name,category,lat,lon,search_text) VALUES(?,?,?,?,?,?,?)",
             self._db_buffer,
         )
         self._con.commit()
@@ -275,17 +275,19 @@ def _open_db(path: str) -> sqlite3.Connection:
     con.execute("PRAGMA cache_size   = -65536")   # 64 MB
     con.execute("""
         CREATE TABLE places (
-            id       INTEGER PRIMARY KEY,
-            osm_type TEXT    NOT NULL,
-            osm_id   INTEGER NOT NULL,
-            name     TEXT    NOT NULL,
-            category TEXT    NOT NULL,
-            lat      REAL    NOT NULL,
-            lon      REAL    NOT NULL
+            id          INTEGER PRIMARY KEY,
+            osm_type    TEXT    NOT NULL,
+            osm_id      INTEGER NOT NULL,
+            name        TEXT    NOT NULL,
+            category    TEXT    NOT NULL,
+            lat         REAL    NOT NULL,
+            lon         REAL    NOT NULL,
+            search_text TEXT
         )
     """)
     con.execute("CREATE INDEX places_osm_idx ON places(osm_type, osm_id)")
     con.execute("CREATE INDEX places_coords_idx ON places(lat, lon)")
+    con.execute("CREATE INDEX idx_places_search_text ON places(search_text)")
     con.commit()
     return con
 
@@ -338,11 +340,11 @@ def write_ways(con: sqlite3.Connection, way_cache_path: str,
                 clon = lon_sum / count
                 if not in_bbox(clat, clon, bbox):
                     continue
-                buf.append(("way", wid, name, cat, clat, clon))
+                buf.append(("way", wid, name, cat, clat, clon, name))
                 if len(buf) >= DB_BATCH:
                     con.executemany(
-                        "INSERT INTO places(osm_type,osm_id,name,category,lat,lon)"
-                        " VALUES(?,?,?,?,?,?)",
+                        "INSERT INTO places(osm_type,osm_id,name,category,lat,lon,search_text)"
+                        " VALUES(?,?,?,?,?,?,?)",
                         buf,
                     )
                     con.commit()
@@ -352,8 +354,8 @@ def write_ways(con: sqlite3.Connection, way_cache_path: str,
 
     if buf:
         con.executemany(
-            "INSERT INTO places(osm_type,osm_id,name,category,lat,lon)"
-            " VALUES(?,?,?,?,?,?)",
+            "INSERT INTO places(osm_type,osm_id,name,category,lat,lon,search_text)"
+            " VALUES(?,?,?,?,?,?,?)",
             buf,
         )
         con.commit()

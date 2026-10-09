@@ -63,7 +63,8 @@ class ElevationRepository(private val context: Context) {
             val a = sin(dLat / 2) * sin(dLat / 2) +
                 cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
                 sin(dLon / 2) * sin(dLon / 2)
-            val d = 6371000.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
+            val clampedA = a.coerceIn(0.0, 1.0)
+            val d = 6371000.0 * 2 * atan2(sqrt(clampedA), sqrt(1.0 - clampedA))
             dAcc += d
             cumDists[i] = dAcc
         }

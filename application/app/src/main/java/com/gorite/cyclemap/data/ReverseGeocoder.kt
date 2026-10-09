@@ -330,10 +330,8 @@ class AddressDisplayController {
             return displayed
         }
         val result = geocoder.lookup(latitude, longitude)
-        if (result != null) {
-            lastQueryLat = latitude
-            lastQueryLon = longitude
-        }
+        lastQueryLat = latitude
+        lastQueryLon = longitude
         val candidate = result?.formattedAddress ?: ADDRESS_UNKNOWN
         return confirmCandidate(candidate)
     }

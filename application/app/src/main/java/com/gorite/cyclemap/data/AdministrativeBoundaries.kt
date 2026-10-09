@@ -104,10 +104,12 @@ internal object AdministrativeBoundaries {
         }
 
     @Synchronized
-    private fun getDecoded(boundary: BoundaryDef): List<List<DoubleArray>> =
-        decodedCache.getOrPut(boundary.name + "_" + boundary.adminLevel) {
+    private fun getDecoded(boundary: BoundaryDef): List<List<DoubleArray>> {
+        val cacheKey = "${boundary.prefectureName}_${boundary.name}_${boundary.adminLevel}"
+        return decodedCache.getOrPut(cacheKey) {
             decode(boundary.encodedPolys)
         }
+    }
 
     /** 境界内に含まれるか判定 (bbox早期スキップ + ray casting)。 */
     fun contains(boundary: BoundaryDef, latitude: Double, longitude: Double): Boolean {
