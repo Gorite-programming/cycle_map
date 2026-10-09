@@ -3261,7 +3261,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         AlertDialog(
             onDismissRequest = { showVersion = false },
             title = { Text("バージョン情報") },
-            text = { Text("Ver. α 1.0.0\nナビ案内の強化") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("CycleMap ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
+                    Text("コミット: ${BuildConfig.GIT_HASH}")
+                    Text("ビルド日時: ${BuildConfig.BUILD_TIME}")
+                }
+            },
             confirmButton = { TextButton(onClick = { showVersion = false }) { Text("閉じる") } },
         )
     }

@@ -268,12 +268,12 @@ class LocationTrackingService : Service() {
     private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "CycleMap location", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, "CycleMap α location", NotificationManager.IMPORTANCE_LOW),
         )
     }
 
     private fun trackingNotification(): Notification {
-        val title = if (recording) "CycleMap GPX記録中" else "CycleMap 位置追跡中"
+        val title = if (recording) "CycleMap α GPX記録中" else "CycleMap α 位置追跡中"
         val text = if (recording) "位置情報を記録しています" else "画面オフ中も現在地を更新します"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_current_location)

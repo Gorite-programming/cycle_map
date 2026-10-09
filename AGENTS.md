@@ -55,3 +55,25 @@ venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 
   - Antigravity / OpenCode / Kiro / その他のエージェントは、コード変更後に勝手に `git add`・`git commit`・`git push` を行わない。
   - 各作業の完了時は、変更内容の要約・diff・テスト結果を報告し、コミットやプッシュについての指示を待つ。
   - 「コミットしないでください」という指示が無くても、これがデフォルトの動作とする。
+
+## ビルドオフロード環境（Khadas Edge 2）
+
+MacBook 単体でのメモリ逼迫対策として、SBC（Khadas Edge 2）へのビルド・コーディング・実機検証オフロード体制を整備済み。
+
+- **ハードウェア・環境情報**:
+  - ホスト: Khadas Edge 2（Rockchip RK3588S 8コア / Ubuntu 24.04 noble aarch64）
+  - プロジェクト実パス: `/mnt/data/cycle_map`（大容量 58GB SDカード直下、`~/workspace` からシンボリックリンク）
+  - マウント設定: `/etc/fstab` に `UUID=... /mnt/data ext4 defaults,nofail 0 2` を設定し自動マウント
+  - キャッシュ退避: `~/.gradle` は `/mnt/data/.gradle` へシンボリックリンクし、本体 eMMC（残り16GB空き）の枯渇を防止
+  - Android SDK: `/mnt/data/android-sdk`（`compileSdk 35`、`build-tools 35.0.0` 導入済み）
+  - Gradle メモリ設定: `/mnt/data/.gradle/gradle.properties` に `org.gradle.jvmargs=-Xmx3g`、`org.gradle.workers.max=4` を設定
+  - aapt2 エミュレーション: Ubuntu リポジトリの `box64-rk3588` を導入。binfmt_misc により AGP 内蔵の x86_64 版 aapt2 を透過エミュレーションして `:app:assembleDebug` を完全開通
+
+- **ビルド・リリース運用ルール**:
+  - **クリーンな HEAD からビルドする**:
+    - 作業ツリーが dirty（`-dirty` 付き）の APK は開発・動作確認用にとどめ、配布・正式記録としない。
+    - リリース用 APK は、コード修正を承認・コミットした直後のクリーンな HEAD からビルドする。
+  - **ハッシュ記録と台帳更新**:
+    - クリーンビルドした APK の SHA-256 ハッシュ（先頭12桁）を `VERSIONS.md` に記録し、別コミット（またはリリースコミット）として残す。
+  - **Keystore の管理**:
+    - デバッグキーストア（`debug.keystore`）はコミットしない（`.gitignore` 対象）。同一マシンでビルドし続けることで、`adb install -r` によるデータ保持上書きインストールが可能となる。

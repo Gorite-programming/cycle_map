@@ -824,6 +824,24 @@ fun SettingsPanelSheet(
                     TextButton(onClick = onDeveloperOptions) { Text("開発者") }
                 }
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            Text("For Developers", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(
+                "バージョン: ${com.gorite.cyclemap.BuildConfig.VERSION_NAME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "ビルド元コミット: ${com.gorite.cyclemap.BuildConfig.GIT_HASH}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "ビルド日時: ${com.gorite.cyclemap.BuildConfig.BUILD_TIME}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

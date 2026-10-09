@@ -1,3 +1,42 @@
+import java.io.ByteArrayOutputStream
+import java.time.ZonedDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+fun getGitCommitHash(): String {
+    return try {
+        val stdout = ByteArrayOutputStream()
+        val result = project.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+            standardOutput = stdout
+            isIgnoreExitValue = true
+        }
+        if (result.exitValue != 0) return "unknown"
+        val hash = stdout.toString().trim()
+        if (hash.isEmpty()) return "unknown"
+
+        val statusOut = ByteArrayOutputStream()
+        val statusResult = project.exec {
+            commandLine("git", "status", "--porcelain")
+            standardOutput = statusOut
+            isIgnoreExitValue = true
+        }
+        val isDirty = statusResult.exitValue == 0 && statusOut.toString().trim().isNotEmpty()
+        if (isDirty) "$hash-dirty" else hash
+    } catch (_: Exception) {
+        "unknown"
+    }
+}
+
+fun getBuildTimeJst(): String {
+    return try {
+        val now = ZonedDateTime.now(ZoneId.of("Asia/Tokyo"))
+        now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+    } catch (_: Exception) {
+        "unknown"
+    }
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -12,8 +51,11 @@ android {
         applicationId = "com.gorite.cyclemap"
         minSdk = 33
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "α0.2"
+
+        buildConfigField("String", "GIT_HASH", "\"${getGitCommitHash()}\"")
+        buildConfigField("String", "BUILD_TIME", "\"${getBuildTimeJst()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -36,6 +78,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
