@@ -1169,6 +1169,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
                         nowEpochMillis = System.currentTimeMillis(),
                         arrivalRadiusMeters = ARRIVAL_RADIUS_METERS,
+                        lastEffectiveSpeedMps = navStats?.effectiveSpeedMps,
                     )
                     if (navStats?.isArrived == true) {
                         if (!isArrived) {
@@ -1276,6 +1277,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                 nowElapsedRealtimeMs = SystemClock.elapsedRealtime(),
                                 nowEpochMillis = System.currentTimeMillis(),
                                 arrivalRadiusMeters = ARRIVAL_RADIUS_METERS,
+                                lastEffectiveSpeedMps = navStats?.effectiveSpeedMps,
                             )
                             val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)
                             voiceNavigator.onLocationUpdated(

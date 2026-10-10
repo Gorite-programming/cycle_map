@@ -98,4 +98,38 @@ class LazyMappedRoutingTest {
             }
         }
     }
+
+    @Test
+    fun gradePenalty_asymmetricAndBounded() {
+        val method = LazyMappedRoadGraph::class.java.getDeclaredMethod(
+            "gradePenalty",
+            Float::class.javaPrimitiveType,
+            RoutePreference::class.java,
+        )
+        method.isAccessible = true
+
+        graphWith(doubleArrayOf(34.0), doubleArrayOf(131.0)).use { graph ->
+            fun penalty(grade: Float, pref: RoutePreference): Double =
+                method.invoke(graph, grade, pref) as Double
+
+            // NaN -> 1.0
+            assertEquals(1.0, penalty(Float.NaN, RoutePreference.RECOMMENDED), 1e-6)
+
+            // RECOMMENDED:
+            val flat = penalty(0.0f, RoutePreference.RECOMMENDED)
+            val gentleDown = penalty(-3.0f, RoutePreference.RECOMMENDED)
+            val steepDown = penalty(-10.0f, RoutePreference.RECOMMENDED)
+            val up = penalty(5.0f, RoutePreference.RECOMMENDED)
+
+            assertEquals(1.0, flat, 1e-6)
+            assertTrue(gentleDown < flat)
+            assertTrue(gentleDown >= 0.95)
+            assertTrue(steepDown > gentleDown)
+            assertTrue(up > flat)
+
+            // FLAT: 上り坂回避は上限5.0倍でクランプ
+            val flatUp = penalty(15.0f, RoutePreference.FLAT)
+            assertTrue(flatUp <= 5.0)
+        }
+    }
 }

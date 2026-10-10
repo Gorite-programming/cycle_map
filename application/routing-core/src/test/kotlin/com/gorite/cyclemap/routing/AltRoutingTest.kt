@@ -49,4 +49,29 @@ class AltRoutingTest {
         assertTrue(report.measurements.all { it.distanceErrorPercent == 0.0 })
         assertTrue(report.measurements.all { it.costErrorPercent == 0.0 })
     }
+
+    @Test
+    fun bidirectionalFindsOptimalPathOnAsymmetricGraph() {
+        // 非対称有向グラフ: 一方通行や異なる重みを持つグラフでの最適解検証
+        val nodes = (1L..5L).associateWith { id ->
+            GraphNode(id, 34.0 + id * 0.01, 131.0 + id * 0.01)
+        }
+        val graph = RoadGraph(
+            nodes,
+            mapOf(
+                1L to listOf(GraphEdge(1, 2, 10.0), GraphEdge(1, 3, 50.0)),
+                2L to listOf(GraphEdge(2, 4, 30.0)),
+                3L to listOf(GraphEdge(3, 4, 10.0), GraphEdge(3, 5, 20.0)),
+                4L to listOf(GraphEdge(4, 5, 10.0)),
+            ),
+        )
+
+        val baseline = AStarRouter(graph, DistanceCostModel).route(1L, 5L)
+        val bidirectional = BidirectionalRouter(graph, DistanceCostModel).route(1L, 5L)
+
+        assertTrue(baseline.isReachable)
+        assertTrue(bidirectional.route.isReachable)
+        assertEquals(baseline.totalCost, bidirectional.route.totalCost)
+        assertEquals(baseline.nodeIds, bidirectional.route.nodeIds)
+    }
 }

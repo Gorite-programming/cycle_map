@@ -81,7 +81,8 @@ class MappedRoadGraph private constructor(
                 if (multiplier != null) {
                     val target = nodeIndex.get(edgeTo[edge])
                     if (target >= 0) {
-                        val newCost = cost.getValue(current) + edgeDistance[edge] * multiplier * gradePenalty(edgeGrade[edge])
+                        val combinedMultiplier = (multiplier * gradePenalty(edgeGrade[edge])).coerceAtLeast(0.90)
+                        val newCost = cost.getValue(current) + edgeDistance[edge] * combinedMultiplier
                         if (newCost < cost.getOrDefault(target, Double.POSITIVE_INFINITY)) {
                             cost[target] = newCost
                             distance[target] = distance.getValue(current) + edgeDistance[edge]
@@ -99,7 +100,15 @@ class MappedRoadGraph private constructor(
     private fun heuristic(from: Int, to: Int): Double =
         haversineMeters(latitudes[from], longitudes[from], latitudes[to], longitudes[to]) * 0.90
 
-    private fun gradePenalty(grade: Float): Double = if (grade.isNaN()) 1.0 else 1.0 + abs(grade.toDouble()) * 0.02
+    private fun gradePenalty(grade: Float): Double {
+        if (grade.isNaN()) return 1.0
+        val g = grade.toDouble()
+        return when {
+            g >= 0.0 -> 1.0 + (g * 0.02) + (g * g * 0.002)
+            g >= -4.0 -> (1.0 + g * 0.02).coerceAtLeast(0.95)
+            else -> 1.0 + abs(g + 4.0) * 0.03
+        }
+    }
 
     private fun multiplier(type: Int): Double? = when (type) {
         TYPE_MOTORWAY, TYPE_MOTORWAY_LINK -> null
@@ -223,18 +232,24 @@ private class LongIntIndex(expectedSize: Int) {
     }
 
     fun put(key: Long, value: Int) {
-        var slot = (key xor (key ushr 33)).toInt() and mask
-        while (occupied[slot] && keys[slot] != key) slot = (slot + 1) and mask
+        val h = (key xor (key ushr 33)).toInt()
+        var slot = h and mask
+        val step = (((key ushr 16) xor key).toInt() and mask) or 1
+        while (occupied[slot] && keys[slot] != key) {
+            slot = (slot + step) and mask
+        }
         keys[slot] = key
         values[slot] = value
         occupied[slot] = true
     }
 
     fun get(key: Long): Int {
-        var slot = (key xor (key ushr 33)).toInt() and mask
+        val h = (key xor (key ushr 33)).toInt()
+        var slot = h and mask
+        val step = (((key ushr 16) xor key).toInt() and mask) or 1
         while (occupied[slot]) {
             if (keys[slot] == key) return values[slot]
-            slot = (slot + 1) and mask
+            slot = (slot + step) and mask
         }
         return -1
     }

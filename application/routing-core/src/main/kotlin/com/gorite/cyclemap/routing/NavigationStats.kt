@@ -36,6 +36,7 @@ data class NavigationStats(
  * @param minAverageElapsedSeconds この経過秒数未満では平均を使わない。
  * @param minAverageSpeedMps 平均がこの速度未満の場合は停止・渋滞とみなしフォールバックする。
  * @param maxAverageSpeedMps 平均の上限 (GPSジャンプ由来の異常値を抑える)。
+ * @param lastEffectiveSpeedMps 直近の有効実効速度 (停止中のETA急変動防止用)。
  */
 fun computeNavigationStats(
     progress: RouteProgress?,
@@ -48,6 +49,7 @@ fun computeNavigationStats(
     minAverageElapsedSeconds: Double = 10.0,
     minAverageSpeedMps: Double = 1.0,
     maxAverageSpeedMps: Double = 60_000.0 / 3_600.0,
+    lastEffectiveSpeedMps: Double? = null,
 ): NavigationStats? {
     if (progress == null) return null
     val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)
@@ -56,11 +58,25 @@ fun computeNavigationStats(
 
     val covered = progress.distanceFromStartMeters.coerceAtLeast(0.0)
     val averageSpeed = if (elapsed >= minAverageElapsedSeconds && covered > 0.0) covered / elapsed else Double.NaN
-    // 平均速度を優先し、未確定・異常値のときのみ瞬間速度→デフォルトへ倒す。
+
+    // 信号待ち・一時停止中のETA発散防止および滑らかな速度ブレンディング
+    val isStopped = smoothedSpeedMps < 0.5
     val effective = when {
-        averageSpeed.isFinite() && averageSpeed >= minAverageSpeedMps ->
-            averageSpeed.coerceAtMost(maxAverageSpeedMps)
-        smoothedSpeedMps > 0.5 -> smoothedSpeedMps.coerceAtMost(maxAverageSpeedMps)
+        // 停止中は直前の実効速度をホールドし、ETAの急上昇（発散）を防ぐ
+        isStopped && lastEffectiveSpeedMps != null && lastEffectiveSpeedMps >= minAverageSpeedMps ->
+            lastEffectiveSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
+        averageSpeed.isFinite() && averageSpeed >= minAverageSpeedMps -> {
+            // 走行中は累積平均(70%)と直近瞬間速度(30%)をブレンドして急変を緩和
+            val blended = if (smoothedSpeedMps >= minAverageSpeedMps) {
+                averageSpeed * 0.7 + smoothedSpeedMps * 0.3
+            } else {
+                averageSpeed
+            }
+            blended.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
+        }
+        smoothedSpeedMps > 0.5 -> smoothedSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
+        lastEffectiveSpeedMps != null && lastEffectiveSpeedMps >= minAverageSpeedMps ->
+            lastEffectiveSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
         else -> defaultSpeedMps
     }
     val durationRemaining = if (isArrived || remaining <= 0.0) {

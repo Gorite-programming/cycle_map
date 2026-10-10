@@ -50,8 +50,24 @@ class NavigationStatsTest {
     }
 
     @Test
+    fun holdsEffectiveSpeedWhenStoppedWithLastSpeed() {
+        // 信号待ちなどで停止中(0.0m/s)でも、直前の実効速度(4.0m/s)をホールドしてETA急変を防ぐ
+        val stats = computeNavigationStats(
+            progress = progress(fromStart = 400.0),
+            smoothedSpeedMps = 0.0,
+            navStartElapsedRealtimeMs = 0L,
+            nowElapsedRealtimeMs = 150_000L,
+            nowEpochMillis = 1_000_000L,
+            lastEffectiveSpeedMps = 4.0,
+        )
+        assertNotNull(stats)
+        assertEquals(4.0, stats.effectiveSpeedMps, 1e-9)
+        assertEquals(600.0 / 4.0, stats.durationRemainingSeconds, 1e-9)
+    }
+
+    @Test
     fun fallsBackToDefaultSpeedWhenAverageTooLow() {
-        // 長時間停止で平均が極端に低い場合はデフォルト巡航速度に倒す
+        // 長時間停止で平均が極端に低く、直前速度もない場合はデフォルト巡航速度に倒す
         val stats = computeNavigationStats(
             progress = progress(fromStart = 10.0),
             smoothedSpeedMps = 0.0,
