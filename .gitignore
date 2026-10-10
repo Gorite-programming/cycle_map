@@ -40,3 +40,32 @@ sandbox/data-tool/*.dmg
 *.apk
 !application/apks/*.apk
 
+# Vector / PMTiles / Native Libs
+*.pmtiles
+*.jar
+*.zip
+*.zip_inprogress
+*.so
+*.pkl
+node_modules/
+
+# Test environment (CycleMap-Test)
+test/**/build/
+test/.gradle/
+test/local.properties
+test/*.png
+test/vector_test/
+test/osm-importer/data/
+test/apks/
+
+# sandbox/vector_test
+sandbox/vector_test/**/build/
+sandbox/vector_test/.gradle/
+sandbox/vector_test/local.properties
+sandbox/vector_test/*.png
+sandbox/vector_test/pipeline/pmtiles
+sandbox/vector_test/pipeline/planetiler.jar
+sandbox/vector_test/pipeline/data/
+sandbox/vector_test/pipeline/node_modules/
+sandbox/vector_test/data/
+
