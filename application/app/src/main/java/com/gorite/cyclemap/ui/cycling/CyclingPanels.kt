@@ -363,6 +363,8 @@ fun SpotPanelSheet(
     message: String?,
     onSpotClick: (NearbySpot) -> Unit,
     onDismiss: () -> Unit,
+    onQuickSpotTypeSelect: ((QuickSpotType) -> Unit)? = null,
+    onRouteToSpot: ((NearbySpot) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val favoritesManager = remember(context) { FavoritesManager.getInstance(context) }
@@ -405,6 +407,28 @@ fun SpotPanelSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!showFavoritesOnly) {
+                if (onQuickSpotTypeSelect != null) {
+                    Text(
+                        "クイック補給・緊急スポット (ワンタップ検索)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    QuickSpotFilterRow(
+                        selectedType = null,
+                        onSelectType = { type ->
+                            onQuickSpotTypeSelect(type)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 0.dp),
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "一般カテゴリ",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -531,8 +555,21 @@ fun SpotPanelSheet(
                                     formatKm(spot.distanceM),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(end = 6.dp),
+                                    modifier = Modifier.padding(end = 4.dp),
                                 )
+                                if (onRouteToSpot != null) {
+                                    IconButton(
+                                        onClick = { onRouteToSpot(spot) },
+                                        modifier = Modifier.size(36.dp),
+                                    ) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_lucide_navigation),
+                                            contentDescription = "ここへ行く",
+                                            tint = CyclingPink,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
                                 IconButton(
                                     onClick = {
                                         favoritesManager.toggleFavorite(

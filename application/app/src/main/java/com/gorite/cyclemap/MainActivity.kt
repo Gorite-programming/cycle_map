@@ -25,6 +25,8 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
+        // Compose のレンダリング前に osmdroid を初期化 (タイルキャッシュ・ユーザーエージェントを先行確定)
+        configureOsmdroid(this, cycleMapDataDir(this))
         setContent {
             CycleMapTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->

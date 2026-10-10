@@ -100,6 +100,7 @@ internal enum class SearchCategory(val label: String, val categoryPrefixes: List
 fun formatCategoryLabel(category: String): String {
     return when {
         category.startsWith("railway:station") -> "鉄道駅"
+        category.startsWith("railway:halt") -> "駅(無人駅)"
         category.startsWith("public_transport:station") -> "駅・ターミナル"
         category.startsWith("highway:bus_stop") -> "バス停"
         category.startsWith("amenity:bus") -> "バスターミナル"
@@ -110,6 +111,10 @@ fun formatCategoryLabel(category: String): String {
         category.startsWith("shop:bakery") -> "パン屋"
         category.startsWith("amenity:public_bath") -> "温泉・銭湯"
         category.startsWith("amenity:toilets") -> "トイレ"
+        category.startsWith("amenity:drinking_water") -> "給水スポット"
+        category.startsWith("amenity:vending_machine") -> "自販機"
+        category.startsWith("tourism:road_station") -> "道の駅"
+        category.startsWith("amenity:place_of_worship") -> "寺社・休憩所"
         category.startsWith("amenity:restaurant") -> "飲食店"
         category.startsWith("amenity:cafe") -> "カフェ"
         category.startsWith("amenity:fast_food") -> "ファストフード"
@@ -578,6 +583,8 @@ internal fun searchNearbyPlaces(
                 category LIKE 'amenity:clinic%' OR category LIKE 'amenity:doctors%' OR
                 category LIKE 'amenity:dentist%' OR category LIKE 'amenity:fuel%' OR
                 category LIKE 'leisure:park%' OR category LIKE 'amenity:drinking_water%' OR
+                category LIKE 'amenity:vending_machine%' OR category LIKE 'amenity:place_of_worship%' OR
+                category LIKE 'railway:halt%' OR
                 category LIKE 'shop:bicycle%' OR category LIKE 'shop:bakery%' OR
                 category LIKE 'amenity:public_bath%'
               )
@@ -593,6 +600,58 @@ internal fun searchNearbyPlaces(
                 (limit * 3).toString(),
             ),
         ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val lat = cursor.getDouble(2)
+                val lon = cursor.getDouble(3)
+                val dist = haversineMeters(centerLat, centerLon, lat, lon)
+                if (dist <= radiusMeters) {
+                    found += NearbySpot(cursor.getString(0), cursor.getString(1), lat, lon, dist)
+                }
+            }
+        }
+    }
+    return found.sortedBy { it.distanceM }.take(limit)
+}
+
+/**
+ * サイクリスト向けクイックスポット (カテゴリキー指定) をオフラインDBから高速・高精度に検索する。
+ */
+internal fun searchNearbyQuickSpots(
+    dbFile: File,
+    centerLat: Double,
+    centerLon: Double,
+    radiusMeters: Double,
+    categoryKeys: List<String>,
+    limit: Int = 40,
+): List<NearbySpot> {
+    if (!dbFile.isFile || radiusMeters <= 0 || categoryKeys.isEmpty()) return emptyList()
+    val latDelta = radiusMeters / 111_320.0
+    val lonDelta = radiusMeters / (111_320.0 * kotlin.math.cos(Math.toRadians(centerLat)).coerceAtLeast(0.2))
+    val found = ArrayList<NearbySpot>(limit * 2)
+    val orderNearby = NEARBY_ORDER_BY
+
+    val categoryClauses = categoryKeys.joinToString(" OR ") { "category LIKE ?" }
+    val sql = """
+        SELECT name, category, lat, lon
+        FROM places
+        WHERE lat BETWEEN ? AND ?
+          AND lon BETWEEN ? AND ?
+          AND ($categoryClauses)
+        $orderNearby
+        LIMIT ?
+    """.trimIndent()
+
+    val args = ArrayList<String>()
+    args.add((centerLat - latDelta).toString())
+    args.add((centerLat + latDelta).toString())
+    args.add((centerLon - lonDelta).toString())
+    args.add((centerLon + lonDelta).toString())
+    categoryKeys.forEach { args.add("$it%") }
+    args.addAll(nearbyOrderArgs(centerLat, centerLon))
+    args.add((limit * 3).toString())
+
+    SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+        db.rawQuery(sql, args.toTypedArray()).use { cursor ->
             while (cursor.moveToNext()) {
                 val lat = cursor.getDouble(2)
                 val lon = cursor.getDouble(3)

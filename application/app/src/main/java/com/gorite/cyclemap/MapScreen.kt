@@ -164,6 +164,9 @@ import com.gorite.cyclemap.ui.cycling.SpeedChip
 import com.gorite.cyclemap.ui.cycling.SpotPanelSheet
 import com.gorite.cyclemap.ui.cycling.TopSearchBar
 import com.gorite.cyclemap.ui.cycling.SpotQuickCategory
+import com.gorite.cyclemap.ui.cycling.QuickSpotType
+import com.gorite.cyclemap.ui.cycling.QuickSpotFilterRow
+import com.gorite.cyclemap.ui.cycling.QuickSpotBottomSheet
 import com.gorite.cyclemap.ui.cycling.buildRouteElevationProfile
 import com.gorite.cyclemap.ui.cycling.elevationAt
 import com.gorite.cyclemap.ui.cycling.elevationGain
@@ -374,7 +377,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     var selectedLayer by remember { mutableStateOf(MapLayer.GSI) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
     var locationMarker by remember { mutableStateOf<Marker?>(null) }
-    var accuracyCircle by remember { mutableStateOf<Polygon?>(null) }
+    var accuracyCircle by remember { mutableStateOf<AccuracyCircleOverlay?>(null) }
     var destinationMarker by remember { mutableStateOf<Marker?>(null) }
     var speedKmh by remember { mutableStateOf(0.0) }
     var headingDegrees by remember { mutableFloatStateOf(0f) }
@@ -484,6 +487,11 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
     var spotResults by remember { mutableStateOf<List<NearbySpot>>(emptyList()) }
     var spotLoading by remember { mutableStateOf(false) }
     var spotMessage by remember { mutableStateOf<String?>(null) }
+    var activeQuickSpotType by remember { mutableStateOf<QuickSpotType?>(null) }
+    var showQuickSpotSheet by remember { mutableStateOf(false) }
+    var quickSpotResults by remember { mutableStateOf<List<NearbySpot>>(emptyList()) }
+    var quickSpotLoading by remember { mutableStateOf(false) }
+    var quickSpotMessage by remember { mutableStateOf<String?>(null) }
     var gpxHistory by remember { mutableStateOf<List<GpxHistoryEntry>>(emptyList()) }
     var locationLabel by remember { mutableStateOf(AddressDisplayController.ADDRESS_LOADING) }
     // オフライン逆ジオコーディングの安定化コントローラ (住所判定ロジックは data 層に分離)
@@ -1648,12 +1656,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             isFlat = true
                         }
                         // Googleマップ風の精度円 (薄青フィルタ+青枠)。現在地ドットの下に重ねる。
-                        accuracyCircle = Polygon().apply {
-                            fillPaint.color = android.graphics.Color.parseColor("#221A73E8")
-                            outlinePaint.color = android.graphics.Color.parseColor("#661A73E8")
-                            outlinePaint.strokeWidth = 3f
-                            isVisible = false
-                        }
+                        accuracyCircle = AccuracyCircleOverlay()
                         onUserPan = { followLocation = false }
                         // POIオーバーレイ更新用: ズーム・スクロール確定でリフレッシュ要求
                         addMapListener(
@@ -1699,7 +1702,6 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 },
                 onRelease = { view ->
                     view.onPause()
-                    view.onDetach()
                 },
             )
 
@@ -1738,15 +1740,20 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                         val bottom = maxOf(drag.anchorY, drag.currentY)
                                         // Only accept drag with at least 20px in each axis
                                         if ((right - left) > 20f && (bottom - top) > 20f) {
-                                            val topLeftGeo = view.projection.fromPixels(left.toInt(), top.toInt()) as GeoPoint
-                                            val bottomRightGeo = view.projection.fromPixels(right.toInt(), bottom.toInt()) as GeoPoint
-                                            selectedAreaBounds = BoundingBox(
-                                                topLeftGeo.latitude,       // latNorth
-                                                bottomRightGeo.longitude,  // lonEast
-                                                bottomRightGeo.latitude,   // latSouth
-                                                topLeftGeo.longitude,      // lonWest
-                                            )
-                                            showAreaDownloadConfirmDialog = true
+                                            val proj = view.projection
+                                            if (proj != null) {
+                                                val topLeftGeo = proj.fromPixels(left.toInt(), top.toInt()) as? GeoPoint
+                                                val bottomRightGeo = proj.fromPixels(right.toInt(), bottom.toInt()) as? GeoPoint
+                                                if (topLeftGeo != null && bottomRightGeo != null) {
+                                                    selectedAreaBounds = BoundingBox(
+                                                        topLeftGeo.latitude,       // latNorth
+                                                        bottomRightGeo.longitude,  // lonEast
+                                                        bottomRightGeo.latitude,   // latSouth
+                                                        topLeftGeo.longitude,      // lonWest
+                                                    )
+                                                    showAreaDownloadConfirmDialog = true
+                                                }
+                                            }
                                         }
                                     }
                                     areaDragState = areaDragState.copy(active = false)
@@ -1782,24 +1789,41 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 )
             }
 
+            val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
             androidx.compose.animation.AnimatedVisibility(
                 visible = !isNavigationActive,
                 enter = Motion.topBarEnter(effectiveAnimationEnabled),
                 exit = Motion.topBarExit(effectiveAnimationEnabled),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .padding(top = 12.dp)
                     .zIndex(2f),
             ) {
-                // Top Search Bar (menu + 地名 + 検索)
-                TopSearchBar(
-                    locationLabel = locationLabel,
-                    onMenuClick = { scope.launch { drawerState.open() } },
-                    onSearchClick = { showDestinationSearch = true },
-                )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Top Search Bar (menu + 地名 + 検索)
+                    TopSearchBar(
+                        locationLabel = locationLabel,
+                        onMenuClick = { scope.launch { drawerState.open() } },
+                        onSearchClick = { showDestinationSearch = true },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    // クイック補給・緊急スポットフィルター行 (コンビニ・道の駅・トイレ・給水・自転車店・駅)
+                    if (!isLandscape) {
+                        QuickSpotFilterRow(
+                            selectedType = if (showQuickSpotSheet) activeQuickSpotType else null,
+                            onSelectType = { type ->
+                                activeQuickSpotType = type
+                                showQuickSpotSheet = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
-
-            val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
             // Right-Side Controls: Compass + Layers/Target/Zoom stack (dark)
             // 横画面時は上部に横並び配置して、下部パネルとの潜り込み・重なりを完全に防止する
@@ -2695,6 +2719,77 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    // クイックスポット検索 (QuickSpotType選択→周辺のオフラインDB検索)
+    LaunchedEffect(activeQuickSpotType, showQuickSpotSheet) {
+        val type = activeQuickSpotType
+        if (!showQuickSpotSheet || type == null) return@LaunchedEffect
+        quickSpotLoading = true
+        quickSpotResults = emptyList()
+        quickSpotMessage = null
+        val center = currentLocation?.let { it.latitude to it.longitude }
+            ?: (mapView?.mapCenter as? GeoPoint)?.let { it.latitude to it.longitude }
+        if (center == null) {
+            quickSpotLoading = false
+            quickSpotMessage = "現在地が取得できません"
+            return@LaunchedEffect
+        }
+        val dbSelection = SearchDbSelector.select(center.first, center.second)
+        val dataDir = cycleMapDataDir(context)
+        val dbFile = when (dbSelection) {
+            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+            is SearchDbSelection.Unavailable -> null
+        }
+        if (dbSelection is SearchDbSelection.Available) {
+            Log.i(
+                "CycleMapGeo",
+                "QUICK_SPOT_DB prefecture=${dbSelection.prefectureName} file=${dbSelection.fileName} type=${type.name}",
+            )
+        }
+        val found = if (dbFile != null && dbFile.isFile) {
+            withContext(Dispatchers.IO) {
+                searchNearbyQuickSpots(
+                    dbFile = dbFile,
+                    centerLat = center.first,
+                    centerLon = center.second,
+                    radiusMeters = 8000.0,
+                    categoryKeys = type.categoryKeys,
+                    limit = 30,
+                )
+            }
+        } else {
+            emptyList()
+        }
+        quickSpotResults = found
+        quickSpotLoading = false
+        quickSpotMessage = if (dbFile == null || !dbFile.isFile) {
+            "検索DBが見つかりません"
+        } else if (found.isEmpty()) {
+            "周辺に${type.label}が見つかりませんでした"
+        } else {
+            null
+        }
+    }
+
+    // クイックスポットやPOI選択時のハイライトピン描画
+    LaunchedEffect(selectedPoiSpot, mapView) {
+        val view = mapView ?: return@LaunchedEffect
+        view.overlays.removeAll { it is Marker && it.title == "SELECTED_POI_HIGHLIGHT" }
+        val spot = selectedPoiSpot
+        if (spot != null) {
+            val marker = Marker(view).apply {
+                title = "SELECTED_POI_HIGHLIGHT"
+                position = GeoPoint(spot.latitude, spot.longitude)
+                icon = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_lucide_map_pin)?.mutate()?.apply {
+                    setTint(android.graphics.Color.parseColor("#E91E63"))
+                }
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                infoWindow = null
+            }
+            view.overlays.add(marker)
+        }
+        view.invalidate()
+    }
+
     if (showRoutePanel) {
         val routeProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(routeSummary, navigationRoute) {
             routeSummary?.let {
@@ -2740,9 +2835,44 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 bottomTab = CyclingTab.MAP
                 handleSpotSelected(GeoPoint(spot.latitude, spot.longitude))
             },
+            onQuickSpotTypeSelect = { type ->
+                showSpotPanel = false
+                bottomTab = CyclingTab.MAP
+                activeQuickSpotType = type
+                showQuickSpotSheet = true
+            },
+            onRouteToSpot = { spot ->
+                showSpotPanel = false
+                bottomTab = CyclingTab.MAP
+                handleSpotSelected(GeoPoint(spot.latitude, spot.longitude))
+            },
             onDismiss = {
                 showSpotPanel = false
                 bottomTab = CyclingTab.MAP
+            },
+        )
+    }
+
+    if (showQuickSpotSheet && activeQuickSpotType != null) {
+        QuickSpotBottomSheet(
+            selectedType = activeQuickSpotType!!,
+            onSelectType = { type ->
+                activeQuickSpotType = type
+            },
+            spots = quickSpotResults,
+            isLoading = quickSpotLoading,
+            errorMessage = quickSpotMessage,
+            onSpotClick = { spot ->
+                showQuickSpotSheet = false
+                mapView?.controller?.animateTo(GeoPoint(spot.latitude, spot.longitude))
+                selectedPoiSpot = spot
+            },
+            onRouteClick = { spot ->
+                showQuickSpotSheet = false
+                handleSpotSelected(GeoPoint(spot.latitude, spot.longitude))
+            },
+            onDismiss = {
+                showQuickSpotSheet = false
             },
         )
     }
@@ -3308,13 +3438,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         // タップで座標・精度を確認できる (通常時はドットのみで情報を詰め込まない)
         marker.snippet = "%.5f, %.5f".format(Locale.US, targetLocation.latitude, targetLocation.longitude) +
             (if (targetLocation.hasAccuracy()) " (±${targetLocation.accuracy.toInt()}m)" else "")
-        accuracyCircle?.let { circle ->
-            if (targetLocation.hasAccuracy() && targetLocation.accuracy in 1f..200f) {
-                circle.points = Polygon.pointsAsCircle(target, targetLocation.accuracy.toDouble())
-                circle.isVisible = true
-            } else {
-                circle.isVisible = false
-            }
+        if (targetLocation.hasAccuracy()) {
+            accuracyCircle?.update(target, targetLocation.accuracy)
+        } else {
+            accuracyCircle?.isEnabled = false
         }
         // 矢印の向き・表示切替は位置アニメーション(900msループ)と分離して1回だけ更新する。
         // 端末コンパスは使わず、GPS bearing または連続fixの推定コースのみ。地図invalidateだけで反映しrecomposeしない。
@@ -3420,7 +3547,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         view.overlays.removeAll { it is Marker && (it.title?.startsWith("POI:") == true) }
         val showLabel = zoom >= 15.0
         val density = context.resources.displayMetrics.density
-        val projection = view.projection
+        val projection = view.projection ?: return@LaunchedEffect
         val screenBounds = Rect(0, 0, view.width.coerceAtLeast(1080), view.height.coerceAtLeast(1920))
         val placedRects = ArrayList<Rect>()
         val point = Point()
@@ -3450,6 +3577,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
             placedRects.add(poiRect)
             val marker = Marker(view).apply {
+                title = "POI:${poi.name}"
                 position = geo
                 icon = visual.drawable
                 setAnchor(visual.anchorU, visual.anchorV)
@@ -3564,7 +3692,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
             when (event) {
                 Lifecycle.Event.ON_RESUME -> view.onResume()
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> view.onPause()
-                Lifecycle.Event.ON_DESTROY -> view.onDetach()
+                Lifecycle.Event.ON_DESTROY -> {
+                    view.onPause()
+                    if ((context as? android.app.Activity)?.isFinishing == true) {
+                        view.onDetach()
+                    }
+                }
                 else -> Unit
             }
         }
@@ -3572,7 +3705,6 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             view.onPause()
-            view.onDetach()
         }
     }
 }
@@ -3801,6 +3933,43 @@ private fun PoiDetailCard(
                     Text(if (isFavorite) "登録済み" else "お気に入り")
                 }
             }
+        }
+    }
+}
+
+/**
+ * 現在地精度円を描画する軽量・高信頼オーバーレイ。
+ * Polygon による点の再生成や LinearRing のライフサイクル依存（detach時のnull破棄）を排除し、
+ * Canvas.drawCircle によるダイレクト描画でクラッシュ耐性と描画性能を両立する。
+ */
+private class AccuracyCircleOverlay : org.osmdroid.views.overlay.Overlay() {
+    private var center: GeoPoint? = null
+    private var accuracyMeters: Float = 0f
+    private val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#221A73E8")
+        style = android.graphics.Paint.Style.FILL
+    }
+    private val strokePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#661A73E8")
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    private val screenPoint = android.graphics.Point()
+
+    fun update(target: GeoPoint, accuracy: Float) {
+        center = target
+        accuracyMeters = accuracy
+        isEnabled = accuracy in 1f..200f
+    }
+
+    override fun draw(pCanvas: android.graphics.Canvas?, pProjection: org.osmdroid.views.Projection?) {
+        if (!isEnabled || pCanvas == null || pProjection == null) return
+        val c = center ?: return
+        pProjection.toPixels(c, screenPoint)
+        val radiusPx = pProjection.metersToPixels(accuracyMeters)
+        if (radiusPx in 1f..10000f) {
+            pCanvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), radiusPx, fillPaint)
+            pCanvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), radiusPx, strokePaint)
         }
     }
 }
