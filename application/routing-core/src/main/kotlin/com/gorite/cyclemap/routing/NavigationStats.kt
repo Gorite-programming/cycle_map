@@ -59,22 +59,15 @@ fun computeNavigationStats(
     val covered = progress.distanceFromStartMeters.coerceAtLeast(0.0)
     val averageSpeed = if (elapsed >= minAverageElapsedSeconds && covered > 0.0) covered / elapsed else Double.NaN
 
-    // 信号待ち・一時停止中のETA発散防止および滑らかな速度ブレンディング
+    // 信号待ち・一時停止中のETA発散防止
     val isStopped = smoothedSpeedMps < 0.5
     val effective = when {
-        // 停止中は直前の実効速度をホールドし、ETAの急上昇（発散）を防ぐ
+        // 停止中は直前の実効速度をホールドし、走行距離が止まったまま経過時間が増えてETAが跳ね上がるのを防ぐ
         isStopped && lastEffectiveSpeedMps != null && lastEffectiveSpeedMps >= minAverageSpeedMps ->
             lastEffectiveSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
-        averageSpeed.isFinite() && averageSpeed >= minAverageSpeedMps -> {
-            // 走行中は累積平均(70%)と直近瞬間速度(30%)をブレンドして急変を緩和
-            val blended = if (smoothedSpeedMps >= minAverageSpeedMps) {
-                averageSpeed * 0.7 + smoothedSpeedMps * 0.3
-            } else {
-                averageSpeed
-            }
-            blended.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
-        }
-        smoothedSpeedMps > 0.5 -> smoothedSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
+        averageSpeed.isFinite() && averageSpeed >= minAverageSpeedMps ->
+            averageSpeed.coerceAtMost(maxAverageSpeedMps)
+        smoothedSpeedMps > 0.5 -> smoothedSpeedMps.coerceAtMost(maxAverageSpeedMps)
         lastEffectiveSpeedMps != null && lastEffectiveSpeedMps >= minAverageSpeedMps ->
             lastEffectiveSpeedMps.coerceIn(minAverageSpeedMps, maxAverageSpeedMps)
         else -> defaultSpeedMps
