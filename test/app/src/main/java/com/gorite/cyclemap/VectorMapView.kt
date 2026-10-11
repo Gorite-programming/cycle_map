@@ -7,12 +7,15 @@ import android.graphics.Color
 import android.os.Bundle
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -162,6 +165,8 @@ internal fun VectorMapView(
     isNavigationActive: Boolean = false,
     poiVisible: Boolean = true,
     poiSelected: Set<PoiCategory> = PoiCategory.defaults(),
+    cameraPadding: PaddingValues = PaddingValues(0.dp),
+    onTiltChanged: (Double) -> Unit = {},
     onPoiClick: (NearbySpot) -> Unit = {},
     onUserPan: () -> Unit = {},
     onMapReady: (MapLibreMap) -> Unit = {},
@@ -368,6 +373,7 @@ internal fun VectorMapView(
                         map.addOnCameraMoveListener {
                             val pos = map.cameraPosition
                             currentTilt = pos.tilt
+                            onTiltChanged(pos.tilt)
 
                             val currentExtruded = lastExtruded
                             val shouldExtrude = when {
@@ -390,7 +396,7 @@ internal fun VectorMapView(
                                             PropertyFactory.visibility(
                                                 if (shouldExtrude) Property.VISIBLE else Property.NONE
                                             ),
-                                            PropertyFactory.fillExtrusionColor("#E9EAEF"),
+                                            PropertyFactory.fillExtrusionColor("#F0F1F5"),
                                             PropertyFactory.fillExtrusionOpacity(0.95f),
                                             PropertyFactory.fillExtrusionVerticalGradient(true),
                                         )
@@ -529,33 +535,15 @@ internal fun VectorMapView(
             triggerPoisRef?.invoke()
         }
 
-        // 3D 鳥瞰 (60°) / 2D 平面 (0°) 切替ボタン (左下に配置して右側のズーム操作バーと分離)
-        Button(
-            onClick = {
-                val map = mapLibreMap ?: return@Button
-                val targetTilt = if (currentTilt > 15.0) 0.0 else 60.0
-                map.animateCamera(
-                    CameraUpdateFactory.newCameraPosition(
-                        CameraPosition.Builder(map.cameraPosition)
-                            .tilt(targetTilt)
-                            .build()
-                    ),
-                    700
-                )
-            },
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = if (isNavigationActive) 260.dp else 100.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (currentTilt > 15.0) androidx.compose.ui.graphics.Color(0xFFE91E63) else androidx.compose.ui.graphics.Color(0xFF1E88E5),
-            ),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Text(
-                text = if (currentTilt > 15.0) "2D 平面" else "3D 鳥瞰 (60°)",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-            )
+        // ナビ案内時等のカメラパディング連携 (自車位置の前方視界確保)
+        val density = LocalDensity.current
+        LaunchedEffect(cameraPadding, mapLibreMap, density) {
+            val map = mapLibreMap ?: return@LaunchedEffect
+            val leftPx = with(density) { cameraPadding.calculateLeftPadding(LayoutDirection.Ltr).roundToPx() }
+            val topPx = with(density) { cameraPadding.calculateTopPadding().roundToPx() }
+            val rightPx = with(density) { cameraPadding.calculateRightPadding(LayoutDirection.Ltr).roundToPx() }
+            val bottomPx = with(density) { cameraPadding.calculateBottomPadding().roundToPx() }
+            map.setPadding(leftPx, topPx, rightPx, bottomPx)
         }
     }
 }

@@ -150,12 +150,12 @@ fun QuickSpotPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val containerColor = if (isSelected) CyclingPink else CyclingNavy.copy(alpha = 0.94f)
-    val contentColor = Color.White
+    val containerColor = if (isSelected) Color(0xFFE8F0FE) else Color.White
+    val contentColor = if (isSelected) Color(0xFF1A73E8) else Color(0xFF3C4043)
     val borderStroke = if (isSelected) {
-        BorderStroke(1.5.dp, CyclingPinkLight)
+        BorderStroke(1.5.dp, Color(0xFF1A73E8))
     } else {
-        BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
+        BorderStroke(1.dp, Color(0xFFDADCE0))
     }
 
     Surface(
@@ -163,7 +163,7 @@ fun QuickSpotPill(
         shape = RoundedCornerShape(20.dp),
         color = containerColor,
         border = borderStroke,
-        shadowElevation = if (isSelected) 6.dp else 4.dp,
+        shadowElevation = if (isSelected) 4.dp else 2.dp,
         modifier = modifier.height(38.dp),
     ) {
         Row(
@@ -212,7 +212,7 @@ fun QuickSpotBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = Color.White,
         modifier = modifier,
     ) {
         Column(
@@ -234,14 +234,14 @@ fun QuickSpotBottomSheet(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = CyclingPink.copy(alpha = 0.15f),
+                        color = Color(0xFFE8F0FE),
                         modifier = Modifier.size(40.dp),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 painter = painterResource(selectedType.iconRes),
                                 contentDescription = null,
-                                tint = CyclingPink,
+                                tint = Color(0xFF1A73E8),
                                 modifier = Modifier.size(22.dp),
                             )
                         }
@@ -252,18 +252,19 @@ fun QuickSpotBottomSheet(
                                 text = "周辺の${selectedType.label}",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
+                                color = Color(0xFF202124),
                             )
                             if (spots.isNotEmpty()) {
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = CyclingPink.copy(alpha = 0.15f),
+                                    color = Color(0xFFE8F0FE),
                                 ) {
                                     Text(
                                         text = "${spots.size}件",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = CyclingPink,
+                                        color = Color(0xFF1A73E8),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                     )
                                 }
@@ -272,7 +273,7 @@ fun QuickSpotBottomSheet(
                         Text(
                             text = "最寄りから順に表示・ワンタップでルート案内",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Color(0xFF5F6368),
                         )
                     }
                 }
@@ -280,7 +281,7 @@ fun QuickSpotBottomSheet(
                     Icon(
                         painter = painterResource(R.drawable.ic_lucide_x),
                         contentDescription = "閉じる",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = Color(0xFF5F6368),
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -419,13 +420,14 @@ private fun QuickSpotCard(
             .clickable(onClick = onSpotClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            containerColor = Color(0xFFF8F9FA),
         ),
+        border = BorderStroke(1.dp, Color(0xFFE8EAED)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -438,6 +440,7 @@ private fun QuickSpotCard(
                     text = spot.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    color = Color(0xFF202124),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -449,17 +452,17 @@ private fun QuickSpotCard(
                         text = formatKm(spot.distanceM),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = CyclingPink,
+                        color = Color(0xFF1A73E8),
                     )
                     Text(
                         text = "•",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFF5F6368),
                     )
                     Text(
                         text = formatCategoryLabel(spot.category),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color(0xFF5F6368),
                     )
                 }
             }
@@ -478,7 +481,7 @@ private fun QuickSpotCard(
                     Icon(
                         painter = painterResource(if (isFavorite) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
                         contentDescription = if (isFavorite) "お気に入り解除" else "お気に入り追加",
-                        tint = if (isFavorite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isFavorite) Color(0xFFFFB300) else Color(0xFF9AA0A6),
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -487,15 +490,16 @@ private fun QuickSpotCard(
                     onClick = onRouteClick,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyclingPink,
+                        containerColor = Color(0xFF1A73E8),
                         contentColor = Color.White,
                     ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     modifier = Modifier.height(36.dp),
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.ic_lucide_navigation),
                         contentDescription = null,
+                        tint = Color.White,
                         modifier = Modifier.size(14.dp),
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -503,6 +507,7 @@ private fun QuickSpotCard(
                         text = "ここへ行く",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
+                        color = Color.White,
                     )
                 }
             }

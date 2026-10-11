@@ -23,10 +23,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.VisibleForTesting
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -887,10 +890,21 @@ internal fun DestinationSearchDialog(
         properties = DialogProperties(
             decorFitsSystemWindows = false,
         ),
+        containerColor = Color.White,
+        titleContentColor = Color(0xFF202124),
+        textContentColor = Color(0xFF3C4043),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
             .imePadding(),
-        title = { Text("目的地検索") },
+        title = {
+            Text(
+                "目的地検索",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = Color(0xFF202124),
+            )
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -901,8 +915,9 @@ internal fun DestinationSearchDialog(
                 if (showFts5Notice) {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            containerColor = Color(0xFFFEF7E0),
                         ),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
@@ -916,14 +931,14 @@ internal fun DestinationSearchDialog(
                             Icon(
                                 painterResource(R.drawable.ic_lucide_info),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = Color(0xFFE37400),
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "旧形式の検索DBが使用されています。漢字または前方・部分一致で検索してください",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = Color(0xFF202124),
                                 modifier = Modifier.weight(1f),
                             )
                             IconButton(
@@ -933,7 +948,7 @@ internal fun DestinationSearchDialog(
                                 Icon(
                                     painterResource(R.drawable.ic_lucide_x),
                                     contentDescription = "閉じる",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = Color(0xFF5F6368),
                                     modifier = Modifier.size(16.dp),
                                 )
                             }
@@ -941,27 +956,49 @@ internal fun DestinationSearchDialog(
                     }
                 }
 
-                // 検索テキストフィールド
+                // 検索テキストフィールド (Google スタイル: 薄グレー背景 #F1F3F4, ダークテキスト #202124)
                 TextField(
                     value = query,
                     onValueChange = { query = it },
                     singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFFF1F3F4),
+                        unfocusedContainerColor = Color(0xFFF1F3F4),
+                        focusedTextColor = Color(0xFF202124),
+                        unfocusedTextColor = Color(0xFF202124),
+                        focusedPlaceholderColor = Color(0xFF5F6368),
+                        unfocusedPlaceholderColor = Color(0xFF5F6368),
+                        focusedIndicatorColor = Color(0xFF1A73E8),
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = Color(0xFF1A73E8),
+                    ),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("施設名・地名を入力") },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // カテゴリフィルタタブ
+                // カテゴリフィルタタブ (Google スタイル: 白背景, 青インジケータ)
                 ScrollableTabRow(
                     selectedTabIndex = SearchCategory.entries.indexOf(selectedCategory),
                     edgePadding = 0.dp,
+                    containerColor = Color.White,
+                    contentColor = Color(0xFF1A73E8),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     SearchCategory.entries.forEach { cat ->
+                        val isSelected = selectedCategory == cat
                         Tab(
-                            selected = selectedCategory == cat,
+                            selected = isSelected,
                             onClick = { selectedCategory = cat },
-                            text = { Text(cat.label, fontSize = 12.sp) },
+                            text = {
+                                Text(
+                                    cat.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color(0xFF1A73E8) else Color(0xFF5F6368),
+                                )
+                            },
                         )
                     }
                 }
@@ -1043,8 +1080,9 @@ internal fun DestinationSearchDialog(
                                                     ),
                                                 )
                                             },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8F9FA),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE8EAED)),
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -1054,11 +1092,11 @@ internal fun DestinationSearchDialog(
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(fav.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                                Text(fav.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF202124))
                                                 Text(
                                                     fav.address ?: formatCategoryLabel(fav.category),
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    color = Color(0xFF5F6368),
                                                 )
                                             }
                                             IconButton(
@@ -1084,12 +1122,12 @@ internal fun DestinationSearchDialog(
                                     painterResource(R.drawable.ic_lucide_search),
                                     contentDescription = null,
                                     modifier = Modifier.size(48.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    tint = Color(0xFF9AA0A6)
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
                                     "目的地を検索してください",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color(0xFF5F6368)
                                 )
                             }
                         }
@@ -1103,8 +1141,9 @@ internal fun DestinationSearchDialog(
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
                                     .clickable { onResultSelected(result) },
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF8F9FA),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE8EAED)),
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -1114,7 +1153,7 @@ internal fun DestinationSearchDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(result.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Text(result.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF202124))
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1123,7 +1162,7 @@ internal fun DestinationSearchDialog(
                                             Text(
                                                 formatCategoryLabel(result.category),
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                color = Color(0xFF5F6368),
                                                 modifier = Modifier.weight(1f),
                                             )
                                             result.distanceMeters?.let { dist ->
@@ -1169,8 +1208,13 @@ internal fun DestinationSearchDialog(
                 }
         }
     },
-    confirmButton = {
-            TextButton(onClick = onDismiss) { Text("閉じる") }
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1A73E8)),
+            ) {
+                Text("閉じる", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
         },
     )
 }

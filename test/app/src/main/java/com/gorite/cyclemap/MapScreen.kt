@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -149,6 +150,9 @@ import com.gorite.cyclemap.ui.cycling.CyclingPinkLight
 import com.gorite.cyclemap.ui.cycling.CyclingSubText
 import com.gorite.cyclemap.ui.cycling.CyclingTab
 import com.gorite.cyclemap.ui.cycling.DarkControlStack
+import com.gorite.cyclemap.ui.cycling.GoogleMapsControlColumn
+import com.gorite.cyclemap.ui.cycling.GoogleNavFooter
+import com.gorite.cyclemap.ui.cycling.GoogleNavHeader
 import com.gorite.cyclemap.ui.cycling.ElevationProfileChart
 import com.gorite.cyclemap.ui.cycling.GpxHistoryEntry
 import com.gorite.cyclemap.ui.cycling.NearbySpot
@@ -326,6 +330,7 @@ private data class RouteRequest(
 internal fun MapScreen(
     modifier: Modifier = Modifier,
     systemInsets: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(),
+    onNavigationStateChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("cyclemap_prefs", Context.MODE_PRIVATE) }
@@ -388,6 +393,7 @@ internal fun MapScreen(
     var headingDegrees by remember { mutableFloatStateOf(0f) }
     var isHeadingUp by remember { mutableStateOf(true) }
     var followLocation by remember { mutableStateOf(true) }
+    var currentVectorTilt by remember { mutableDoubleStateOf(0.0) }
 
     // 回転式ナビ矢印用 (recomposeを起こさない保持。更新は地図invalidateのみ)
     val navArrowCache = remember { NavArrowCache() }
@@ -522,6 +528,9 @@ internal fun MapScreen(
     var navigationInstructions by remember { mutableStateOf(emptyList<RouteInstruction>()) }
     var navigationProgress by remember { mutableStateOf<RouteProgress?>(null) }
     var isNavigationActive by remember { mutableStateOf(false) }
+    LaunchedEffect(isNavigationActive) {
+        onNavigationStateChanged(isNavigationActive)
+    }
     var isCalculatingRoute by remember { mutableStateOf(false) }
     // ナビ案内セッション状態
     var navStats by remember { mutableStateOf<NavigationStats?>(null) }
@@ -1635,6 +1644,7 @@ internal fun MapScreen(
             }
         },
     ) {
+        val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         Column(modifier = modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
@@ -1745,6 +1755,15 @@ internal fun MapScreen(
                     isNavigationActive = isNavigationActive,
                     poiVisible = poiVisible,
                     poiSelected = poiSelected,
+                    cameraPadding = androidx.compose.foundation.layout.PaddingValues(
+                        top = if (isNavigationActive) {
+                            if (isLandscape) 50.dp else (systemInsets.calculateTopPadding() + 140.dp)
+                        } else 0.dp,
+                        bottom = if (isNavigationActive) {
+                            if (isLandscape) 64.dp else (systemInsets.calculateBottomPadding() + 130.dp)
+                        } else 0.dp,
+                    ),
+                    onTiltChanged = { tilt -> currentVectorTilt = tilt },
                     onPoiClick = { spot -> selectedPoiSpot = spot },
                     onUserPan = { followLocation = false },
                     onMapReady = { vectorMap = it },
@@ -1834,8 +1853,6 @@ internal fun MapScreen(
                         },
                 )
             }
-
-            val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
             // DEF-01: 通知バナー群（通常時・案内時の共通表示）
             @Composable
@@ -2058,645 +2075,458 @@ internal fun MapScreen(
                 }
             }
 
-            // Right-Side Controls: Compass + Layers/Target/Zoom stack (dark)
-            // 横画面時は上部に横並び配置して、下部パネルとの潜り込み・重なりを完全に防止する
+            // Right-Side Controls: Google Maps Style (Compass, 3D/2D, Layers, Target, Zoom, Area Select)
+            val canZoomIn = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
+                (vectorMap?.cameraPosition?.zoom ?: 14.0) < 22.0
+            } else {
+                currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
+            }
+            val canZoomOut = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
+                (vectorMap?.cameraPosition?.zoom ?: 14.0) > 2.0
+            } else {
+                currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
+            }
+            val currentLayerLabel = when (selectedLayer) {
+                MapLayer.VECTOR_LIBERTY -> "3Dベクター"
+                MapLayer.GSI -> "標準"
+                MapLayer.OSM -> "自転車"
+                MapLayer.TERRAIN -> "地形"
+            }
+            val onToggleTiltAction: () -> Unit = {
+                val map = vectorMap
+                if (map != null) {
+                    val targetTilt = if (currentVectorTilt > 15.0) 0.0 else 60.0
+                    map.animateCamera(
+                        org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
+                            org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition)
+                                .tilt(targetTilt)
+                                .build()
+                        ),
+                        700
+                    )
+                }
+            }
+            val onTargetClickAction: () -> Unit = {
+                followLocation = true
+                currentLocation?.let { loc ->
+                    if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
+                        vectorMap?.animateCamera(
+                            org.maplibre.android.camera.CameraUpdateFactory.newLatLng(
+                                org.maplibre.android.geometry.LatLng(loc.latitude, loc.longitude)
+                            )
+                        )
+                    } else {
+                        mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
+                    }
+                }
+            }
+            val onZoomInAction: () -> Unit = {
+                if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
+                    vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomIn())
+                } else {
+                    mapView?.controller?.zoomIn(150L)
+                }
+            }
+            val onZoomOutAction: () -> Unit = {
+                if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
+                    vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomOut())
+                } else {
+                    mapView?.controller?.zoomOut(150L)
+                }
+            }
+            val onAreaSelectToggleAction: () -> Unit = {
+                isAreaSelectMode = !isAreaSelectMode
+                if (!isAreaSelectMode) {
+                    areaDragState = AreaDragState()
+                    selectedAreaBounds = null
+                }
+            }
+
             if (isLandscape) {
-                Row(
+                GoogleMapsControlColumn(
+                    headingDegrees = { headingDegrees },
+                    isHeadingUp = isHeadingUp,
+                    onCompassClick = {
+                        isHeadingUp = !isHeadingUp
+                        if (!isHeadingUp) {
+                            orientationAnimator.reset()
+                            updateNavArrow()
+                        }
+                    },
+                    currentTilt = currentVectorTilt,
+                    onToggleTilt = onToggleTiltAction,
+                    layerLabel = currentLayerLabel,
+                    onLayerClick = toggleNextLayer,
+                    following = followLocation,
+                    onTargetClick = onTargetClickAction,
+                    onZoomIn = onZoomInAction,
+                    onZoomOut = onZoomOutAction,
+                    canZoomIn = canZoomIn,
+                    canZoomOut = canZoomOut,
+                    isNavigationActive = isNavigationActive,
+                    isAreaSelectMode = isAreaSelectMode,
+                    onAreaSelectToggle = onAreaSelectToggleAction,
+                    isLandscape = true,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(
-                            end = 12.dp,
+                            end = systemInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 12.dp,
                             top = systemInsets.calculateTopPadding() + (if (isNavigationActive) 12.dp else 68.dp),
                         )
                         .zIndex(2f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Area-select (high-zoom download) toggle button (案内中は非表示)
-                    if (!isNavigationActive) {
-                        Surface(
-                            shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
-                            color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
-                            shadowElevation = 6.dp,
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .clickable {
-                                        isAreaSelectMode = !isAreaSelectMode
-                                        if (!isAreaSelectMode) {
-                                            areaDragState = AreaDragState()
-                                            selectedAreaBounds = null
-                                        }
-                                    }
-                                    .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                Box(
-                                    modifier = Modifier.size(48.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        painterResource(R.drawable.ic_lucide_square_dashed),
-                                        contentDescription = "エリア選択",
-                                        tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                                if (isAreaSelectMode) {
-                                    Text(
-                                        text = "選択中",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onTertiary,
-                                        modifier = Modifier.padding(end = 4.dp),
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    CompassDial(
-                        headingDegrees = { headingDegrees },
-                        headingUp = isHeadingUp,
-                        onClick = {
-                            isHeadingUp = !isHeadingUp
-                            if (!isHeadingUp) {
-                                orientationAnimator.reset()
-                                updateNavArrow()
-                            }
-                        },
-                    )
-
-                    val canZoomIn = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                        (vectorMap?.cameraPosition?.zoom ?: 14.0) < 22.0
-                    } else {
-                        currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
-                    }
-                    val canZoomOut = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                        (vectorMap?.cameraPosition?.zoom ?: 14.0) > 2.0
-                    } else {
-                        currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
-                    }
-                    DarkControlStack(
-                        layerLabel = when (selectedLayer) {
-                            MapLayer.VECTOR_LIBERTY -> "3Dベクター"
-                            MapLayer.GSI -> "標準"
-                            MapLayer.OSM -> "自転車"
-                            MapLayer.TERRAIN -> "地形"
-                        },
-                        following = followLocation,
-                        canZoomIn = canZoomIn,
-                        canZoomOut = canZoomOut,
-                        horizontal = true,
-                        onLayerClick = toggleNextLayer,
-                        onTargetClick = {
-                            followLocation = true
-                            currentLocation?.let { loc ->
-                                if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                    vectorMap?.animateCamera(
-                                        org.maplibre.android.camera.CameraUpdateFactory.newLatLng(
-                                            org.maplibre.android.geometry.LatLng(loc.latitude, loc.longitude)
-                                        )
-                                    )
-                                } else {
-                                    mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                                }
-                            }
-                        },
-                        onZoomIn = {
-                            if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomIn())
-                            } else {
-                                mapView?.controller?.zoomIn(150L)
-                            }
-                        },
-                        onZoomOut = {
-                            if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomOut())
-                            } else {
-                                mapView?.controller?.zoomOut(150L)
-                            }
-                        },
-                    )
-                }
+                )
             } else {
-                Column(
+                GoogleMapsControlColumn(
+                    headingDegrees = { headingDegrees },
+                    isHeadingUp = isHeadingUp,
+                    onCompassClick = {
+                        isHeadingUp = !isHeadingUp
+                        if (!isHeadingUp) {
+                            orientationAnimator.reset()
+                            updateNavArrow()
+                        }
+                    },
+                    currentTilt = currentVectorTilt,
+                    onToggleTilt = onToggleTiltAction,
+                    layerLabel = currentLayerLabel,
+                    onLayerClick = toggleNextLayer,
+                    following = followLocation,
+                    onTargetClick = onTargetClickAction,
+                    onZoomIn = onZoomInAction,
+                    onZoomOut = onZoomOutAction,
+                    canZoomIn = canZoomIn,
+                    canZoomOut = canZoomOut,
+                    isNavigationActive = isNavigationActive,
+                    isAreaSelectMode = isAreaSelectMode,
+                    onAreaSelectToggle = onAreaSelectToggleAction,
+                    isLandscape = false,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .zIndex(2f),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    horizontalAlignment = Alignment.End,
-                ) {
-                    CompassDial(
-                        headingDegrees = { headingDegrees },
-                        headingUp = isHeadingUp,
-                        onClick = {
-                            isHeadingUp = !isHeadingUp
-                            if (!isHeadingUp) {
-                                orientationAnimator.reset()
-                                updateNavArrow()
-                            }
-                        },
-                    )
-                    val canZoomIn = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                        (vectorMap?.cameraPosition?.zoom ?: 14.0) < 22.0
-                    } else {
-                        currentZoomLevel < (mapView?.maxZoomLevel ?: 21.0)
-                    }
-                    val canZoomOut = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                        (vectorMap?.cameraPosition?.zoom ?: 14.0) > 2.0
-                    } else {
-                        currentZoomLevel > (mapView?.minZoomLevel ?: 2.0)
-                    }
-                    DarkControlStack(
-                        layerLabel = when (selectedLayer) {
-                            MapLayer.VECTOR_LIBERTY -> "3Dベクター"
-                            MapLayer.GSI -> "標準"
-                            MapLayer.OSM -> "自転車"
-                            MapLayer.TERRAIN -> "地形"
-                        },
-                        following = followLocation,
-                        canZoomIn = canZoomIn,
-                        canZoomOut = canZoomOut,
-                        horizontal = false,
-                        onLayerClick = toggleNextLayer,
-                        onTargetClick = {
-                            followLocation = true
-                            currentLocation?.let { loc ->
-                                if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                    vectorMap?.animateCamera(
-                                        org.maplibre.android.camera.CameraUpdateFactory.newLatLng(
-                                            org.maplibre.android.geometry.LatLng(loc.latitude, loc.longitude)
-                                        )
-                                    )
-                                } else {
-                                    mapView?.controller?.animateTo(GeoPoint(loc.latitude, loc.longitude))
-                                }
-                            }
-                        },
-                        onZoomIn = {
-                            if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomIn())
-                            } else {
-                                mapView?.controller?.zoomIn(150L)
-                            }
-                        },
-                        onZoomOut = {
-                            if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-                                vectorMap?.easeCamera(org.maplibre.android.camera.CameraUpdateFactory.zoomOut())
-                            } else {
-                                mapView?.controller?.zoomOut(150L)
-                            }
-                        },
-                    )
-
-                    // Area-select (high-zoom download) toggle button (案内中は非表示)
-                    if (!isNavigationActive) {
-                        Surface(
-                            shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
-                            color = if (isAreaSelectMode) MaterialTheme.colorScheme.tertiary else CyclingNavy.copy(alpha = 0.94f),
-                            shadowElevation = 6.dp,
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .clickable {
-                                        isAreaSelectMode = !isAreaSelectMode
-                                        if (!isAreaSelectMode) {
-                                            areaDragState = AreaDragState()
-                                            selectedAreaBounds = null
-                                        }
-                                    }
-                                    .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                Box(
-                                    modifier = Modifier.size(48.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        painterResource(R.drawable.ic_lucide_square_dashed),
-                                        contentDescription = "エリア選択",
-                                        tint = if (isAreaSelectMode) MaterialTheme.colorScheme.onTertiary else Color.White,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                                if (isAreaSelectMode) {
-                                    Text(
-                                        text = "選択中",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onTertiary,
-                                        modifier = Modifier.padding(end = 4.dp),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                )
             }
 
-            // Top Center: Active Navigation Guidance & Banners (isNavigationActive)
+            // Top Center: Active Navigation Guidance & Banners (isNavigationActive: GoogleNavHeader)
             androidx.compose.animation.AnimatedVisibility(
                 visible = isNavigationActive,
                 enter = Motion.topBarEnter(effectiveAnimationEnabled),
                 exit = Motion.topBarExit(effectiveAnimationEnabled),
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = systemInsets.calculateTopPadding() + 12.dp)
+                    .align(if (isLandscape) Alignment.TopStart else Alignment.TopCenter)
+                    .then(
+                        if (isLandscape) {
+                            Modifier.padding(
+                                start = systemInsets.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 12.dp,
+                                top = systemInsets.calculateTopPadding() + 8.dp,
+                            )
+                        } else {
+                            Modifier.fillMaxWidth()
+                        }
+                    )
                     .zIndex(2f),
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AnimatedVisibility(
-                        visible = isRerouting,
-                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                        exit = Motion.bannerExit(effectiveAnimationEnabled),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "ルートを再探索中…",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                )
-                            }
-                        }
-                    }
+                val progress = navigationProgress
+                val distanceMeters = progress?.distanceToNextManeuverMeters
+                    ?: progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
+                val remaining = progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
+                val guide = if (distanceMeters != null) {
+                    navigationInstruction(progress, remaining, navigationInstructions, ARRIVAL_RADIUS_METERS)
+                } else null
 
-                    val progress = navigationProgress
-                    val distanceMeters = progress?.distanceToNextManeuverMeters
-                        ?: progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
-                    if (!isRerouting && distanceMeters != null) {
-                        val remaining = progress?.let { (it.routeDistanceMeters - it.distanceFromStartMeters).coerceAtLeast(0.0) }
-                        val guide = navigationInstruction(progress, remaining, navigationInstructions, ARRIVAL_RADIUS_METERS)
-                        // 2つ先の案内 (その先) を取得してプレビュー表示
-                        val traveled = progress?.distanceFromStartMeters ?: 0.0
-                        val futureInstructions = navigationInstructions.filter { it.distanceFromStartMeters > traveled }
-                        val nextAfterThis = futureInstructions.getOrNull(1)
+                val traveled = progress?.distanceFromStartMeters ?: 0.0
+                val futureInstructions = navigationInstructions.filter { it.distanceFromStartMeters > traveled }
+                val nextAfterThis = futureInstructions.getOrNull(1)
+                val distNextAfterThis = nextAfterThis?.let { (it.distanceFromStartMeters - traveled).coerceAtLeast(0.0) }
 
-                        AnimatedContent(
-                            targetState = guide,
-                            transitionSpec = { Motion.bannerContentTransform(effectiveAnimationEnabled) },
-                            label = "NavGuideTransition",
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { currentGuide ->
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A).copy(alpha = 0.96f)),
-                                shape = RoundedCornerShape(16.dp),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        painterResource(currentGuide.arrowIcon),
-                                        contentDescription = null,
-                                        tint = Color(0xFFFFD600),
-                                        modifier = Modifier
-                                            .padding(end = 14.dp)
-                                            .size(52.dp),
-                                    )
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                    ) {
-                                        // DEF-10: 文字数に応じたレスポンシブなフォントサイズ指定で不自然な1文字改行を防止
-                                        Text(
-                                            text = currentGuide.text,
-                                            fontSize = if (currentGuide.text.length > 12) 18.sp else 21.sp,
-                                            lineHeight = if (currentGuide.text.length > 12) 23.sp else 26.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                        )
-                                        Text(
-                                            "${distanceMeters.roundToInt()}m",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFFFD600),
-                                        )
-                                        nextAfterThis?.let { nextStep ->
-                                            val label = IconResolver.getLabel(nextStep.type, nextStep.turnAngleDegrees)
-                                            val stepDist = (nextStep.distanceFromStartMeters - traveled).coerceAtLeast(0.0).roundToInt()
-                                            Text(
-                                                "その先 (${stepDist}m): ${label}",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFFE2E8F0),
-                                                modifier = Modifier.padding(top = 2.dp),
-                                            )
-                                        }
-                                        navStats?.let { stats ->
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                "残り ${formatRemaining(stats.remainingMeters)} · " +
-                                                    "到着 ${formatEta(stats.etaEpochMillis)} · " +
-                                                    "あと${formatDuration(stats.durationRemainingSeconds)}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium,
-                                                color = Color(0xFFCBD5E1),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    AnimatedVisibility(
-                        visible = offRouteDetector.isOffRoute && !isRerouting,
-                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                        exit = Motion.bannerExit(effectiveAnimationEnabled),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                if (!autoRerouteEnabled) "ルートから外れています（自動リルートOFF）" else "ルートから外れています",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                            )
-                        }
-                    }
-
-                    // 案内中のGPS状態警告・通知バナー
-                    NotificationBannerGroup()
-
-                    // 現在速度チップ (ルート中はカード外で常時確認)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        SpeedChip(speedKmh = speedKmh)
-                    }
-                }
+                GoogleNavHeader(
+                    currentGuide = guide,
+                    distanceMeters = distanceMeters,
+                    nextAfterThis = nextAfterThis,
+                    distanceToNextAfterThis = distNextAfterThis,
+                    isRerouting = isRerouting,
+                    isOffRoute = offRouteDetector.isOffRoute && !isRerouting,
+                    autoRerouteEnabled = autoRerouteEnabled,
+                    effectiveAnimationEnabled = effectiveAnimationEnabled,
+                    isLandscape = isLandscape,
+                    statusBarTopPadding = systemInsets.calculateTopPadding(),
+                    notificationBannerGroup = { NotificationBannerGroup() },
+                )
             }
 
             // (帰属表示はダッシュボード内のフッターに統合)
 
-            // Bottom Cycling Dashboard (HUD Card)
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = systemInsets.calculateBottomPadding())
-                    .zIndex(2f),
-                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (routeSummary != null) {
-                        CyclingNavy.copy(alpha = 0.96f)
-                    } else {
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+            // Bottom Area: Active Navigation Footer or Dashboard
+            if (isNavigationActive && routeSummary != null) {
+                // アクティブナビ案内フッター (GoogleNavFooter)
+                GoogleNavFooter(
+                    navStats = navStats,
+                    totalDistanceMeters = routeSummary?.distanceMeters ?: 0.0,
+                    speedKmh = speedKmh,
+                    isRecording = isRecording,
+                    gpxPointCount = gpxPointCount,
+                    onToggleRecording = {
+                        if (!hasLocationPermission) {
+                            warningMessage = "GPX記録には位置情報の許可が必要です"
+                        } else if (isRecording) {
+                            LocationTrackingService.stopRecording(context)
+                        } else {
+                            LocationTrackingService.startRecording(context)
+                        }
                     },
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            ) {
-                Column(
+                    onStopNavigation = {
+                        isNavigationActive = false
+                        clearRoute()
+                    },
+                    onShowLicense = { showLicense = true },
+                    isLandscape = isLandscape,
                     modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = systemInsets.calculateBottomPadding())
+                        .zIndex(2f),
+                )
+            } else {
+                // 通常探索モード または ルート案内前プレビューモード (白背景・Google スタイル)
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = if (isLandscape) 8.dp else 16.dp),
+                        .padding(top = 12.dp, bottom = systemInsets.calculateBottomPadding())
+                        .zIndex(2f),
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White,
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                 ) {
-                    // Graph Switch Indicator
-                    AnimatedVisibility(
-                        visible = isSwitchingGraph,
-                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                        exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = CyclingPink)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("県データグラフを切替・読み込み中…", style = MaterialTheme.typography.bodyMedium, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Route Calculation Indicator
-                    AnimatedVisibility(
-                        visible = isCalculatingRoute,
-                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                        exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("最適サイクリングルートを探索中…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-
-                    // Route Summary Section (When route is active) — 見本準拠ダークカード
-                    routeSummary?.let { summary ->
-                        val elevProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(summary, navigationRoute) {
-                            buildRouteElevationProfile(navigationRoute.map { it.latitude to it.longitude }, summary.distanceMeters)
-                        }
-                        val progressM = navigationProgress?.distanceFromStartMeters
-                        val rideMetrics = navStats?.let { stats ->
-                            RideMetrics(
-                                speedKmh = speedKmh,
-                                totalDistanceM = summary.distanceMeters,
-                                remainingM = stats.remainingMeters,
-                                elapsedS = stats.elapsedSeconds,
-                                remainingS = stats.durationRemainingSeconds.takeIf { it.isFinite() },
-                                averageKmh = stats.effectiveSpeedMps * 3.6,
-                                elevationGainM = progressM?.let { elevationGain(elevProfile, it) },
-                                currentElevationM = progressM?.let { elevationAt(elevProfile, it) },
-                                gradePct = progressM?.let { gradeAt(elevProfile, it) },
-                                forwardGradePct = progressM?.let { forwardGradeAt(elevProfile, it) },
-                            )
-                        } ?: RideMetrics(
-                            // 案内開始前でも概算を表示する (開始後の navStats 系には触らない)。
-                            // 残り=総距離、時間=総距離÷想定速度 (案内中のフォールバックと同一の15km/h)、
-                            // 標高・勾配=ルート起点の値。
-                            speedKmh = speedKmh,
-                            totalDistanceM = summary.distanceMeters,
-                            remainingM = summary.distanceMeters,
-                            elapsedS = 0.0,
-                            remainingS = summary.distanceMeters / PRE_START_ASSUMED_SPEED_MPS,
-                            averageKmh = PRE_START_ASSUMED_SPEED_MPS * 3.6,
-                            elevationGainM = elevationGain(elevProfile, 0.0),
-                            currentElevationM = elevationAt(elevProfile, 0.0),
-                            gradePct = gradeAt(elevProfile, 0.0),
-                            forwardGradePct = forwardGradeAt(elevProfile, 0.0),
-                        )
-                        RouteInfoCardContent(
-                            metrics = rideMetrics,
-                            profile = elevProfile,
-                            totalDistanceM = summary.distanceMeters,
-                            progressDistanceM = progressM,
-                            started = isNavigationActive,
-                            onStart = startNavigation,
-                            onClearRoute = clearRoute,
-                            modifier = Modifier.padding(bottom = 4.dp),
-                            onDownloadCorridorTiles = downloadCorridorTiles,
-                            tileDownloadStatus = corridorTileProgressText,
-                            selectedPreference = selectedRoutePreference,
-                            onPreferenceChange = { pref ->
-                                selectedRoutePreference = pref
-                                val loc = latestLocation
-                                val start = if (loc != null) GeoPoint(loc.latitude, loc.longitude) else GeoPoint(FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
-                                destination?.let { dest ->
-                                    runRouteCalculation(start, dest, false, null, pref)
+                    val previewScrollState = androidx.compose.foundation.rememberScrollState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isLandscape && routeSummary != null) {
+                                    Modifier
+                                        .heightIn(max = 240.dp)
+                                        .verticalScroll(previewScrollState)
+                                } else {
+                                    Modifier
                                 }
-                            },
-                        )
-                        HorizontalDivider(
-                            color = Color.White.copy(alpha = 0.15f),
-                            modifier = Modifier.padding(bottom = 12.dp),
-                        )
-                    }
-
-                    // Arrival Card
-                    AnimatedVisibility(
-                        visible = isArrived,
-                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                            )
+                            .padding(horizontal = 16.dp, vertical = if (isLandscape) 8.dp else 16.dp),
                     ) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                            shape = RoundedCornerShape(14.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 10.dp),
+                        // Graph Switch Indicator
+                        AnimatedVisibility(
+                            visible = isSwitchingGraph,
+                            enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                            exit = Motion.bannerExit(effectiveAnimationEnabled),
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(bottom = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.Center,
                             ) {
-                                Text(
-                                    "目的地に到着しました",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Button(onClick = clearRoute, shape = RoundedCornerShape(12.dp)) {
-                                    Text("終了")
-                                }
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFF1A73E8))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("県データグラフを切替・読み込み中…", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF202124), fontWeight = FontWeight.Bold)
                             }
                         }
-                    }
 
-                    // Main HUD: Speedometer & GPX Controls
-                    // ルート設定中はダッシュボード側に速度表示があるためGPX操作のみ
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        // Left: Large Speedometer (ルート未設定時のみ)
-                        if (routeSummary == null) {
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text(
-                                    text = "%.1f".format(Locale.US, speedKmh),
-                                    fontSize = if (isLandscape) 32.sp else 42.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.SansSerif,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "km/h",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 8.dp),
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = "© OSM / 地理院",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f),
+                        // Route Calculation Indicator
+                        AnimatedVisibility(
+                            visible = isCalculatingRoute,
+                            enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                            exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        ) {
+                            Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .clickable { showLicense = true }
-                                    .padding(horizontal = 6.dp, vertical = 10.dp),
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color(0xFF1A73E8))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("最適サイクリングルートを探索中…", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF1A73E8))
+                            }
+                        }
+
+                        // Route Summary Section (When route is active but before navigation starts)
+                        routeSummary?.let { summary ->
+                            val elevProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(summary, navigationRoute) {
+                                buildRouteElevationProfile(navigationRoute.map { it.latitude to it.longitude }, summary.distanceMeters)
+                            }
+                            val progressM = navigationProgress?.distanceFromStartMeters
+                            val rideMetrics = navStats?.let { stats ->
+                                RideMetrics(
+                                    speedKmh = speedKmh,
+                                    totalDistanceM = summary.distanceMeters,
+                                    remainingM = stats.remainingMeters,
+                                    elapsedS = stats.elapsedSeconds,
+                                    remainingS = stats.durationRemainingSeconds.takeIf { it.isFinite() },
+                                    averageKmh = stats.effectiveSpeedMps * 3.6,
+                                    elevationGainM = progressM?.let { elevationGain(elevProfile, it) },
+                                    currentElevationM = progressM?.let { elevationAt(elevProfile, it) },
+                                    gradePct = progressM?.let { gradeAt(elevProfile, it) },
+                                    forwardGradePct = progressM?.let { forwardGradeAt(elevProfile, it) },
+                                )
+                            } ?: RideMetrics(
+                                speedKmh = speedKmh,
+                                totalDistanceM = summary.distanceMeters,
+                                remainingM = summary.distanceMeters,
+                                elapsedS = 0.0,
+                                remainingS = summary.distanceMeters / PRE_START_ASSUMED_SPEED_MPS,
+                                averageKmh = PRE_START_ASSUMED_SPEED_MPS * 3.6,
+                                elevationGainM = elevationGain(elevProfile, 0.0),
+                                currentElevationM = elevationAt(elevProfile, 0.0),
+                                gradePct = gradeAt(elevProfile, 0.0),
+                                forwardGradePct = forwardGradeAt(elevProfile, 0.0),
+                            )
+                            RouteInfoCardContent(
+                                metrics = rideMetrics,
+                                profile = elevProfile,
+                                totalDistanceM = summary.distanceMeters,
+                                progressDistanceM = progressM,
+                                started = false,
+                                onStart = startNavigation,
+                                onClearRoute = clearRoute,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                                onDownloadCorridorTiles = downloadCorridorTiles,
+                                tileDownloadStatus = corridorTileProgressText,
+                                selectedPreference = selectedRoutePreference,
+                                onPreferenceChange = { pref ->
+                                    selectedRoutePreference = pref
+                                    val loc = latestLocation
+                                    val start = if (loc != null) GeoPoint(loc.latitude, loc.longitude) else GeoPoint(FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
+                                    destination?.let { dest ->
+                                        runRouteCalculation(start, dest, false, null, pref)
+                                    }
+                                },
+                            )
+                            HorizontalDivider(
+                                color = Color(0xFFE8EAED),
+                                modifier = Modifier.padding(bottom = 12.dp),
                             )
                         }
 
-                        // Right: GPX Controls (DEF-11: ボタン内ラベルに点数を含めて縦跳ね・押しミスを防止)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Button(
-                                onClick = {
-                                    if (!hasLocationPermission) {
-                                        warningMessage = "GPX記録には位置情報の許可が必要です"
-                                    } else if (isRecording) {
-                                        LocationTrackingService.stopRecording(context)
-                                    } else {
-                                        LocationTrackingService.startRecording(context)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                ),
+                        // Arrival Card
+                        AnimatedVisibility(
+                            visible = isArrived,
+                            enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                            exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE6F4EA)),
                                 shape = RoundedCornerShape(14.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (isRecording) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(10.dp)
-                                                .clip(CircleShape)
-                                                .background(Color.White),
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("記録停止 (${gpxPointCount}p)", fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Text("GPX記録", fontWeight = FontWeight.Bold)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        "目的地に到着しました",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF137333),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Button(
+                                        onClick = clearRoute,
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF137333)),
+                                    ) {
+                                        Text("終了", color = Color.White)
                                     }
                                 }
                             }
+                        }
 
-                            gpxNotificationText?.let { text ->
+                        // Main HUD: Speedometer & GPX Controls (通常探索時)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // Left: Large Speedometer (ルート未設定時のみ)
+                            if (routeSummary == null) {
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text(
+                                        text = "%.1f".format(Locale.US, speedKmh),
+                                        fontSize = if (isLandscape) 32.sp else 42.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.SansSerif,
+                                        color = Color(0xFF202124),
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "km/h",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF5F6368),
+                                        modifier = Modifier.padding(bottom = 8.dp),
+                                    )
+                                }
+                            } else {
                                 Text(
-                                    text = text,
+                                    text = "© OSM / 地理院",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
+                                    color = Color(0xFF5F6368),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable { showLicense = true }
+                                        .padding(horizontal = 6.dp, vertical = 10.dp),
                                 )
+                            }
+
+                            // Right: GPX Controls
+                            Column(horizontalAlignment = Alignment.End) {
+                                Button(
+                                    onClick = {
+                                        if (!hasLocationPermission) {
+                                            warningMessage = "GPX記録には位置情報の許可が必要です"
+                                        } else if (isRecording) {
+                                            LocationTrackingService.stopRecording(context)
+                                        } else {
+                                            LocationTrackingService.startRecording(context)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isRecording) Color(0xFFD93025) else Color(0xFF1A73E8),
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isRecording) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color.White),
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("記録停止 (${gpxPointCount}p)", fontWeight = FontWeight.Bold, color = Color.White)
+                                        } else {
+                                            Text("GPX記録", fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    }
+                                }
+
+                                gpxNotificationText?.let { text ->
+                                    Text(
+                                        text = text,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF1A73E8),
+                                        modifier = Modifier.padding(top = 4.dp, end = 4.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -2749,9 +2579,9 @@ internal fun MapScreen(
                 }
             }
 
-            // サイクリング下部ナビ (地図/ルート/スポット/記録/設定) - ナビ案内中は自動格納してフルスクリーンHUD化
+            // サイクリング下部ナビ (地図/ルート/スポット/記録/設定) - ナビ案内中または横画面ルートプレビュー中は自動格納してフルスクリーンHUD化
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isNavigationActive,
+                visible = !isNavigationActive && (!isLandscape || routeSummary == null),
                 enter = Motion.bottomBarEnter(effectiveAnimationEnabled),
                 exit = Motion.bottomBarExit(effectiveAnimationEnabled),
             ) {

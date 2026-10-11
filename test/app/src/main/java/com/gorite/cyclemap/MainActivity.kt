@@ -20,10 +20,10 @@ import com.gorite.cyclemap.ui.theme.CycleMapTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // OSのダーク/ライトモード設定に関わらず常にダーク用のシステムバーを強制
+        // 通常探索時は黒アイコン (SystemBarStyle.light)、ナビ案内時 (深緑ヘッダー) は白アイコン (SystemBarStyle.dark)
         enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
         )
         // Compose のレンダリング前に osmdroid および MapLibre ネイティブエンジンを初期化
         configureOsmdroid(this, cycleMapDataDir(this))
@@ -37,6 +37,16 @@ class MainActivity : ComponentActivity() {
                     MapScreen(
                         modifier = Modifier.fillMaxSize(),
                         systemInsets = innerPadding,
+                        onNavigationStateChanged = { isNavigating ->
+                            enableEdgeToEdge(
+                                statusBarStyle = if (isNavigating) {
+                                    SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                                } else {
+                                    SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                                },
+                                navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                            )
+                        },
                     )
                 }
             }

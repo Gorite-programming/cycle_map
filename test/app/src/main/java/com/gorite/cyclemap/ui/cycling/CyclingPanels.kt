@@ -52,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -216,10 +217,16 @@ fun CyclingBottomBar(
     onSelect: (CyclingTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavigationBar(modifier = modifier.height(76.dp)) {
+    NavigationBar(
+        modifier = modifier.height(68.dp),
+        containerColor = Color.White,
+        contentColor = Color(0xFF202124),
+        tonalElevation = 6.dp,
+    ) {
         CyclingTab.entries.forEach { tab ->
+            val isSelected = selected == tab
             NavigationBarItem(
-                selected = selected == tab,
+                selected = isSelected,
                 onClick = { onSelect(tab) },
                 icon = {
                     Icon(
@@ -228,7 +235,20 @@ fun CyclingBottomBar(
                         modifier = Modifier.size(24.dp),
                     )
                 },
-                label = { Text(tab.label, fontSize = 12.sp) },
+                label = {
+                    Text(
+                        tab.label,
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = Color(0xFF1A73E8),
+                    selectedTextColor = Color(0xFF1A73E8),
+                    unselectedIconColor = Color(0xFF5F6368),
+                    unselectedTextColor = Color(0xFF5F6368),
+                    indicatorColor = Color(0xFFE8F0FE),
+                ),
             )
         }
     }
@@ -967,6 +987,7 @@ fun formatRemainingTime(seconds: Double): String {
 }
 
 /** 上部サーチバー (メニュー + 県名バッジ＋地名 + 検索)。 */
+/** 上部サーチバー (メニュー + 県名バッジ＋地名 + 検索: Google Maps スタイル)。 */
 @Composable
 fun TopSearchBar(
     locationLabel: String,
@@ -981,15 +1002,16 @@ fun TopSearchBar(
     ) {
         DarkCircleButton(R.drawable.ic_lucide_menu, "メニュー", onMenuClick)
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = CyclingNavy.copy(alpha = 0.94f),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
             shadowElevation = 6.dp,
             modifier = Modifier.weight(1f),
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .clickable(onClick = onSearchClick)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -999,12 +1021,12 @@ fun TopSearchBar(
                     val restName = locationLabel.substring(prefIndex + 1)
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = CyclingPink.copy(alpha = 0.25f),
+                        color = Color(0xFFE8F0FE),
                         modifier = Modifier.padding(end = 6.dp),
                     ) {
                         Text(
                             prefName,
-                            color = CyclingPinkLight,
+                            color = Color(0xFF1A73E8),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -1012,7 +1034,7 @@ fun TopSearchBar(
                     }
                     Text(
                         restName,
-                        color = Color.White,
+                        color = Color(0xFF202124),
                         fontWeight = FontWeight.Bold,
                         fontSize = if (restName.length > 12) 13.sp else 15.sp,
                         maxLines = 1,
@@ -1021,7 +1043,7 @@ fun TopSearchBar(
                 } else {
                     Text(
                         locationLabel,
-                        color = Color.White,
+                        color = Color(0xFF202124),
                         fontWeight = FontWeight.Bold,
                         fontSize = if (locationLabel.length > 14) 13.sp else 15.sp,
                         maxLines = 1,
@@ -1045,7 +1067,7 @@ fun DarkCircleButton(
 ) {
     Surface(
         shape = CircleShape,
-        color = CyclingNavy.copy(alpha = 0.94f),
+        color = Color.White,
         shadowElevation = 6.dp,
         modifier = modifier,
     ) {
@@ -1058,7 +1080,7 @@ fun DarkCircleButton(
             Icon(
                 painterResource(iconRes),
                 contentDescription = contentDescription,
-                tint = Color.White,
+                tint = Color(0xFF3C4043),
                 modifier = Modifier.size(iconSize.dp),
             )
         }
@@ -1077,16 +1099,15 @@ fun CompassDial(
     modifier: Modifier = Modifier,
 ) {
     val measurer = rememberTextMeasurer()
-    // ヘディングアップ時は枠をルート色にし、地図上のGPS進行矢印と役割が違うことを示す
-    // (ダイヤル=端末方位の北針、矢印=GPS進行方向)。ノースアップ時は通常枠。
+    // ヘディングアップ時は枠をアクセントにし、ノースアップ時は通常枠。白背景Google Mapsスタイル
     Surface(
         shape = CircleShape,
-        color = CyclingNavy.copy(alpha = 0.94f),
+        color = Color.White,
         shadowElevation = 6.dp,
         border = if (headingUp) {
-            androidx.compose.foundation.BorderStroke(2.dp, CyclingPink)
+            androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFD93025))
         } else {
-            null
+            androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
         },
         modifier = modifier,
     ) {
@@ -1101,14 +1122,14 @@ fun CompassDial(
                 val cx = size.width / 2
                 val cy = size.height / 2
                 val r = size.minDimension / 2 - 6.dp.toPx()
-                // 北針 (赤い三角)
+                // 北針 (赤い三角: Google Red #D93025)
                 val needle = androidx.compose.ui.graphics.Path().apply {
                     moveTo(cx, cy - r - 2.dp.toPx())
                     lineTo(cx - 5.dp.toPx(), cy - 2.dp.toPx())
                     lineTo(cx + 5.dp.toPx(), cy - 2.dp.toPx())
                     close()
                 }
-                drawPath(needle, Color(0xFFE53935))
+                drawPath(needle, Color(0xFFD93025))
                 // 南針 (シルバー/グレーの三角)
                 val southNeedle = androidx.compose.ui.graphics.Path().apply {
                     moveTo(cx, cy + r + 2.dp.toPx())
@@ -1116,7 +1137,7 @@ fun CompassDial(
                     lineTo(cx + 5.dp.toPx(), cy + 2.dp.toPx())
                     close()
                 }
-                drawPath(southNeedle, Color(0xFF90A4AE))
+                drawPath(southNeedle, Color(0xFFBDC1C6))
                 // 方位文字
                 val label = { text: String, color: Color, dx: Float, dy: Float ->
                     val layout = measurer.measure(
@@ -1141,10 +1162,10 @@ fun CompassDial(
                         ),
                     )
                 }
-                label("N", Color.White, 0f, -r + 8.dp.toPx())
-                label("E", CyclingSubText, r - 8.dp.toPx(), 0f)
-                label("S", CyclingSubText, 0f, r - 8.dp.toPx())
-                label("W", CyclingSubText, -(r - 8.dp.toPx()), 0f)
+                label("N", Color(0xFFD93025), 0f, -r + 8.dp.toPx())
+                label("E", Color(0xFF5F6368), r - 8.dp.toPx(), 0f)
+                label("S", Color(0xFF5F6368), 0f, r - 8.dp.toPx())
+                label("W", Color(0xFF5F6368), -(r - 8.dp.toPx()), 0f)
             }
         }
     }
@@ -1372,12 +1393,12 @@ private fun DarkStackButton(
     }
 }
 
-/** 現在速度チップ (ルート中の地図オーバーレイ)。 */
+/** 現在速度チップ (ルート中の地図オーバーレイ: Google Maps スタイル)。 */
 @Composable
 fun SpeedChip(speedKmh: Double, modifier: Modifier = Modifier) {
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = CyclingNavy.copy(alpha = 0.94f),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
         shadowElevation = 6.dp,
         modifier = modifier,
     ) {
@@ -1388,22 +1409,20 @@ fun SpeedChip(speedKmh: Double, modifier: Modifier = Modifier) {
             Icon(
                 painterResource(R.drawable.ic_lucide_gauge),
                 contentDescription = "現在速度",
-                tint = CyclingSubText,
+                tint = Color(0xFF5F6368),
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
-            Text("${"%.1f".format(java.util.Locale.US, speedKmh)}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+            Text("${"%.1f".format(java.util.Locale.US, speedKmh)}", color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 22.sp)
             Spacer(modifier = Modifier.width(4.dp))
-            Text("km/h", color = CyclingSubText, fontSize = 12.sp, modifier = Modifier.padding(bottom = 3.dp))
+            Text("km/h", color = Color(0xFF5F6368), fontSize = 12.sp, modifier = Modifier.padding(bottom = 3.dp))
         }
     }
 }
 
 /**
- * ルート情報カードの中身 (見本準拠・ダーク)。
- * 呼び出し側Cardの container を [CyclingNavy] にすること。
- * [started] が false の間は案内開始前の確認表示 (標高グラフあり)。
- * 開始後は走行用ミニマム表示 (標高グラフ・勾配なし)。
+ * ルート情報カードの中身 (Google Maps 風ライトスタイルプレビュー)。
+ * [started] が false の間は案内開始前の確認表示 (選好切替、標高グラフあり)。
  */
 @Composable
 fun RouteInfoCardContent(
@@ -1422,47 +1441,7 @@ fun RouteInfoCardContent(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (started) {
-            // 案内中は地図面積を確保するため1行ミニ表示にする (詳細は案内前の確認表示に残す)。
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "目的地まで ${metrics.remainingM?.let { formatKm(it) } ?: "--"}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                    )
-                    Text(
-                        "残り ${metrics.remainingS?.let { formatRemainingTime(it) } ?: "--"}",
-                        color = CyclingSubText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                    )
-                }
-                Surface(
-                    shape = CircleShape,
-                    color = CyclingNavySoft,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onClearRoute),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painterResource(R.drawable.ic_lucide_x),
-                            contentDescription = "ルートを消去",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            }
+            // 案内中は GoogleNavFooter が主役になるため、ここでは何もしない
             return@Column
         }
         Row(
@@ -1474,27 +1453,27 @@ fun RouteInfoCardContent(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    painterResource(R.drawable.ic_lucide_map_pin),
+                    painterResource(R.drawable.ic_lucide_navigation),
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
+                    tint = Color(0xFF1A73E8),
+                    modifier = Modifier.size(22.dp),
                 )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("現在地", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("ルートプレビュー", color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "目的地まで ${metrics.remainingM?.let { formatKm(it) } ?: "--"}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
+                    metrics.remainingM?.let { formatKm(it) } ?: "--",
+                    color = Color(0xFF1A73E8),
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     shape = CircleShape,
-                    color = CyclingNavySoft,
+                    color = Color(0xFFF1F3F4),
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .clickable(onClick = onClearRoute),
                 ) {
@@ -1502,49 +1481,58 @@ fun RouteInfoCardContent(
                         Icon(
                             painterResource(R.drawable.ic_lucide_x),
                             contentDescription = "ルートを消去",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFF5F6368),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
             }
         }
+
+        // ルート選好切替チップ (推奨 / 平坦 / 最短)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             RoutePreference.entries.forEach { pref ->
                 val isSelected = pref == selectedPreference
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) CyclingPink else CyclingNavySoft,
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) Color(0xFFE8F0FE) else Color(0xFFF8F9FA),
+                    border = if (isSelected) {
+                        androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF1A73E8))
+                    } else {
+                        androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDADCE0))
+                    },
                     modifier = Modifier
                         .weight(1f)
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable { onPreferenceChange(pref) },
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             pref.label,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else CyclingSubText,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color(0xFF1A73E8) else Color(0xFF3C4043),
                         )
                     }
                 }
             }
         }
+
+        // 基本指標セル (残り時間 / 予想平均速度 / 獲得標高)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp),
+                .padding(bottom = 12.dp),
         ) {
             RouteStatCell(
                 R.drawable.ic_lucide_clock,
-                "残り時間",
+                "予想時間",
                 metrics.remainingS?.let { formatRemainingTime(it) } ?: "--",
                 Modifier.weight(1f),
             )
@@ -1561,63 +1549,68 @@ fun RouteInfoCardContent(
                 Modifier.weight(1f),
             )
         }
-        if (!started) {
-            Row(
+
+        // アクションボタン列 (ナビ開始 + 回廊タイル保存)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = onStart,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A73E8)),
             ) {
-                Button(
-                    onClick = onStart,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
+                Icon(
+                    painterResource(R.drawable.ic_lucide_navigation),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("ナビ開始", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+            }
+            if (onDownloadCorridorTiles != null) {
+                OutlinedButton(
+                    onClick = onDownloadCorridorTiles,
+                    modifier = Modifier.height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1A73E8)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDADCE0)),
                 ) {
                     Icon(
-                        painterResource(R.drawable.ic_lucide_navigation),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                        painterResource(R.drawable.ic_lucide_download),
+                        contentDescription = "オフライン地図保存",
+                        tint = Color(0xFF1A73E8),
+                        modifier = Modifier.size(18.dp),
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("案内開始", fontWeight = FontWeight.Bold)
-                }
-                if (onDownloadCorridorTiles != null) {
-                    OutlinedButton(
-                        onClick = onDownloadCorridorTiles,
-                        modifier = Modifier.height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.ic_lucide_download),
-                            contentDescription = "オフライン地図保存",
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(tileDownloadStatus ?: "地図保存", fontSize = 13.sp)
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(tileDownloadStatus ?: "回廊保存", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A73E8))
                 }
             }
-            if (profile.size >= 2) {
-                ElevationProfileChart(
-                    profile = profile,
-                    totalDistanceM = totalDistanceM,
-                    progressDistanceM = progressDistanceM,
-                    lineColor = CyclingPink,
-                    passedColor = Color.White,
-                    gridColor = Color.White.copy(alpha = 0.18f),
-                    labelColor = CyclingSubText,
-                )
-                Text(
-                    "標高は推定表示",
-                    color = CyclingSubText,
-                    fontSize = 10.sp,
-                )
-            }
+        }
+
+        if (profile.size >= 2) {
+            ElevationProfileChart(
+                profile = profile,
+                totalDistanceM = totalDistanceM,
+                progressDistanceM = progressDistanceM,
+                lineColor = Color(0xFF1A73E8),
+                passedColor = Color(0xFF0F9D58),
+                gridColor = Color(0xFFE8EAED),
+                labelColor = Color(0xFF5F6368),
+            )
+            Text(
+                "標高プロファイル（推定）",
+                color = Color(0xFF5F6368),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
@@ -1632,7 +1625,7 @@ private fun GradePill(label: String, grade: Double, modifier: Modifier = Modifie
     }
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = Color.White.copy(alpha = 0.10f),
+        color = Color(0xFFF1F3F4),
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
@@ -1640,18 +1633,18 @@ private fun GradePill(label: String, grade: Double, modifier: Modifier = Modifie
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(label, color = CyclingSubText, fontSize = 12.sp)
+            Text(label, color = Color(0xFF5F6368), fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painterResource(iconRes),
                     contentDescription = level.label,
-                    tint = Color.White,
+                    tint = Color(0xFF202124),
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     "${formatGrade(grade)} · ${level.label}",
-                    color = Color.White,
+                    color = Color(0xFF202124),
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                 )
@@ -1666,10 +1659,11 @@ private fun RouteStatCell(iconRes: Int, label: String, value: String, modifier: 
         Icon(
             painterResource(iconRes),
             contentDescription = null,
-            tint = CyclingSubText,
-            modifier = Modifier.size(20.dp),
+            tint = Color(0xFF5F6368),
+            modifier = Modifier.size(18.dp),
         )
-        Text(label, color = CyclingSubText, fontSize = 11.sp)
-        Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(label, color = Color(0xFF5F6368), fontSize = 11.sp)
+        Text(value, color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
     }
 }

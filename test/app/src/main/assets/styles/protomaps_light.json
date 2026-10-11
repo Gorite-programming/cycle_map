@@ -1585,7 +1585,7 @@
       "source-layer": "buildings",
       "minzoom": 13,
       "paint": {
-        "fill-extrusion-color": "#E9EAEF",
+        "fill-extrusion-color": "#F0F1F5",
         "fill-extrusion-height": 16,
         "fill-extrusion-base": 0,
         "fill-extrusion-opacity": 0.95,
@@ -2166,6 +2166,6 @@
       62
     ],
     "color": "#ffffff",
-    "intensity": 0.3
+    "intensity": 0.72
   }
 }
