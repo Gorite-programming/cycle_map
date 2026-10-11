@@ -386,6 +386,21 @@
       }
     },
     {
+      "id": "landuse_platform",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "landuse",
+      "filter": [
+        "in",
+        "kind",
+        "platform",
+        "station"
+      ],
+      "paint": {
+        "fill-color": "#FFE8D6"
+      }
+    },
+    {
       "id": "roads_tunnels_other_casing",
       "type": "line",
       "source": "protomaps",
@@ -874,6 +889,24 @@
       }
     },
     {
+      "id": "buildings_station",
+      "type": "fill",
+      "source": "protomaps",
+      "source-layer": "buildings",
+      "minzoom": 13,
+      "filter": [
+        "in",
+        "kind",
+        "platform",
+        "station"
+      ],
+      "paint": {
+        "fill-color": "#FFE8D6",
+        "fill-outline-color": "#DBDAE0",
+        "fill-opacity": 0.95
+      }
+    },
+    {
       "id": "roads_pier",
       "type": "line",
       "source": "protomaps",
@@ -900,6 +933,70 @@
           0.5,
           20,
           16
+        ]
+      }
+    },
+    {
+      "id": "roads_other_casing",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "minzoom": 14,
+      "filter": [
+        "all",
+        [
+          "!has",
+          "is_tunnel"
+        ],
+        [
+          "!has",
+          "is_bridge"
+        ],
+        [
+          "in",
+          "kind",
+          "other",
+          "path"
+        ],
+        [
+          "!=",
+          "kind_detail",
+          "pier"
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#D6DDE5",
+        "line-gap-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          0.5,
+          20,
+          12
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          14,
+          0,
+          16,
+          0.8
         ]
       }
     },
@@ -931,7 +1028,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#C0CDDD",
+        "line-color": "#E2E7ED",
         "line-gap-width": [
           "interpolate",
           [
@@ -960,6 +1057,10 @@
           13.5,
           0.8
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -989,7 +1090,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#9AAEC4",
+        "line-color": "#D6DDE5",
         "line-gap-width": [
           "interpolate",
           [
@@ -1026,6 +1127,10 @@
           16,
           1.6
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1241,6 +1346,10 @@
           20,
           12
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1316,6 +1425,10 @@
           18,
           10
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1366,6 +1479,10 @@
           18,
           16
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1596,22 +1713,34 @@
       }
     },
     {
-      "id": "roads_rail",
+      "id": "roads_rail_tram",
       "type": "line",
       "source": "protomaps",
       "source-layer": "roads",
       "filter": [
-        "==",
-        "kind",
-        "rail"
-      ],
-      "paint": {
-        "line-dasharray": [
-          0.3,
-          0.75
+        "all",
+        [
+          "==",
+          "kind",
+          "rail"
         ],
-        "line-opacity": 0.5,
-        "line-color": "#A8B3C0",
+        [
+          "in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#3C4043",
         "line-width": [
           "interpolate",
           [
@@ -1621,12 +1750,116 @@
           [
             "zoom"
           ],
-          3,
-          0,
           6,
-          0.15,
+          0.2,
+          12,
+          0.8,
+          15,
+          1.4,
           18,
-          9
+          2.4
+        ]
+      }
+    },
+    {
+      "id": "roads_rail_hatch",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": [
+        "all",
+        [
+          "==",
+          "kind",
+          "rail"
+        ],
+        [
+          "!in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "butt",
+        "line-join": "miter"
+      },
+      "paint": {
+        "line-color": "#5F6368",
+        "line-dasharray": [
+          0.3,
+          0.7
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.5,
+          12,
+          1.8,
+          14,
+          3.0,
+          18,
+          5.0
+        ]
+      }
+    },
+    {
+      "id": "roads_rail_base",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": [
+        "all",
+        [
+          "==",
+          "kind",
+          "rail"
+        ],
+        [
+          "!in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#70757A",
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.2,
+          12,
+          0.8,
+          15,
+          1.2,
+          18,
+          2.0
         ]
       }
     },
@@ -1722,7 +1955,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#C0CDDD",
+        "line-color": "#D6DDE5",
         "line-gap-width": [
           "interpolate",
           [
@@ -1737,6 +1970,10 @@
           20,
           7
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1788,6 +2025,10 @@
           12.5,
           1.5
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1809,7 +2050,7 @@
         ]
       ],
       "paint": {
-        "line-color": "#C0CDDD",
+        "line-color": "#D6DDE5",
         "line-gap-width": [
           "interpolate",
           [
@@ -1842,6 +2083,10 @@
           13.5,
           0.8
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1894,6 +2139,10 @@
           9.5,
           1.5
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1935,6 +2184,10 @@
           20,
           7
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -1975,6 +2228,10 @@
           18,
           11
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -2012,6 +2269,10 @@
           18,
           11
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -2052,6 +2313,10 @@
           18,
           13
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -2110,6 +2375,10 @@
           20,
           15
         ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
       }
     },
     {
@@ -2154,6 +2423,173 @@
           5,
           18,
           15
+        ]
+      },
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      }
+    },
+    {
+      "id": "roads_bridges_rail_tram",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": [
+        "all",
+        [
+          "has",
+          "is_bridge"
+        ],
+        [
+          "==",
+          "kind",
+          "rail"
+        ],
+        [
+          "in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#3C4043",
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.2,
+          12,
+          0.8,
+          15,
+          1.4,
+          18,
+          2.4
+        ]
+      }
+    },
+    {
+      "id": "roads_bridges_rail_hatch",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": [
+        "all",
+        [
+          "has",
+          "is_bridge"
+        ],
+        [
+          "==",
+          "kind",
+          "rail"
+        ],
+        [
+          "!in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "butt",
+        "line-join": "miter"
+      },
+      "paint": {
+        "line-color": "#5F6368",
+        "line-dasharray": [
+          0.3,
+          0.7
+        ],
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.5,
+          12,
+          1.8,
+          14,
+          3.0,
+          18,
+          5.0
+        ]
+      }
+    },
+    {
+      "id": "roads_bridges_rail_base",
+      "type": "line",
+      "source": "protomaps",
+      "source-layer": "roads",
+      "filter": [
+        "all",
+        [
+          "has",
+          "is_bridge"
+        ],
+        [
+          "==",
+          "kind",
+          "rail"
+        ],
+        [
+          "!in",
+          "kind_detail",
+          "tram",
+          "light_rail",
+          "subway",
+          "narrow_gauge",
+          "funicular",
+          "monorail"
+        ]
+      ],
+      "layout": {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      "paint": {
+        "line-color": "#70757A",
+        "line-width": [
+          "interpolate",
+          [
+            "exponential",
+            1.6
+          ],
+          [
+            "zoom"
+          ],
+          6,
+          0.2,
+          12,
+          0.8,
+          15,
+          1.2,
+          18,
+          2.0
         ]
       }
     }
