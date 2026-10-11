@@ -844,7 +844,7 @@ fun SettingsPanelSheet(
             Text("全般", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             SettingSwitch("アニメーション効果", animationEnabled, onAnimationEnabledChange)
             Text(
-                "位置情報: ${if (hasLocationPermission) "許可済み" else "未許可"} · 単位: km · テーマ: システム連動",
+                "位置情報: ${if (hasLocationPermission) "許可済み" else "未許可"} · 単位: km · テーマ: 常時ダーク",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

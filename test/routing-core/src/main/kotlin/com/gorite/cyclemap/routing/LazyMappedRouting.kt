@@ -190,7 +190,8 @@ class LazyMappedRoadGraph private constructor(
                     if (target >= 0 && (target == goal || bounds == null ||
                         bounds.contains(latitudes[target], longitudes[target]))) {
                         val arterialBias = if (isArterial(record.type)) 1.0 else arterialPenaltyMultiplier
-                        val stepCost = record.distance * multiplier * gradePenalty(record.grade, preference) * arterialBias
+                        val combinedMultiplier = (multiplier * gradePenalty(record.grade, preference) * arterialBias).coerceAtLeast(0.90)
+                        val stepCost = record.distance * combinedMultiplier
                         val newCost = cost.getValue(current) + stepCost
                         if (newCost < cost.getOrDefault(target, Double.POSITIVE_INFINITY)) {
                             cost[target] = newCost
@@ -253,14 +254,22 @@ class LazyMappedRoadGraph private constructor(
         if (grade.isNaN()) return 1.0
         val g = grade.toDouble()
         return when (preference) {
-            RoutePreference.RECOMMENDED -> 1.0 + abs(g) * 0.02
-            RoutePreference.FLAT -> {
-                // 上り坂を強く回避。下り坂も急激な勾配は避ける。
-                if (g > 0.0) 1.0 + g * 0.12 else 1.0 + abs(g) * 0.03
+            RoutePreference.RECOMMENDED -> when {
+                g >= 0.0 -> 1.0 + (g * 0.02) + (g * g * 0.002) // 緩やかな上りは+2%、急勾配は二次関数的に増加
+                g >= -4.0 -> (1.0 + g * 0.02).coerceAtLeast(0.95) // 緩やかな下りは軽快（最大-5%）
+                else -> 1.0 + abs(g + 4.0) * 0.03 // -4%を超える急坂下りは減速ペナルティ
             }
-            RoutePreference.HILL_CLIMB -> {
-                // 平坦道路に若干のペナルティを課し、上り坂を相対的に優先
-                if (g > 0.0) 1.0 else 1.0 + (5.0 - abs(g)).coerceAtLeast(0.0) * 0.06
+            RoutePreference.FLAT -> when {
+                // 上り坂を強く回避（上限5.0倍でクランプし探索空間の球状化を防止）
+                g > 0.0 -> (1.0 + g * 0.10 + g * g * 0.01).coerceAtMost(5.0)
+                g >= -5.0 -> (1.0 + g * 0.01).coerceAtLeast(0.95)
+                else -> (1.0 + abs(g + 5.0) * 0.04).coerceAtMost(3.0)
+            }
+            RoutePreference.HILL_CLIMB -> when {
+                // 上り坂を優先（ペナルティなし）
+                g > 0.0 -> 1.0
+                // 平坦および下り坂に相対ペナルティ（上限2.0倍）
+                else -> (1.0 + (5.0 - abs(g)).coerceAtLeast(0.0) * 0.05).coerceAtMost(2.0)
             }
         }
     }

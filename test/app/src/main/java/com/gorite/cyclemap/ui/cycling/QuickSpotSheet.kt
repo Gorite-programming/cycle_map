@@ -62,6 +62,7 @@ enum class QuickSpotType(
     val label: String,
     @DrawableRes val iconRes: Int,
     val categoryKeys: List<String>,
+    val nameFilter: String? = null,
 ) {
     CONVENIENCE(
         label = "コンビニ",
@@ -71,7 +72,15 @@ enum class QuickSpotType(
     ROAD_STATION(
         label = "道の駅",
         iconRes = R.drawable.ic_lucide_map_pin,
-        categoryKeys = listOf("tourism:road_station", "amenity:place_of_worship"),
+        categoryKeys = listOf(
+            "tourism:information",
+            "amenity:parking_space",
+            "amenity:parking",
+            "amenity:rest_area",
+            "tourism:road_station",
+            "named",
+        ),
+        nameFilter = "道の駅",
     ),
     RESTROOM(
         label = "トイレ",
@@ -95,12 +104,15 @@ enum class QuickSpotType(
     ),
     ;
 
-    fun matches(category: String): Boolean =
-        categoryKeys.any { category.startsWith(it) }
+    fun matches(category: String, name: String = ""): Boolean {
+        val catMatches = categoryKeys.any { category.startsWith(it) }
+        if (!catMatches) return false
+        return if (nameFilter != null) name.contains(nameFilter) else true
+    }
 
     companion object {
-        fun forCategory(category: String): QuickSpotType? =
-            entries.firstOrNull { it.matches(category) }
+        fun forCategory(category: String, name: String = ""): QuickSpotType? =
+            entries.firstOrNull { it.matches(category, name) }
     }
 }
 

@@ -449,8 +449,9 @@ internal fun searchPlaces(
             }
 
             // 「〜駅」検索時、OSM上で「広島」のように駅名のみで登録されている鉄道駅を救済
+            // DEF-09: カテゴリが未指定（ALL）または鉄道駅（STATION）のときのみ救済を実行する
             val stationBase = extractStationQuery(trimmed)
-            if (stationBase != null) {
+            if (stationBase != null && (category == SearchCategory.ALL || category == SearchCategory.STATION)) {
                 val stationWhereFts = "AND (p.category LIKE 'railway:station%' OR p.category LIKE 'public_transport:station%')"
                 val stationWherePlain = "AND (category LIKE 'railway:station%' OR category LIKE 'public_transport:station%')"
                 if (ftsSupported) {
@@ -622,6 +623,7 @@ internal fun searchNearbyQuickSpots(
     centerLon: Double,
     radiusMeters: Double,
     categoryKeys: List<String>,
+    nameFilter: String? = null,
     limit: Int = 40,
 ): List<NearbySpot> {
     if (!dbFile.isFile || radiusMeters <= 0 || categoryKeys.isEmpty()) return emptyList()
@@ -631,12 +633,15 @@ internal fun searchNearbyQuickSpots(
     val orderNearby = NEARBY_ORDER_BY
 
     val categoryClauses = categoryKeys.joinToString(" OR ") { "category LIKE ?" }
+    val nameClause = if (!nameFilter.isNullOrBlank()) " AND name LIKE ?" else ""
     val sql = """
         SELECT name, category, lat, lon
         FROM places
         WHERE lat BETWEEN ? AND ?
           AND lon BETWEEN ? AND ?
           AND ($categoryClauses)
+          $nameClause
+          AND category NOT LIKE 'amenity:place_of_worship%'
         $orderNearby
         LIMIT ?
     """.trimIndent()
@@ -647,6 +652,9 @@ internal fun searchNearbyQuickSpots(
     args.add((centerLon - lonDelta).toString())
     args.add((centerLon + lonDelta).toString())
     categoryKeys.forEach { args.add("$it%") }
+    if (!nameFilter.isNullOrBlank()) {
+        args.add("%$nameFilter%")
+    }
     args.addAll(nearbyOrderArgs(centerLat, centerLon))
     args.add((limit * 3).toString())
 

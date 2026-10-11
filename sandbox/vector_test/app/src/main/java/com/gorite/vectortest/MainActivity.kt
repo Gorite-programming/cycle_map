@@ -23,12 +23,14 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +44,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -53,24 +58,67 @@ import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import java.io.File
 
-enum class MapStylePreset(val label: String, val styleUrl: String) {
+enum class MapStylePreset(val label: String, val styleUrl: String, val isOffline: Boolean) {
     OFFLINE_LIBERTY(
         label = "★オフラインLiberty (23MB)",
         styleUrl = "",
+        isOffline = true,
     ),
     OFFLINE_GSI(
         label = "オフライン地理院 (45MB)",
         styleUrl = "",
+        isOffline = true,
     ),
     LIBERTY(
         label = "Liberty (オンライン)",
         styleUrl = "https://tiles.openfreemap.org/styles/liberty",
+        isOffline = false,
     ),
     DARK(
         label = "Dark (夜間)",
         styleUrl = "https://tiles.openfreemap.org/styles/dark",
+        isOffline = false,
     ),
 }
+
+/**
+ * 有効な地理的バウンディングボックス定義
+ */
+data class GeoBounds(
+    val minLat: Double,
+    val maxLat: Double,
+    val minLon: Double,
+    val maxLon: Double,
+) {
+    fun contains(point: LatLng): Boolean {
+        return point.latitude in minLat..maxLat && point.longitude in minLon..maxLon
+    }
+}
+
+/**
+ * 広島エリアのPMTilesデータ有効範囲
+ */
+val HIROSHIMA_DATA_BOUNDS = GeoBounds(
+    minLat = 34.15,
+    maxLat = 34.65,
+    minLon = 132.15,
+    maxLon = 132.65,
+)
+
+/**
+ * クイックジャンプ用スポット定義
+ */
+data class QuickSpot(
+    val name: String,
+    val position: LatLng,
+    val zoom: Double,
+)
+
+val QUICK_SPOTS = listOf(
+    QuickSpot("平和公園", LatLng(34.3929, 132.4526), 15.5),
+    QuickSpot("広島駅", LatLng(34.3977, 132.4753), 15.0),
+    QuickSpot("宮島", LatLng(34.2959, 132.3197), 15.0),
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,51 +139,63 @@ class MainActivity : ComponentActivity() {
 
 /**
  * スタイルを MapLibreMap に適用する。
- * オフライン選択時はローカル PMTiles ファイルを動的にバインドしてロードする。
+ * Dispatchers.IO でアセット JSON の読み込みと置換を行い、UIスレッドをブロックしない。
+ * オフライン選択時にデータファイルが存在しない場合はオンラインにフォールバックせず、
+ * onError コールバックでエラーを通知する（完全オフラインフェイルセーフ）。
  */
-fun applyMapStyle(context: Context, map: MapLibreMap, preset: MapStylePreset, onLoaded: () -> Unit = {}) {
+suspend fun applyMapStyle(
+    context: Context,
+    map: MapLibreMap,
+    preset: MapStylePreset,
+    onError: (String) -> Unit = {},
+    onLoaded: () -> Unit = {},
+) {
     when (preset) {
         MapStylePreset.OFFLINE_LIBERTY -> {
             val osmFile = File(context.getExternalFilesDir("tiles"), "Hiroshima_osm.pmtiles")
-            val baseJson = context.assets.open("styles/protomaps_light.json").bufferedReader().use { it.readText() }
-
-            val localTilePath = if (osmFile.exists()) {
-                "pmtiles://file://${osmFile.absolutePath}"
-            } else {
-                "https://build.protomaps.com/20261008.pmtiles"
+            if (!osmFile.exists() || osmFile.length() == 0L) {
+                withContext(Dispatchers.Main) {
+                    onError("オフラインデータ (Hiroshima_osm.pmtiles) が見つかりません。\nストレージ (tiles/) を確認してください。")
+                }
+                return
             }
 
-            val modifiedJson = baseJson.replace(
-                "__LOCAL_PMTILES__",
-                localTilePath,
-            )
+            val modifiedJson = withContext(Dispatchers.IO) {
+                val baseJson = context.assets.open("styles/protomaps_light.json").bufferedReader().use { it.readText() }
+                baseJson.replace("__LOCAL_PMTILES__", "pmtiles://file://${osmFile.absolutePath}")
+            }
 
-            map.setStyle(Style.Builder().fromJson(modifiedJson)) {
-                onLoaded()
+            withContext(Dispatchers.Main) {
+                map.setStyle(Style.Builder().fromJson(modifiedJson)) {
+                    onLoaded()
+                }
             }
         }
         MapStylePreset.OFFLINE_GSI -> {
             val pmtilesFile = File(context.getExternalFilesDir("tiles"), "Hiroshima.pmtiles")
-            val baseJson = context.assets.open("styles/offline_hiroshima.json").bufferedReader().use { it.readText() }
-
-            val localTilePath = if (pmtilesFile.exists()) {
-                "pmtiles://file://${pmtilesFile.absolutePath}"
-            } else {
-                "pmtiles://https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/optimal_bvmap-v1.pmtiles"
+            if (!pmtilesFile.exists() || pmtilesFile.length() == 0L) {
+                withContext(Dispatchers.Main) {
+                    onError("オフライン地理院データ (Hiroshima.pmtiles) が見つかりません。\nストレージ (tiles/) を確認してください。")
+                }
+                return
             }
 
-            val modifiedJson = baseJson.replace(
-                "__LOCAL_PMTILES_URL__",
-                localTilePath,
-            )
+            val modifiedJson = withContext(Dispatchers.IO) {
+                val baseJson = context.assets.open("styles/offline_hiroshima.json").bufferedReader().use { it.readText() }
+                baseJson.replace("__LOCAL_PMTILES_URL__", "pmtiles://file://${pmtilesFile.absolutePath}")
+            }
 
-            map.setStyle(Style.Builder().fromJson(modifiedJson)) {
-                onLoaded()
+            withContext(Dispatchers.Main) {
+                map.setStyle(Style.Builder().fromJson(modifiedJson)) {
+                    onLoaded()
+                }
             }
         }
         else -> {
-            map.setStyle(preset.styleUrl) {
-                onLoaded()
+            withContext(Dispatchers.Main) {
+                map.setStyle(preset.styleUrl) {
+                    onLoaded()
+                }
             }
         }
     }
@@ -145,6 +205,7 @@ fun applyMapStyle(context: Context, map: MapLibreMap, preset: MapStylePreset, on
 fun VectorMapTestScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
 
     val osmFile = remember(context) { File(context.getExternalFilesDir("tiles"), "Hiroshima_osm.pmtiles") }
     val isOsmAvailable = remember(osmFile) { osmFile.exists() && osmFile.length() > 0 }
@@ -160,26 +221,36 @@ fun VectorMapTestScreen() {
     var is3DMode by remember { mutableStateOf(false) }
 
     var lastExtruded by remember { mutableStateOf<Boolean?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val mapView = remember {
         MapView(context).apply {
             setMaximumFps(120)
             getMapAsync { map ->
                 mapInstance = map
-                // ズームイン時の低解像度タイル保持（空白・ちらつき防止）
-                map.prefetchZoomDelta = 4
+                // 先読みズームレベル差を過剰な4から適切な2に抑制（OOMリスク低減）
+                map.prefetchZoomDelta = 2
                 map.uiSettings.isRotateGesturesEnabled = true
                 map.uiSettings.isTiltGesturesEnabled = true
 
-                applyMapStyle(context, map, selectedStyle) {
-                    // 初期カメラ位置: 広島平和記念公園・広島城周辺
-                    val initialPosition = CameraPosition.Builder()
-                        .target(LatLng(34.3965, 132.4596))
-                        .zoom(14.5)
-                        .tilt(0.0)
-                        .bearing(0.0)
-                        .build()
-                    map.cameraPosition = initialPosition
+                coroutineScope.launch {
+                    applyMapStyle(
+                        context = context,
+                        map = map,
+                        preset = selectedStyle,
+                        onError = { msg -> errorMessage = msg },
+                        onLoaded = {
+                            errorMessage = null
+                            // 初期カメラ位置: 広島平和記念公園・広島城周辺
+                            val initialPosition = CameraPosition.Builder()
+                                .target(LatLng(34.3965, 132.4596))
+                                .zoom(14.5)
+                                .tilt(0.0)
+                                .bearing(0.0)
+                                .build()
+                            map.cameraPosition = initialPosition
+                        }
+                    )
                 }
 
                 // カメラの動き（ズーム・回転・傾き）をリアルタイムで追跡
@@ -189,9 +260,15 @@ fun VectorMapTestScreen() {
                     currentTilt = pos.tilt
                     currentBearing = pos.bearing
 
-                    // 傾斜角 (Tilt) が 15° を超えたら 3D 押し出し、15° 以下なら 2D 平面図形にシームレス切替
-                    val shouldExtrude = pos.tilt > 15.0
-                    if (shouldExtrude != lastExtruded) {
+                    // シュミットトリガ（ヒステリシス）による 3D/2D レイヤー切替
+                    // 17°超で 3D 押し出し、13°未満で 2D 平面図形に切替。13°〜17°は直前の状態を維持してチャタリングを完全防止
+                    val currentExtruded = lastExtruded ?: false
+                    val shouldExtrude = when {
+                        pos.tilt > 17.0 -> true
+                        pos.tilt < 13.0 -> false
+                        else -> currentExtruded
+                    }
+                    if (lastExtruded == null || shouldExtrude != lastExtruded) {
                         lastExtruded = shouldExtrude
                         map.getStyle { style ->
                             val b2d = style.getLayer("buildings-2d")
@@ -243,11 +320,50 @@ fun VectorMapTestScreen() {
             modifier = Modifier.fillMaxSize(),
         )
 
+        // エラー警告バナー (完全オフラインフェイルセーフ)
+        errorMessage?.let { errorText ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(top = 40.dp, start = 16.dp, end = 16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "⚠ オフラインデータ未検出",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = errorText,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { errorMessage = null },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
+                    ) {
+                        Text("閉じる", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // 画面上部：リアルタイム HUD & スタイル切替バー
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 48.dp, start = 12.dp, end = 12.dp),
+                .padding(top = if (errorMessage != null) 120.dp else 48.dp, start = 12.dp, end = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // HUD カード (現在のズーム・3D傾斜・方位角・オフライン状態)
@@ -312,7 +428,15 @@ fun VectorMapTestScreen() {
                         onClick = {
                             selectedStyle = preset
                             val map = mapInstance ?: return@FilledTonalButton
-                            applyMapStyle(context, map, preset)
+                            coroutineScope.launch {
+                                applyMapStyle(
+                                    context = context,
+                                    map = map,
+                                    preset = preset,
+                                    onError = { msg -> errorMessage = msg },
+                                    onLoaded = { errorMessage = null },
+                                )
+                            }
                         },
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = if (isSelected) Color(0xFF1976D2) else Color.White.copy(alpha = 0.9f),
@@ -384,46 +508,31 @@ fun VectorMapTestScreen() {
                 }
             }
 
-            // 主要スポットクイックジャンプ (広島エリア特化)
+            // 主要スポットクイックジャンプ (BBox安全境界チェック付き)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Button(
-                    onClick = {
-                        // 広島平和記念公園・原爆ドーム
-                        mapInstance?.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(LatLng(34.3929, 132.4526), 15.5),
-                            1000
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.9f)),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Text("平和公園", color = Color.Black, fontSize = 11.sp)
-                }
-                Button(
-                    onClick = {
-                        // 広島駅周辺
-                        mapInstance?.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(LatLng(34.3977, 132.4753), 15.0),
-                            1000
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.9f)),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Text("広島駅", color = Color.Black, fontSize = 11.sp)
-                }
-                Button(
-                    onClick = {
-                        // 宮島・厳島神社
-                        mapInstance?.animateCamera(
-                            CameraUpdateFactory.newLatLngZoom(LatLng(34.2959, 132.3197), 15.0),
-                            1000
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.9f)),
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Text("宮島", color = Color.Black, fontSize = 11.sp)
+                QUICK_SPOTS.forEach { spot ->
+                    // オフラインモード選択時は有効データ範囲内かどうか判定
+                    val isWithinBounds = !selectedStyle.isOffline || HIROSHIMA_DATA_BOUNDS.contains(spot.position)
+
+                    Button(
+                        onClick = {
+                            if (isWithinBounds) {
+                                mapInstance?.animateCamera(
+                                    CameraUpdateFactory.newLatLngZoom(spot.position, spot.zoom),
+                                    1000,
+                                )
+                            } else {
+                                errorMessage = "「${spot.name}」は現在のオフラインデータ範囲外です。"
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isWithinBounds) Color.White.copy(alpha = 0.9f) else Color.Gray.copy(alpha = 0.5f),
+                            contentColor = if (isWithinBounds) Color.Black else Color.DarkGray,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text(spot.name, fontSize = 11.sp)
+                    }
                 }
             }
         }

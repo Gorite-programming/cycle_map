@@ -1,10 +1,13 @@
 package com.gorite.cyclemap.routing
 
 import java.util.PriorityQueue
+import kotlin.math.acos
+import kotlin.math.atan
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 data class GraphNode(
     val id: Long,
@@ -69,8 +72,16 @@ object CyclingCostModel : EdgeCostModel {
 
     override fun cost(edge: GraphEdge): Double? {
         if (edge.roadType == "motorway" || edge.roadType == "motorway_link") return null
-        val gradePenalty = edge.gradePercent?.let { 1.0 + (kotlin.math.abs(it) * 0.02) } ?: 1.0
-        return edge.distanceMeters * (multipliers[edge.roadType] ?: 1.15) * gradePenalty
+        val gradePenalty = edge.gradePercent?.let { calculateGradePenalty(it) } ?: 1.0
+        val baseMultiplier = multipliers[edge.roadType] ?: 1.15
+        val effectiveMultiplier = (baseMultiplier * gradePenalty).coerceAtLeast(0.90)
+        return edge.distanceMeters * effectiveMultiplier
+    }
+
+    private fun calculateGradePenalty(grade: Double): Double = when {
+        grade >= 0.0 -> 1.0 + (grade * 0.02) + (grade * grade * 0.002) // 緩やかな上りは+2%、急勾配は二次関数的に増加
+        grade >= -4.0 -> (1.0 + grade * 0.02).coerceAtLeast(0.95) // 緩やかな下りは軽快（最大-5%）
+        else -> 1.0 + kotlin.math.abs(grade + 4.0) * 0.03 // -4%を超える急坂下りはブレーキ減速・危険度ペナルティ
     }
 
     override fun minimumCostMultiplier(): Double = 0.90
@@ -143,4 +154,49 @@ fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Dou
         cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2)
     val clampedA = a.coerceIn(0.0, 1.0)
     return earthRadius * 2 * atan2(sqrt(clampedA), sqrt(1.0 - clampedA))
+}
+
+/**
+ * WGS84回転楕円体に基づく高精度測地距離計算 (Lambert-Andoyer法)。
+ * 反復を行わないため未収束リスクがなく、日本付近で誤差0.01%以下の高精度をO(1)で算出する。
+ * ルート確定後の総距離表示や進捗距離の最終集計に使用する。
+ */
+fun geodesicDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    if (lat1 == lat2 && lon1 == lon2) return 0.0
+    val a = 6_378_137.0 // WGS84 長半径 (m)
+    val f = 1.0 / 298.257223563 // WGS84 扁平率
+    val phi1 = Math.toRadians(lat1)
+    val phi2 = Math.toRadians(lat2)
+    val lambda1 = Math.toRadians(lon1)
+    val lambda2 = Math.toRadians(lon2)
+
+    val deltaLambda = lambda2 - lambda1
+    val u1 = atan((1.0 - f) * tan(phi1))
+    val u2 = atan((1.0 - f) * tan(phi2))
+
+    val sinU1 = sin(u1); val cosU1 = cos(u1)
+    val sinU2 = sin(u2); val cosU2 = cos(u2)
+    val cosDeltaLambda = cos(deltaLambda)
+
+    val cosD = (sinU1 * sinU2 + cosU1 * cosU2 * cosDeltaLambda).coerceIn(-1.0, 1.0)
+    val d = acos(cosD)
+    if (d == 0.0) return 0.0
+
+    val sinD = sin(d)
+    if (sinD == 0.0) return 0.0
+
+    val p = (u1 + u2) / 2.0
+    val q = (u2 - u1) / 2.0
+    val sinP = sin(p); val cosP = cos(p)
+    val sinQ = sin(q); val cosQ = cos(q)
+
+    val cosHalfD = cos(d / 2.0)
+    val sinHalfD = sin(d / 2.0)
+    val denomX = (cosHalfD * cosHalfD).coerceAtLeast(1e-12)
+    val denomY = (sinHalfD * sinHalfD).coerceAtLeast(1e-12)
+
+    val x = (d - sinD) * (sinP * sinP * cosQ * cosQ) / denomX
+    val y = (d + sinD) * (cosP * cosP * sinQ * sinQ) / denomY
+
+    return a * (d - (f / 2.0) * (x + y))
 }

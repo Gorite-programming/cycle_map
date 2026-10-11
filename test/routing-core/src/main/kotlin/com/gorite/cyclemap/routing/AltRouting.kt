@@ -306,8 +306,13 @@ class BidirectionalRouter(
     private fun backwardEstimate(node: Long, start: Long): Double = landmarks?.lowerBoundReverse(node, start) ?: 0.0
 
     private fun minOpenG(queue: PriorityQueue<SearchEntry>, distances: Map<Long, Double>): Double {
-        while (queue.isNotEmpty() && queue.peek().g != distances[queue.peek().nodeId]) queue.remove()
-        return queue.peek()?.g ?: Double.POSITIVE_INFINITY
+        var minG = Double.POSITIVE_INFINITY
+        for (entry in queue) {
+            if (entry.g == distances[entry.nodeId] && entry.g < minG) {
+                minG = entry.g
+            }
+        }
+        return minG
     }
 }
 

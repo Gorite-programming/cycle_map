@@ -323,7 +323,10 @@ private data class RouteRequest(
 // ---------------------------------------------------------------------------
 
 @Composable
-internal fun MapScreen(modifier: Modifier = Modifier) {
+internal fun MapScreen(
+    modifier: Modifier = Modifier,
+    systemInsets: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(),
+) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("cyclemap_prefs", Context.MODE_PRIVATE) }
     var animationEnabled by remember {
@@ -1382,6 +1385,23 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
         corridorTileProgressText = null
     }
 
+    // DEF-03: レイヤー切り替え処理（地形起伏図のオフライン時フォールバック）
+    val toggleNextLayer: () -> Unit = {
+        val layers = MapLayer.entries
+        var nextIndex = (layers.indexOf(selectedLayer) + 1) % layers.size
+        if (layers[nextIndex] == MapLayer.TERRAIN) {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val isOnline = cm?.activeNetwork?.let { net ->
+                cm.getNetworkCapabilities(net)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            } ?: false
+            if (!isOnline) {
+                android.widget.Toast.makeText(context, "陰影起伏図はオフライン未取得です（標準地図を表示します）", android.widget.Toast.LENGTH_SHORT).show()
+                nextIndex = (nextIndex + 1) % layers.size
+            }
+        }
+        selectedLayer = layers[nextIndex]
+    }
+
     val downloadCorridorTiles: () -> Unit = {
         if (!isDownloadingCorridorTiles && navigationRoute.isNotEmpty()) {
             isDownloadingCorridorTiles = true
@@ -1715,6 +1735,12 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxSize(),
                     routePoints = navigationRoute.map { GeoPoint(it.latitude, it.longitude) },
                     currentLocation = currentLocation?.let { GeoPoint(it.latitude, it.longitude) },
+                    bearing = if (currentLocation != null && currentLocation!!.hasBearing() && currentLocation!!.speed >= 1.0f) {
+                        currentLocation!!.bearing
+                    } else if (headingDegrees.isFinite() && headingDegrees != 0f) {
+                        headingDegrees
+                    } else null,
+                    selectedPoiSpot = selectedPoiSpot,
                     followLocation = followLocation,
                     isNavigationActive = isNavigationActive,
                     onUserPan = { followLocation = false },
@@ -1808,13 +1834,196 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
             val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
 
+            // DEF-01: 通知バナー群（通常時・案内時の共通表示）
+            @Composable
+            fun NotificationBannerGroup(modifier: Modifier = Modifier) {
+                Column(
+                    modifier = modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Area-select mode instruction banner
+                    AnimatedVisibility(
+                        visible = isAreaSelectMode,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "ドラッグしてダウンロード範囲を選択",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = {
+                                    isAreaSelectMode = false
+                                    areaDragState = AreaDragState()
+                                    selectedAreaBounds = null
+                                }) { Text("キャンセル", color = MaterialTheme.colorScheme.onTertiaryContainer) }
+                            }
+                        }
+                    }
+
+                    // Permission Request
+                    AnimatedVisibility(
+                        visible = !hasLocationPermission,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "位置情報が必要です",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                FilledTonalButton(
+                                    onClick = {
+                                        permissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                                                Manifest.permission.POST_NOTIFICATIONS,
+                                            ),
+                                        )
+                                    },
+                                ) { Text("許可") }
+                            }
+                        }
+                    }
+
+                    // GPS 精度低下・ロスト通知バナー
+                    AnimatedVisibility(
+                        visible = gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && gpsHealthMonitor.hasReceivedFirstFix,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        val isLost = gpsStatus == GpsSignalStatus.LOST
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isLost) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = if (isLost) "GPS信号を受信できません（GPSロスト）" else "GPS信号が弱まっています（推測移動中）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (isLost) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
+
+                    // Warning / Error notification
+                    AnimatedVisibility(
+                        visible = warningMessage != null,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        warningMessage?.let { msg ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                                shape = RoundedCornerShape(12.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        msg,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    TextButton(onClick = { warningMessage = null }) { Text("閉じる") }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tile Download Progress Card
+                    AnimatedVisibility(
+                        visible = currentTileProgress != null,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        currentTileProgress?.let { progress ->
+                            val isDone = progress.completed >= progress.total
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                                shape = RoundedCornerShape(14.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            if (isDone) "${progress.prefName} 保存完了" else "${progress.prefName} (${progress.sourceName}) 保存中…",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("${progress.completed} / ${progress.total}", style = MaterialTheme.typography.labelMedium)
+                                            if (isDone) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                TextButton(onClick = { currentTileProgress = null }) { Text("閉じる") }
+                                            }
+                                        }
+                                    }
+                                    if (!isDone) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        LinearProgressIndicator(
+                                            progress = { if (progress.total > 0) progress.completed.toFloat() / progress.total else 0f },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             androidx.compose.animation.AnimatedVisibility(
                 visible = !isNavigationActive,
                 enter = Motion.topBarEnter(effectiveAnimationEnabled),
                 exit = Motion.topBarExit(effectiveAnimationEnabled),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 12.dp)
+                    .padding(top = systemInsets.calculateTopPadding() + 12.dp)
                     .zIndex(2f),
             ) {
                 Column(
@@ -1828,6 +2037,10 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         onSearchClick = { showDestinationSearch = true },
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
+
+                    // DEF-01: 通常時は検索バーの直下に通知バナーを配置。バナー出現時にチップが自然に押し下げられる
+                    NotificationBannerGroup(modifier = Modifier.padding(horizontal = 12.dp))
+
                     // クイック補給・緊急スポットフィルター行 (コンビニ・道の駅・トイレ・給水・自転車店・駅)
                     if (!isLandscape) {
                         QuickSpotFilterRow(
@@ -1850,7 +2063,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         .align(Alignment.TopEnd)
                         .padding(
                             end = 12.dp,
-                            top = if (isNavigationActive) 12.dp else 68.dp,
+                            top = systemInsets.calculateTopPadding() + (if (isNavigationActive) 12.dp else 68.dp),
                         )
                         .zIndex(2f),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1933,10 +2146,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         canZoomIn = canZoomIn,
                         canZoomOut = canZoomOut,
                         horizontal = true,
-                        onLayerClick = {
-                            val layers = MapLayer.entries
-                            selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
-                        },
+                        onLayerClick = toggleNextLayer,
                         onTargetClick = {
                             followLocation = true
                             currentLocation?.let { loc ->
@@ -2009,10 +2219,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                         canZoomIn = canZoomIn,
                         canZoomOut = canZoomOut,
                         horizontal = false,
-                        onLayerClick = {
-                            val layers = MapLayer.entries
-                            selectedLayer = layers[(layers.indexOf(selectedLayer) + 1) % layers.size]
-                        },
+                        onLayerClick = toggleNextLayer,
                         onTargetClick = {
                             followLocation = true
                             currentLocation?.let { loc ->
@@ -2089,18 +2296,22 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 }
             }
 
-            // Top Center: Notifications / Warning Banner / Download Progress
-            // (通常時は上部サーチバーの下(76dp)、案内中は最上部(12dp)に配置)
-            Column(
+            // Top Center: Active Navigation Guidance & Banners (isNavigationActive)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isNavigationActive,
+                enter = Motion.topBarEnter(effectiveAnimationEnabled),
+                exit = Motion.topBarExit(effectiveAnimationEnabled),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, top = if (isNavigationActive) 12.dp else 76.dp)
+                    .padding(start = 12.dp, end = 12.dp, top = systemInsets.calculateTopPadding() + 12.dp)
                     .zIndex(2f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (isNavigationActive) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     AnimatedVisibility(
                         visible = isRerouting,
                         enter = Motion.bannerEnter(effectiveAnimationEnabled),
@@ -2173,11 +2384,15 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                         modifier = Modifier.weight(1f),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
+                                        // DEF-10: 文字数に応じたレスポンシブなフォントサイズ指定で不自然な1文字改行を防止
                                         Text(
-                                            currentGuide.text,
-                                            style = MaterialTheme.typography.titleLarge,
+                                            text = currentGuide.text,
+                                            fontSize = if (currentGuide.text.length > 12) 18.sp else 21.sp,
+                                            lineHeight = if (currentGuide.text.length > 12) 23.sp else 26.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
+                                            maxLines = 2,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                         )
                                         Text(
                                             "${distanceMeters.roundToInt()}m",
@@ -2233,183 +2448,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             )
                         }
                     }
+
+                    // 案内中のGPS状態警告・通知バナー
+                    NotificationBannerGroup()
+
                     // 現在速度チップ (ルート中はカード外で常時確認)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
                         SpeedChip(speedKmh = speedKmh)
-                    }
-                }
-
-                // Area-select mode instruction banner
-                AnimatedVisibility(
-                    visible = isAreaSelectMode,
-                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                    exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "ドラッグしてダウンロード範囲を選択",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            TextButton(onClick = {
-                                isAreaSelectMode = false
-                                areaDragState = AreaDragState()
-                                selectedAreaBounds = null
-                            }) { Text("キャンセル", color = MaterialTheme.colorScheme.onTertiaryContainer) }
-                        }
-                    }
-                }
-
-                // Permission Request
-                AnimatedVisibility(
-                    visible = !hasLocationPermission,
-                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                    exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "位置情報が必要です",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                            FilledTonalButton(
-                                onClick = {
-                                    permissionLauncher.launch(
-                                        arrayOf(
-                                            Manifest.permission.ACCESS_FINE_LOCATION,
-                                            Manifest.permission.ACCESS_COARSE_LOCATION,
-                                            Manifest.permission.POST_NOTIFICATIONS,
-                                        ),
-                                    )
-                                },
-                            ) { Text("許可") }
-                        }
-                    }
-                }
-
-                // GPS 精度低下・ロスト通知バナー (フェーズ1)
-                AnimatedVisibility(
-                    visible = gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && gpsHealthMonitor.hasReceivedFirstFix,
-                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                    exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    val isLost = gpsStatus == GpsSignalStatus.LOST
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isLost) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = if (isLost) "GPS信号を受信できません（GPSロスト）" else "GPS信号が弱まっています（推測移動中）",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isLost) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-                }
-
-                // Warning / Error notification
-                AnimatedVisibility(
-                    visible = warningMessage != null,
-                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                    exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    warningMessage?.let { msg ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                            shape = RoundedCornerShape(12.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    msg,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                TextButton(onClick = { warningMessage = null }) { Text("閉じる") }
-                            }
-                        }
-                    }
-                }
-
-                // Prefecture Tile Download Progress Card
-                AnimatedVisibility(
-                    visible = currentTileProgress != null,
-                    enter = Motion.bannerEnter(effectiveAnimationEnabled),
-                    exit = Motion.bannerExit(effectiveAnimationEnabled),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    currentTileProgress?.let { progress ->
-                        val isDone = progress.completed >= progress.total
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
-                            shape = RoundedCornerShape(14.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        if (isDone) "${progress.prefName} 保存完了" else "${progress.prefName} (${progress.sourceName}) 保存中…",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("${progress.completed} / ${progress.total}", style = MaterialTheme.typography.labelMedium)
-                                        if (isDone) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            TextButton(onClick = { currentTileProgress = null }) { Text("閉じる") }
-                                        }
-                                    }
-                                }
-                                if (!isDone) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    LinearProgressIndicator(
-                                        progress = { if (progress.total > 0) progress.completed.toFloat() / progress.total else 0f },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -2421,7 +2466,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
+                    .padding(top = 12.dp, bottom = systemInsets.calculateBottomPadding())
                     .zIndex(2f),
                 shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 colors = CardDefaults.cardColors(
@@ -2610,7 +2655,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                             )
                         }
 
-                        // Right: GPX Controls
+                        // Right: GPX Controls (DEF-11: ボタン内ラベルに点数を含めて縦跳ね・押しミスを防止)
                         Column(horizontalAlignment = Alignment.End) {
                             Button(
                                 onClick = {
@@ -2636,22 +2681,13 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                                                 .background(Color.White),
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("記録停止", fontWeight = FontWeight.Bold)
+                                        Text("記録停止 (${gpxPointCount}p)", fontWeight = FontWeight.Bold)
                                     } else {
                                         Text("GPX記録", fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
 
-                            if (isRecording) {
-                                Text(
-                                    text = "記録中 (${gpxPointCount} pts)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
-                                )
-                            }
                             gpxNotificationText?.let { text ->
                                 Text(
                                     text = text,
@@ -2829,6 +2865,7 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
                     centerLon = center.second,
                     radiusMeters = 8000.0,
                     categoryKeys = type.categoryKeys,
+                    nameFilter = type.nameFilter,
                     limit = 30,
                 )
             }
@@ -3433,8 +3470,18 @@ internal fun MapScreen(modifier: Modifier = Modifier) {
 
                     Text(
                         "■ ライブラリ\n" +
-                            "地図表示：osmdroid (Apache License 2.0)\n" +
+                            "ベクター地図表示：MapLibre Native Android SDK (BSD 2-Clause License)\n" +
+                            "ラスター地図表示：osmdroid (Apache License 2.0)\n" +
                             "位置情報：Google Play services Location",
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("【MapLibre Native Android SDK ライセンス】", fontWeight = FontWeight.Bold)
+                    Text(
+                        "Copyright (c) MapLibre contributors\n\n" +
+                            "Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:\n\n" +
+                            "1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.\n" +
+                            "2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.",
+                        style = MaterialTheme.typography.bodySmall,
                     )
 
                     HorizontalDivider()
