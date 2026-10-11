@@ -673,6 +673,81 @@ internal fun searchNearbyQuickSpots(
     return found.sortedBy { it.distanceM }.take(limit)
 }
 
+/**
+ * 画面表示領域 (BBox: minLat, minLon, maxLat, maxLon) 内にある主要POIをオフライン検索DBから高速に取得する。
+ * 空間インデックス (lat, lon) を直接利用して数ミリ秒で応答する。
+ */
+internal fun searchPoisInBounds(
+    dbFile: File,
+    minLat: Double,
+    minLon: Double,
+    maxLat: Double,
+    maxLon: Double,
+    limit: Int = 80,
+): List<NearbySpot> {
+    if (!dbFile.isFile || minLat >= maxLat || minLon >= maxLon || limit <= 0) return emptyList()
+
+    val sql = """
+        SELECT name, category, lat, lon
+        FROM places
+        WHERE lat BETWEEN ? AND ?
+          AND lon BETWEEN ? AND ?
+          AND (
+            category LIKE 'shop:convenience%' OR
+            category LIKE 'amenity:toilets%' OR
+            category LIKE 'railway:station%' OR
+            category LIKE 'railway:halt%' OR
+            category LIKE 'public_transport:station%' OR
+            category LIKE 'amenity:bus_station%' OR
+            category LIKE 'amenity:restaurant%' OR
+            category LIKE 'amenity:cafe%' OR
+            category LIKE 'amenity:fast_food%' OR
+            category LIKE 'tourism:%' OR
+            category LIKE 'shop:bicycle%' OR
+            category LIKE 'amenity:hospital%' OR
+            category LIKE 'amenity:clinic%' OR
+            category LIKE 'amenity:doctors%' OR
+            category LIKE 'leisure:park%' OR
+            category LIKE 'amenity:drinking_water%' OR
+            category LIKE 'amenity:public_bath%' OR
+            category LIKE 'amenity:fuel%'
+          )
+          AND category NOT LIKE 'amenity:place_of_worship%'
+          AND name IS NOT NULL AND trim(name) != ''
+        LIMIT ?
+    """.trimIndent()
+
+    val found = ArrayList<NearbySpot>(limit)
+    try {
+        SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery(
+                sql,
+                arrayOf(
+                    minLat.toString(),
+                    maxLat.toString(),
+                    minLon.toString(),
+                    maxLon.toString(),
+                    limit.toString(),
+                )
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    found += NearbySpot(
+                        name = cursor.getString(0),
+                        category = cursor.getString(1),
+                        latitude = cursor.getDouble(2),
+                        longitude = cursor.getDouble(3),
+                        distanceM = 0.0,
+                    )
+                }
+            }
+        }
+    } catch (e: Exception) {
+        Log.w("CycleMap", "searchPoisInBounds failed: ${e.message}")
+        return emptyList()
+    }
+    return found
+}
+
 // ---------------------------------------------------------------------------
 // 目的地検索ダイアログ
 // ---------------------------------------------------------------------------

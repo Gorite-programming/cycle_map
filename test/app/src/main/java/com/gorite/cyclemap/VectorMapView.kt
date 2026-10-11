@@ -32,19 +32,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.Paint
+import androidx.annotation.DrawableRes
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.gorite.cyclemap.data.SearchDbSelection
+import com.gorite.cyclemap.data.SearchDbSelector
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -60,6 +66,7 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.osmdroid.util.GeoPoint
 import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * 広島エリアのオフラインベクターデータ有効範囲 (BBox)
@@ -93,6 +100,101 @@ fun resolveOfflinePmtilesPath(context: Context): String? {
         }
     }
     return null
+}
+
+/**
+ * 端末内の検索DBファイル (.search.db) を探すヘルパー関数。
+ * 指定座標に対応する県DBを優先し、フォールバックとして Hiroshima.search.db や配置済みDBを探索する。
+ */
+fun resolveSearchDbFile(context: Context, lat: Double, lon: Double): File? {
+    val dataDir = cycleMapDataDir(context)
+    val sel = SearchDbSelector.select(lat, lon)
+    if (sel is SearchDbSelection.Available) {
+        val f = SearchDbSelector.resolveDbFile(dataDir, sel.fileName)
+        if (f != null && f.exists() && f.length() > 0) return f
+    }
+    val candidates = listOf(
+        SearchDbSelector.findFirstAvailableDb(dataDir),
+        File(dataDir, "Hiroshima.search.db"),
+        File(context.getExternalFilesDir("Documents/CycleMap"), "Hiroshima.search.db"),
+        File("/sdcard/Android/data/com.gorite.cyclemap/files/Documents/CycleMap/Hiroshima.search.db"),
+        File("/storage/emulated/0/Android/data/com.gorite.cyclemap/files/Documents/CycleMap/Hiroshima.search.db"),
+        File("/sdcard/Android/data/com.gorite.cyclemap.test/files/Documents/CycleMap/Hiroshima.search.db"),
+        File("/storage/emulated/0/Android/data/com.gorite.cyclemap.test/files/Documents/CycleMap/Hiroshima.search.db"),
+    )
+    for (candidate in candidates) {
+        if (candidate != null && candidate.exists() && candidate.length() > 0) {
+            return candidate
+        }
+    }
+    return null
+}
+
+/**
+ * Googleマップ風の高品質な円形バッジアイコンを動的生成する
+ * （白い外枠境界線＋カラー背景円＋中央の白Lucideアイコン）
+ */
+private fun createPoiBadgeBitmap(
+    context: Context,
+    @DrawableRes iconRes: Int,
+    badgeColor: Int,
+    sizeDp: Int = 26,
+): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val sizePx = (sizeDp * density).roundToInt().coerceAtLeast(16)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val radius = sizePx / 2f
+
+    // 1. 白い外枠ボーダー
+    paint.color = Color.WHITE
+    paint.style = Paint.Style.FILL
+    canvas.drawCircle(radius, radius, radius - 0.5f * density, paint)
+
+    // 2. カラー背景円
+    paint.color = badgeColor
+    canvas.drawCircle(radius, radius, radius - 2.0f * density, paint)
+
+    // 3. 中央アイコン（白）
+    val iconSizePx = (sizeDp * 0.52f * density).roundToInt()
+    val drawable = ContextCompat.getDrawable(context, iconRes)?.mutate()
+    if (drawable != null) {
+        drawable.setTint(Color.WHITE)
+        val left = (sizePx - iconSizePx) / 2
+        val top = (sizePx - iconSizePx) / 2
+        drawable.setBounds(left, top, left + iconSizePx, top + iconSizePx)
+        drawable.draw(canvas)
+    }
+    return bitmap
+}
+
+/**
+ * OSMカテゴリおよび施設名から動的POI用のバッジ画像キーを決定する。
+ */
+private fun resolvePoiBadgeKey(category: String, name: String = ""): String {
+    return when {
+        category.startsWith("shop:convenience") -> "poi-badge-convenience"
+        category.startsWith("railway:station") ||
+        category.startsWith("railway:halt") ||
+        category.startsWith("public_transport:station") -> "poi-badge-station"
+        category.startsWith("amenity:toilets") -> "poi-badge-toilet"
+        name.contains("道の駅") || category.startsWith("tourism:road_station") -> "poi-badge-road-station"
+        category.startsWith("tourism:") -> "poi-badge-tourism"
+        category.startsWith("amenity:restaurant") ||
+        category.startsWith("amenity:cafe") ||
+        category.startsWith("amenity:fast_food") -> "poi-badge-food"
+        category.startsWith("shop:bicycle") -> "poi-badge-bike-shop"
+        category.startsWith("amenity:hospital") ||
+        category.startsWith("amenity:clinic") ||
+        category.startsWith("amenity:doctors") -> "poi-badge-hospital"
+        category.startsWith("leisure:park") -> "poi-badge-park"
+        category.startsWith("amenity:drinking_water") ||
+        category.startsWith("amenity:vending_machine") -> "poi-badge-water"
+        category.startsWith("amenity:public_bath") -> "poi-badge-bath"
+        category.startsWith("amenity:fuel") -> "poi-badge-fuel"
+        else -> "poi-badge-default"
+    }
 }
 
 /**
@@ -135,9 +237,13 @@ internal fun VectorMapView(
     var currentTilt by remember { mutableDoubleStateOf(0.0) }
     var lastExtruded by remember { mutableStateOf(false) }
     var offlineDataMissing by remember { mutableStateOf(false) }
+    var fetchPoisJob by remember { mutableStateOf<Job?>(null) }
 
     val mapView = remember {
-        MapView(context).apply {
+        val options = MapLibreMapOptions.createFromAttributes(context)
+            .localIdeographFontFamilyEnabled(true)
+            .localIdeographFontFamily("sans-serif")
+        MapView(context, options).apply {
             onCreate(Bundle())
         }
     }
@@ -156,6 +262,7 @@ internal fun VectorMapView(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            fetchPoisJob?.cancel()
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDestroy()
         }
@@ -219,6 +326,45 @@ internal fun VectorMapView(
                             return@getMapAsync
                         }
 
+                        // 表示中領域のPOIをオフラインDBから動的フェッチして描画するヘルパー
+                        fun triggerFetchPois(targetMap: MapLibreMap) {
+                            val zoom = targetMap.cameraPosition.zoom
+                            if (zoom < 14.0) {
+                                fetchPoisJob?.cancel()
+                                targetMap.getStyle { style ->
+                                    style.getSourceAs<GeoJsonSource>("cyclemap-dynamic-pois")
+                                        ?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+                                }
+                                return
+                            }
+
+                            val bounds = targetMap.projection.visibleRegion.latLngBounds
+                            val minLat = bounds.latitudeSouth
+                            val maxLat = bounds.latitudeNorth
+                            val minLon = bounds.longitudeWest
+                            val maxLon = bounds.longitudeEast
+
+                            val center = targetMap.cameraPosition.target ?: return
+                            val dbFile = resolveSearchDbFile(context, center.latitude, center.longitude) ?: return
+
+                            fetchPoisJob?.cancel()
+                            fetchPoisJob = coroutineScope.launch(Dispatchers.IO) {
+                                val spots = searchPoisInBounds(dbFile, minLat, minLon, maxLat, maxLon, limit = 80)
+                                val features = spots.map { spot ->
+                                    val feature = Feature.fromGeometry(Point.fromLngLat(spot.longitude, spot.latitude))
+                                    feature.addStringProperty("name", spot.name)
+                                    feature.addStringProperty("icon", resolvePoiBadgeKey(spot.category, spot.name))
+                                    feature
+                                }
+                                withContext(Dispatchers.Main) {
+                                    targetMap.getStyle { style ->
+                                        style.getSourceAs<GeoJsonSource>("cyclemap-dynamic-pois")
+                                            ?.setGeoJson(FeatureCollection.fromFeatures(features))
+                                    }
+                                }
+                            }
+                        }
+
                         // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
                         coroutineScope.launch {
                             val finalStyleJson = withContext(Dispatchers.IO) {
@@ -231,8 +377,17 @@ internal fun VectorMapView(
                                 map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
                                     // ルート表示用 GeoJson レイヤーおよび現在地・案内矢印マーカーを登録
                                     setupRouteLayers(context, style)
+                                    // Googleマップ風動的POIレイヤーを登録
+                                    setupDynamicPoiLayers(context, style)
+                                    // 初期表示時のPOIを描画
+                                    triggerFetchPois(map)
                                 }
                             }
+                        }
+
+                        // カメラ停止時リスナー (R3): 現在画面内のPOIをオフラインDBから動的フェッチ
+                        map.addOnCameraIdleListener {
+                            triggerFetchPois(map)
                         }
 
                         // カメラ変更リスナー: 傾斜角に応じて 2D/3D をヒステリシス制御で切り替え
@@ -551,4 +706,72 @@ private fun updateRouteLine(style: Style, points: List<GeoPoint>) {
     val lineString = LineString.fromLngLats(coordinates)
     val feature = Feature.fromGeometry(lineString)
     source.setGeoJson(FeatureCollection.fromFeature(feature))
+}
+
+/**
+ * Googleマップ風動的POI用のアイコン画像登録・ソース・シンボルレイヤーの初期化 (R2, R4)
+ */
+private fun setupDynamicPoiLayers(context: Context, style: Style) {
+    // 主要カテゴリの円形バッジ画像をスタイルに登録 (R4)
+    val badges = listOf(
+        "poi-badge-convenience" to (R.drawable.ic_lucide_store to Color.parseColor("#1A73E8")),      // 青
+        "poi-badge-station" to (R.drawable.ic_lucide_train_front to Color.parseColor("#1967D2")),   // 濃い青
+        "poi-badge-toilet" to (R.drawable.ic_lucide_toilet to Color.parseColor("#00838F")),         // シアン
+        "poi-badge-food" to (R.drawable.ic_lucide_utensils to Color.parseColor("#E8710A")),         // オレンジ
+        "poi-badge-road-station" to (R.drawable.ic_lucide_camera to Color.parseColor("#0D9488")),   // ティール
+        "poi-badge-tourism" to (R.drawable.ic_lucide_camera to Color.parseColor("#8E24AA")),        // 紫
+        "poi-badge-bike-shop" to (R.drawable.ic_lucide_wrench to Color.parseColor("#0288D1")),      // スカイブルー
+        "poi-badge-hospital" to (R.drawable.ic_lucide_hospital to Color.parseColor("#D93025")),     // 赤
+        "poi-badge-park" to (R.drawable.ic_lucide_trees to Color.parseColor("#188038")),            // 緑
+        "poi-badge-water" to (R.drawable.ic_lucide_droplets to Color.parseColor("#00ACC1")),        // 水色
+        "poi-badge-bath" to (R.drawable.ic_lucide_droplets to Color.parseColor("#00897B")),         // ティール
+        "poi-badge-fuel" to (R.drawable.ic_lucide_fuel to Color.parseColor("#F9AB00")),             // アンバー
+        "poi-badge-default" to (R.drawable.ic_lucide_map_pin to Color.parseColor("#757575")),       // グレー
+    )
+    for ((key, pair) in badges) {
+        if (style.getImage(key) == null) {
+            val bitmap = createPoiBadgeBitmap(context, pair.first, pair.second)
+            style.addImage(key, bitmap)
+        }
+    }
+
+    // 動的POI GeoJSON ソースとシンボルレイヤーの登録 (R2)
+    if (style.getSource("cyclemap-dynamic-pois") == null) {
+        val poiSource = GeoJsonSource("cyclemap-dynamic-pois")
+        style.addSource(poiSource)
+
+        val poiSymbolLayer = SymbolLayer("cyclemap-dynamic-poi-symbols", "cyclemap-dynamic-pois").apply {
+            setProperties(
+                PropertyFactory.iconImage(Expression.get("icon")),
+                PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconAllowOverlap(false),
+                PropertyFactory.iconIgnorePlacement(false),
+                PropertyFactory.iconOptional(false),
+
+                PropertyFactory.textField(Expression.get("name")),
+                PropertyFactory.textSize(11f),
+                PropertyFactory.textColor(Color.parseColor("#202124")),
+                PropertyFactory.textHaloColor(Color.WHITE),
+                PropertyFactory.textHaloWidth(2.0f),
+                PropertyFactory.textHaloBlur(0.5f),
+                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                PropertyFactory.textOffset(arrayOf(0f, 1.0f)),
+                PropertyFactory.textPitchAlignment(Property.TEXT_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.textRotationAlignment(Property.TEXT_ROTATION_ALIGNMENT_VIEWPORT),
+                PropertyFactory.textAllowOverlap(false),
+                PropertyFactory.textIgnorePlacement(false),
+                PropertyFactory.textOptional(true),
+                PropertyFactory.textMaxWidth(8f),
+            )
+        }
+
+        val poiPinLayer = style.getLayer("cyclemap-poi-pin")
+        if (poiPinLayer != null) {
+            style.addLayerBelow(poiSymbolLayer, "cyclemap-poi-pin")
+        } else {
+            style.addLayer(poiSymbolLayer)
+        }
+    }
 }

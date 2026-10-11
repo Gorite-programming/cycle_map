@@ -1,5 +1,6 @@
 package com.gorite.cyclemap
 
+import com.gorite.cyclemap.ui.cycling.NearbySpot
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.File
@@ -140,5 +141,23 @@ class SearchHelperTest {
         assertEquals("温泉・銭湯", formatCategoryLabel("amenity:public_bath"))
         assertEquals("トイレ", formatCategoryLabel("amenity:toilets"))
         assertEquals("カフェ", formatCategoryLabel("amenity:cafe"))
+    }
+
+    @Test
+    fun searchPoisInBounds_returnsEmptyWhenFileDoesNotExist() {
+        val nonExistent = File("/tmp/non_existent_pois.db")
+        val result = searchPoisInBounds(nonExistent, 34.0, 132.0, 34.5, 132.5)
+        assertEquals(emptyList<NearbySpot>(), result)
+    }
+
+    @Test
+    fun searchPoisInBounds_returnsEmptyForInvalidBounds() {
+        val nonExistent = File("/tmp/non_existent_pois.db")
+        // minLat >= maxLat
+        assertEquals(emptyList<NearbySpot>(), searchPoisInBounds(nonExistent, 35.0, 132.0, 34.0, 132.5))
+        // minLon >= maxLon
+        assertEquals(emptyList<NearbySpot>(), searchPoisInBounds(nonExistent, 34.0, 133.0, 34.5, 132.0))
+        // limit <= 0
+        assertEquals(emptyList<NearbySpot>(), searchPoisInBounds(nonExistent, 34.0, 132.0, 34.5, 132.5, limit = 0))
     }
 }
