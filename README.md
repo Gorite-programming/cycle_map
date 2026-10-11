@@ -6,6 +6,15 @@
 
 ---
 
+## 📥 最新デバッグ APK ダウンロード
+実機検証用の最新ビルド APK（3D動的POI対応版）は以下より直接ダウンロード可能です：
+
+* 📱 **最新版 (Latest)**: [cyclemap-debug-latest.apk をダウンロード](https://github.com/Gorite-programming/cycle_map/raw/main/application/apks/cyclemap-debug-latest.apk) （[GitHub ファイル詳細画面](https://github.com/Gorite-programming/cycle_map/blob/main/application/apks/cyclemap-debug-latest.apk)）
+* 🏷️ **リリース・タグ**: [v0.5-test (α0.5-test)](https://github.com/Gorite-programming/cycle_map/releases/tag/v0.5-test)
+* 📋 **ビルド履歴・SHA-256検証台帳**: [VERSIONS.md](VERSIONS.md)
+
+---
+
 ## 🌟 主な機能と特徴
 
 ### 1. 🚲 完全オフライン・自転車特化 A* ルーティング
