@@ -357,15 +357,26 @@ internal fun CompassUpdates(
  */
 internal class MapOrientationAnimator(
     private val getMapView: () -> MapView?,
+    private val getVectorMap: () -> org.maplibre.android.maps.MapLibreMap? = { null },
     private val onOrientationUpdated: () -> Unit,
 ) {
     private var currentAnimator: ValueAnimator? = null
     private var lastTargetHeading: Float = 0f
+    private var currentOrientation: Float = 0f
 
     fun rotateTo(newHeading: Float, animated: Boolean = true) {
-        val view = getMapView() ?: return
-        val currentOrientation = -view.mapOrientation // 0..360
-        val delta = ((newHeading - currentOrientation + 540f) % 360f) - 180f
+        val view = getMapView()
+        val vectorView = getVectorMap()
+        if (view == null && vectorView == null) return
+
+        val currentHeading = if (view != null) {
+            -view.mapOrientation
+        } else if (vectorView != null) {
+            vectorView.cameraPosition.bearing.toFloat()
+        } else {
+            currentOrientation
+        }
+        val delta = ((newHeading - currentHeading + 540f) % 360f) - 180f
         val absDelta = kotlin.math.abs(delta)
 
         // 0.3度未満の微小ジッターは破棄
@@ -373,16 +384,27 @@ internal class MapOrientationAnimator(
 
         lastTargetHeading = newHeading
 
+        fun applyHeading(heading: Float) {
+            val norm = ((heading % 360f) + 360f) % 360f
+            currentOrientation = norm
+            view?.setMapOrientation(-norm)
+            vectorView?.let { vMap ->
+                vMap.cameraPosition = org.maplibre.android.camera.CameraPosition.Builder(vMap.cameraPosition)
+                    .bearing(norm.toDouble())
+                    .build()
+            }
+            onOrientationUpdated()
+        }
+
         if (!animated) {
             currentAnimator?.cancel()
-            view.setMapOrientation(-newHeading)
-            onOrientationUpdated()
+            applyHeading(newHeading)
             return
         }
 
         currentAnimator?.cancel()
-        val start = currentOrientation
-        val target = currentOrientation + delta
+        val start = currentHeading
+        val target = currentHeading + delta
 
         currentAnimator = ValueAnimator.ofFloat(start, target).apply {
             // 角度差に応じたアニメーション時間 (80ms〜180ms)
@@ -390,9 +412,7 @@ internal class MapOrientationAnimator(
             interpolator = DecelerateInterpolator(1.3f)
             addUpdateListener { anim ->
                 val v = anim.animatedValue as Float
-                val norm = ((v % 360f) + 360f) % 360f
-                view.setMapOrientation(-norm)
-                onOrientationUpdated()
+                applyHeading(v)
             }
             start()
         }

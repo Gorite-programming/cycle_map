@@ -683,16 +683,17 @@ internal fun searchPoisInBounds(
     minLon: Double,
     maxLat: Double,
     maxLon: Double,
-    limit: Int = 80,
+    categoryPrefixes: List<String>? = null,
+    limit: Int = 300,
 ): List<NearbySpot> {
     if (!dbFile.isFile || minLat >= maxLat || minLon >= maxLon || limit <= 0) return emptyList()
 
-    val sql = """
-        SELECT name, category, lat, lon
-        FROM places
-        WHERE lat BETWEEN ? AND ?
-          AND lon BETWEEN ? AND ?
-          AND (
+    val catWhere = if (!categoryPrefixes.isNullOrEmpty()) {
+        val clauses = categoryPrefixes.joinToString(" OR ") { "category LIKE ?" }
+        "AND ($clauses)"
+    } else {
+        """
+        AND (
             category LIKE 'shop:convenience%' OR
             category LIKE 'amenity:toilets%' OR
             category LIKE 'railway:station%' OR
@@ -711,25 +712,35 @@ internal fun searchPoisInBounds(
             category LIKE 'amenity:drinking_water%' OR
             category LIKE 'amenity:public_bath%' OR
             category LIKE 'amenity:fuel%'
-          )
+        )
+        """.trimIndent()
+    }
+
+    val sql = """
+        SELECT name, category, lat, lon
+        FROM places
+        WHERE lat BETWEEN ? AND ?
+          AND lon BETWEEN ? AND ?
+          $catWhere
           AND category NOT LIKE 'amenity:place_of_worship%'
           AND name IS NOT NULL AND trim(name) != ''
         LIMIT ?
     """.trimIndent()
 
+    val args = ArrayList<String>()
+    args.add(minLat.toString())
+    args.add(maxLat.toString())
+    args.add(minLon.toString())
+    args.add(maxLon.toString())
+    if (!categoryPrefixes.isNullOrEmpty()) {
+        categoryPrefixes.forEach { args.add(if (it.endsWith("%")) it else "$it%") }
+    }
+    args.add(limit.toString())
+
     val found = ArrayList<NearbySpot>(limit)
     try {
         SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery(
-                sql,
-                arrayOf(
-                    minLat.toString(),
-                    maxLat.toString(),
-                    minLon.toString(),
-                    maxLon.toString(),
-                    limit.toString(),
-                )
-            ).use { cursor ->
+            db.rawQuery(sql, args.toTypedArray()).use { cursor ->
                 while (cursor.moveToNext()) {
                     found += NearbySpot(
                         name = cursor.getString(0),

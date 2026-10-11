@@ -23,6 +23,7 @@ scratch/
 .idea/
 *.iml
 .vscode/
+.agents/
 
 # Android / Gradle
 application/.git.bak

@@ -462,7 +462,7 @@ internal fun MapScreen(
         view.invalidate()
     }
     val latestNavArrow by rememberUpdatedState(updateNavArrow)
-    val orientationAnimator = remember { MapOrientationAnimator({ mapView }, { latestNavArrow() }) }
+    val orientationAnimator = remember { MapOrientationAnimator({ mapView }, { vectorMap }, { latestNavArrow() }) }
 
     // Dialog & Download States
     var showPrefectureListDialog by remember { mutableStateOf(false) }
@@ -1743,6 +1743,9 @@ internal fun MapScreen(
                     selectedPoiSpot = selectedPoiSpot,
                     followLocation = followLocation,
                     isNavigationActive = isNavigationActive,
+                    poiVisible = poiVisible,
+                    poiSelected = poiSelected,
+                    onPoiClick = { spot -> selectedPoiSpot = spot },
                     onUserPan = { followLocation = false },
                     onMapReady = { vectorMap = it },
                 )
@@ -2119,7 +2122,7 @@ internal fun MapScreen(
                         onClick = {
                             isHeadingUp = !isHeadingUp
                             if (!isHeadingUp) {
-                                mapView?.setMapOrientation(0f)
+                                orientationAnimator.reset()
                                 updateNavArrow()
                             }
                         },
@@ -2192,8 +2195,7 @@ internal fun MapScreen(
                         onClick = {
                             isHeadingUp = !isHeadingUp
                             if (!isHeadingUp) {
-                                mapView?.setMapOrientation(0f)
-                                vectorMap?.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.bearingTo(0.0))
+                                orientationAnimator.reset()
                                 updateNavArrow()
                             }
                         },
@@ -3066,7 +3068,7 @@ internal fun MapScreen(
             onHeadingUp = {
                 isHeadingUp = it
                 if (!it) {
-                    mapView?.setMapOrientation(0f)
+                    orientationAnimator.reset()
                     updateNavArrow()
                 }
             },
@@ -3768,7 +3770,7 @@ internal fun MapScreen(
 
     // Compass Orientation: 端末コンパスは地図回転にだけ使う。矢印の向きには使わない。
     // (端末を回すと矢印が勝手に回る問題の分離)。矢印は GPS bearing から updateNavArrow が合成する。
-    LaunchedEffect(isHeadingUp, mapView) {
+    LaunchedEffect(isHeadingUp, mapView, vectorMap) {
         if (isHeadingUp) {
             orientationAnimator.rotateTo(headingDegrees)
         } else {

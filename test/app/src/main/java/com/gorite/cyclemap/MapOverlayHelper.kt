@@ -58,7 +58,7 @@ internal data class GooglePoiVisual(
 private val googlePoiCache = androidx.collection.LruCache<String, GooglePoiVisual>(350)
 
 /** カテゴリに応じたGoogleマップ風の濃いテキストカラー */
-private fun poiTextColor(category: PoiCategory): Int = when (category) {
+internal fun poiTextColor(category: PoiCategory): Int = when (category) {
     PoiCategory.CONVENIENCE, PoiCategory.BICYCLE -> android.graphics.Color.parseColor("#174EA6") // 濃いブルー
     PoiCategory.FOOD, PoiCategory.BAKERY -> android.graphics.Color.parseColor("#A53B00") // 濃いオレンジ・ブラウン
     PoiCategory.STATION, PoiCategory.PARK, PoiCategory.TOURISM -> android.graphics.Color.parseColor("#0D652D") // 濃いグリーン
