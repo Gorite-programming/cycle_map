@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -230,6 +231,7 @@ fun GoogleMapsControlColumn(
     isAreaSelectMode: Boolean = false,
     onAreaSelectToggle: () -> Unit = {},
     isLandscape: Boolean = false,
+    onNavStartClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     if (isLandscape) {
@@ -344,6 +346,11 @@ fun GoogleMapsControlColumn(
                     )
                 }
             }
+
+            // 深緑ナビ開始FAB (↱)
+            if (!isNavigationActive && onNavStartClick != null) {
+                NavStartFAB(onClick = onNavStartClick)
+            }
         }
     } else {
         Column(
@@ -432,6 +439,105 @@ fun GoogleMapsControlColumn(
                     }
                 }
             }
+
+            // 7. 深緑ナビ開始 FAB (↱)
+            if (!isNavigationActive && onNavStartClick != null) {
+                NavStartFAB(onClick = onNavStartClick)
+            }
+        }
+    }
+}
+
+/**
+ * Google Maps 公式スタイルの深緑ナビ開始 FAB (↱)。
+ * - サイズ: 56dp x 56dp
+ * - 形状: 角丸 16dp (RoundedCornerShape(16.dp))
+ * - 背景色: 深緑ティール #006A60
+ * - 影: 6dp
+ * - アイコン: 白色 斜め右矢印 ↱ (28dp)
+ */
+@Composable
+fun NavStartFAB(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF006A60),
+        shadowElevation = 6.dp,
+        modifier = modifier.size(56.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_google_nav_arrow),
+                contentDescription = "ナビ・ルート探索を開始",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Google Maps スタイル 右上レイヤー切替ボタン (白丸 40dp, レイヤーアイコン)
+ */
+@Composable
+fun GoogleLayerButton(
+    onClick: () -> Unit,
+    label: String = "レイヤー",
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Color.White,
+        shadowElevation = 3.dp,
+        modifier = modifier.size(40.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_lucide_layers),
+                contentDescription = "地図レイヤー切替: $label",
+                tint = Color(0xFF3C4043),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Google Maps スタイル 右下GPSボタン (白丸 48dp, ターゲットアイコン)
+ */
+@Composable
+fun GoogleGpsButton(
+    following: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = Color.White,
+        shadowElevation = 4.dp,
+        modifier = modifier.size(48.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_lucide_locate_fixed),
+                contentDescription = "現在地へ移動",
+                tint = if (following) Color(0xFF1A73E8) else Color(0xFF5F6368),
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }

@@ -36,8 +36,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -64,6 +68,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -167,6 +172,16 @@ import com.gorite.cyclemap.ui.cycling.SettingsPanelSheet
 import com.gorite.cyclemap.ui.cycling.SpeedChip
 import com.gorite.cyclemap.ui.cycling.SpotPanelSheet
 import com.gorite.cyclemap.ui.cycling.TopSearchBar
+import com.gorite.cyclemap.ui.cycling.CategoryChipRow
+import com.gorite.cyclemap.ui.cycling.LocationSummarySheet
+import com.gorite.cyclemap.ui.cycling.GoogleNavTab
+import com.gorite.cyclemap.ui.cycling.GoogleNavTabBar
+import com.gorite.cyclemap.ui.cycling.NavStartFAB
+import com.gorite.cyclemap.ui.cycling.GoogleLayerButton
+import com.gorite.cyclemap.ui.cycling.GoogleGpsButton
+import com.gorite.cyclemap.ui.cycling.GoogleFloatingActionButton
+import com.gorite.cyclemap.ui.cycling.GoogleZoomPill
+import com.gorite.cyclemap.ui.cycling.CompassDial
 import com.gorite.cyclemap.ui.cycling.SpotQuickCategory
 import com.gorite.cyclemap.ui.cycling.QuickSpotType
 import com.gorite.cyclemap.ui.cycling.QuickSpotFilterRow
@@ -330,6 +345,10 @@ private data class RouteRequest(
 internal fun MapScreen(
     modifier: Modifier = Modifier,
     systemInsets: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(),
+    themeMode: com.gorite.cyclemap.ui.theme.ThemeMode = com.gorite.cyclemap.ui.theme.ThemeMode.AUTO,
+    onThemeModeChange: (com.gorite.cyclemap.ui.theme.ThemeMode) -> Unit = {},
+    isDarkTheme: Boolean = false,
+    onLocationUpdate: ((android.location.Location) -> Unit)? = null,
     onNavigationStateChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -339,6 +358,14 @@ internal fun MapScreen(
     }
     val systemAnimEnabled = remember(context) { Motion.isSystemAnimationEnabled(context) }
     val effectiveAnimationEnabled = Motion.resolveEffectiveAnimation(animationEnabled, systemAnimEnabled)
+
+    val batteryMonitor = remember(context) { com.gorite.cyclemap.power.BatteryMonitor(context) }
+    DisposableEffect(batteryMonitor) {
+        batteryMonitor.start()
+        onDispose { batteryMonitor.stop() }
+    }
+    val batteryStatus by batteryMonitor.status.collectAsState()
+    val isLowPowerMode = batteryStatus.isLowPower
 
     val lifecycleOwner = LocalLifecycleOwner.current
     var appLifecycleState by remember {
@@ -391,6 +418,7 @@ internal fun MapScreen(
     var destinationMarker by remember { mutableStateOf<Marker?>(null) }
     var speedKmh by remember { mutableStateOf(0.0) }
     var headingDegrees by remember { mutableFloatStateOf(0f) }
+    var hasHeadingSensorFix by remember { mutableStateOf(false) }
     var isHeadingUp by remember { mutableStateOf(true) }
     var followLocation by remember { mutableStateOf(true) }
     var currentVectorTilt by remember { mutableDoubleStateOf(0.0) }
@@ -484,8 +512,10 @@ internal fun MapScreen(
     var showDeveloperOptions by remember { mutableStateOf(false) }
     // サイクリングUI: 下部タブ + 各パネル
     var bottomTab by remember { mutableStateOf(CyclingTab.MAP) }
+    var googleNavTab by remember { mutableStateOf(GoogleNavTab.EXPLORE) }
     var showRoutePanel by remember { mutableStateOf(false) }
     var showSpotPanel by remember { mutableStateOf(false) }
+    var showFavoritesOnlyInSheet by remember { mutableStateOf(false) }
     var showRecordPanel by remember { mutableStateOf(false) }
     var showCyclingSettings by remember { mutableStateOf(false) }
     var poiVisible by remember { mutableStateOf(true) }
@@ -1047,6 +1077,7 @@ internal fun MapScreen(
     // 現在地の県に応じた先読み切替 (本命は routing要求時の判定。ここでは位置確定を待って寄せる)。
     LaunchedEffect(currentLocation) {
         val loc = currentLocation ?: return@LaunchedEffect
+        onLocationUpdate?.invoke(loc)
         if (isSwitchingGraph) return@LaunchedEffect
         when (val sel = RoutingGraphSelector.select(loc.latitude, loc.longitude)) {
             is RoutingGraphSelection.Available -> {
@@ -1309,6 +1340,7 @@ internal fun MapScreen(
         context = context,
         enabled = (appLifecycleState == AppLifecycleState.RESUMED),
     ) { heading ->
+        hasHeadingSensorFix = true
         headingDegrees = heading
         if (isHeadingUp) {
             // 5km/h以上の走行中はGPS進行方向に従うため、低速・停止時のみ地磁気コンパスで回転
@@ -1645,6 +1677,8 @@ internal fun MapScreen(
         },
     ) {
         val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val effectiveTopPadding = maxOf(systemInsets.calculateTopPadding(), statusBarTop)
         Column(modifier = modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
@@ -1747,9 +1781,12 @@ internal fun MapScreen(
                     currentLocation = currentLocation?.let { GeoPoint(it.latitude, it.longitude) },
                     bearing = if (currentLocation != null && currentLocation!!.hasBearing() && currentLocation!!.speed >= 1.0f) {
                         currentLocation!!.bearing
-                    } else if (headingDegrees.isFinite() && headingDegrees != 0f) {
+                    } else if (hasHeadingSensorFix && headingDegrees.isFinite()) {
                         headingDegrees
                     } else null,
+                    speedMps = currentLocation?.speed,
+                    isNightMode = isDarkTheme,
+                    isPowerSaveActive = isLowPowerMode,
                     selectedPoiSpot = selectedPoiSpot,
                     followLocation = followLocation,
                     isNavigationActive = isNavigationActive,
@@ -2034,6 +2071,54 @@ internal fun MapScreen(
                             }
                         }
                     }
+
+                    // Graph Switch Indicator
+                    AnimatedVisibility(
+                        visible = isSwitchingGraph,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF1A73E8))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("県データグラフを切替・読み込み中…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF202124), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // Route Calculation Indicator
+                    AnimatedVisibility(
+                        visible = isCalculatingRoute,
+                        enter = Motion.bannerEnter(effectiveAnimationEnabled),
+                        exit = Motion.bannerExit(effectiveAnimationEnabled),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF1A73E8))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("最適サイクリングルートを探索中…", style = MaterialTheme.typography.bodySmall, color = Color(0xFF1A73E8), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2043,31 +2128,45 @@ internal fun MapScreen(
                 exit = Motion.topBarExit(effectiveAnimationEnabled),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = systemInsets.calculateTopPadding() + 12.dp)
+                    .padding(top = effectiveTopPadding + 8.dp)
                     .zIndex(2f),
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    // Top Search Bar (menu + 地名 + 検索)
+                    // Top Search Bar: 白カプセル (≡ + ここで検索 + 🎙️ + 拓真アバター)
                     TopSearchBar(
-                        locationLabel = locationLabel,
                         onMenuClick = { scope.launch { drawerState.open() } },
                         onSearchClick = { showDestinationSearch = true },
+                        onMicClick = { showDestinationSearch = true },
+                        onAvatarClick = { showDeveloperOptions = true },
+                        userAvatarText = "拓真",
+                        placeholderText = "ここで検索",
                         modifier = Modifier.padding(horizontal = 12.dp),
                     )
 
                     // DEF-01: 通常時は検索バーの直下に通知バナーを配置。バナー出現時にチップが自然に押し下げられる
                     NotificationBannerGroup(modifier = Modifier.padding(horizontal = 12.dp))
 
-                    // クイック補給・緊急スポットフィルター行 (コンビニ・道の駅・トイレ・給水・自転車店・駅)
+                    // Google Maps 完全再現: 水平スクロール カテゴリチップ列
                     if (!isLandscape) {
-                        QuickSpotFilterRow(
-                            selectedType = if (showQuickSpotSheet) activeQuickSpotType else null,
-                            onSelectType = { type ->
+                        CategoryChipRow(
+                            onConsultClick = { showDestinationSearch = true },
+                            onHomeClick = {
+                                currentLocation?.let { loc ->
+                                    val start = GeoPoint(loc.latitude, loc.longitude)
+                                    val homeDest = GeoPoint(FALLBACK_LATITUDE, FALLBACK_LONGITUDE)
+                                    startRouteToDestination(homeDest)
+                                }
+                            },
+                            onSelectQuickSpot = { type ->
                                 activeQuickSpotType = type
                                 showQuickSpotSheet = true
+                            },
+                            onSelectCategory = { _ ->
+                                spotCategory = SpotQuickCategory.FOOD
+                                showSpotPanel = true
                             },
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -2167,44 +2266,123 @@ internal fun MapScreen(
                     isAreaSelectMode = isAreaSelectMode,
                     onAreaSelectToggle = onAreaSelectToggleAction,
                     isLandscape = true,
+                    onNavStartClick = { showDestinationSearch = true },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(
                             end = systemInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 12.dp,
-                            top = systemInsets.calculateTopPadding() + (if (isNavigationActive) 12.dp else 68.dp),
+                            top = effectiveTopPadding + (if (isNavigationActive) 12.dp else 68.dp),
                         )
                         .zIndex(2f),
                 )
             } else {
-                GoogleMapsControlColumn(
-                    headingDegrees = { headingDegrees },
-                    isHeadingUp = isHeadingUp,
-                    onCompassClick = {
-                        isHeadingUp = !isHeadingUp
-                        if (!isHeadingUp) {
-                            orientationAnimator.reset()
-                            updateNavArrow()
-                        }
-                    },
-                    currentTilt = currentVectorTilt,
-                    onToggleTilt = onToggleTiltAction,
-                    layerLabel = currentLayerLabel,
-                    onLayerClick = toggleNextLayer,
-                    following = followLocation,
-                    onTargetClick = onTargetClickAction,
-                    onZoomIn = onZoomInAction,
-                    onZoomOut = onZoomOutAction,
-                    canZoomIn = canZoomIn,
-                    canZoomOut = canZoomOut,
-                    isNavigationActive = isNavigationActive,
-                    isAreaSelectMode = isAreaSelectMode,
-                    onAreaSelectToggle = onAreaSelectToggleAction,
-                    isLandscape = false,
+                // 3-a. Top-right Layer button (40dp 白丸)
+                GoogleLayerButton(
+                    onClick = toggleNextLayer,
+                    label = currentLayerLabel,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            top = effectiveTopPadding + (if (isNavigationActive) 16.dp else 115.dp),
+                            end = 12.dp,
+                        )
+                        .zIndex(2f),
+                )
+
+                // 3-b. Center-right Controls (コンパス, 3D/2D, ズーム, エリア選択)
+                Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
                         .zIndex(2f),
-                )
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    CompassDial(
+                        headingDegrees = { headingDegrees },
+                        headingUp = isHeadingUp,
+                        onClick = {
+                            isHeadingUp = !isHeadingUp
+                            if (!isHeadingUp) {
+                                orientationAnimator.reset()
+                                updateNavArrow()
+                            }
+                        },
+                    )
+                    GoogleFloatingActionButton(
+                        onClick = onToggleTiltAction,
+                        contentDescription = if (currentVectorTilt > 15.0) "2D表示へ切替" else "3D表示へ切替",
+                    ) {
+                        Text(
+                            text = if (currentVectorTilt > 15.0) "2D" else "3D",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (currentVectorTilt > 15.0) Color(0xFF1A73E8) else Color(0xFF3C4043),
+                        )
+                    }
+                    GoogleZoomPill(
+                        onZoomIn = onZoomInAction,
+                        onZoomOut = onZoomOutAction,
+                        canZoomIn = canZoomIn,
+                        canZoomOut = canZoomOut,
+                    )
+                    if (!isNavigationActive) {
+                        Surface(
+                            shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
+                            color = if (isAreaSelectMode) MaterialTheme.colorScheme.primary else Color.White,
+                            shadowElevation = 6.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .clickable(onClick = onAreaSelectToggleAction)
+                                    .padding(horizontal = if (isAreaSelectMode) 10.dp else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_lucide_square_dashed),
+                                        contentDescription = "エリア選択",
+                                        tint = if (isAreaSelectMode) Color.White else Color(0xFF3C4043),
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                if (isAreaSelectMode) {
+                                    Text(
+                                        text = "選択中",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(end = 6.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3-c. Bottom-right: GPS re-center button (48dp 白丸) + NavStartFAB (56dp 深緑ティール #006A60 ↱)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 12.dp, bottom = 12.dp)
+                        .zIndex(2f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    GoogleGpsButton(
+                        following = followLocation,
+                        onClick = onTargetClickAction,
+                    )
+                    if (!isNavigationActive) {
+                        NavStartFAB(
+                            onClick = { showDestinationSearch = true },
+                        )
+                    }
+                }
             }
 
             // Top Center: Active Navigation Guidance & Banners (isNavigationActive: GoogleNavHeader)
@@ -2218,7 +2396,7 @@ internal fun MapScreen(
                         if (isLandscape) {
                             Modifier.padding(
                                 start = systemInsets.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 12.dp,
-                                top = systemInsets.calculateTopPadding() + 8.dp,
+                                top = effectiveTopPadding + 8.dp,
                             )
                         } else {
                             Modifier.fillMaxWidth()
@@ -2249,7 +2427,7 @@ internal fun MapScreen(
                     autoRerouteEnabled = autoRerouteEnabled,
                     effectiveAnimationEnabled = effectiveAnimationEnabled,
                     isLandscape = isLandscape,
-                    statusBarTopPadding = systemInsets.calculateTopPadding(),
+                    statusBarTopPadding = effectiveTopPadding,
                     notificationBannerGroup = { NotificationBannerGroup() },
                 )
             }
@@ -2285,8 +2463,8 @@ internal fun MapScreen(
                         .padding(bottom = systemInsets.calculateBottomPadding())
                         .zIndex(2f),
                 )
-            } else {
-                // 通常探索モード または ルート案内前プレビューモード (白背景・Google スタイル)
+            } else if (routeSummary != null) {
+                // ルート案内前プレビューモード (白背景・Google スタイル SCR-10)
                 Card(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -2579,37 +2757,57 @@ internal fun MapScreen(
                 }
             }
 
-            // サイクリング下部ナビ (地図/ルート/スポット/記録/設定) - ナビ案内中または横画面ルートプレビュー中は自動格納してフルスクリーンHUD化
+            // Google Maps 完全再現: 地名・天候サマリーシート (SCR-01, SCR-02) + 3タブナビゲーションバー (スポット / 保存済み / 記録)
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isNavigationActive && (!isLandscape || routeSummary == null),
+                visible = !isNavigationActive && (!isLandscape || routeSummary == null) && selectedPoiSpot == null,
                 enter = Motion.bottomBarEnter(effectiveAnimationEnabled),
                 exit = Motion.bottomBarExit(effectiveAnimationEnabled),
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .fillMaxWidth()
+                    .zIndex(2f),
             ) {
-                CyclingBottomBar(
-                    selected = bottomTab,
-                    onSelect = { tab ->
-                        bottomTab = tab
-                        when (tab) {
-                            CyclingTab.MAP -> {
-                                showRoutePanel = false
-                                showSpotPanel = false
-                                showRecordPanel = false
-                                showCyclingSettings = false
-                            }
-                            CyclingTab.ROUTE -> showRoutePanel = true
-                            CyclingTab.SPOT -> showSpotPanel = true
-                            CyclingTab.RECORD -> {
-                                showRecordPanel = true
-                                scope.launch(Dispatchers.IO) {
-                                    val dataDir = cycleMapDataDir(context)
-                                    val loaded = loadGpxHistory(dataDir)
-                                    (context as? ComponentActivity)?.runOnUiThread { gpxHistory = loaded }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                ) {
+                    // 5. 地名・天候サマリーシート (SCR-01, SCR-02)
+                    LocationSummarySheet(
+                        locationName = locationLabel.ifEmpty { "井口明神" },
+                        onClick = {
+                            googleNavTab = GoogleNavTab.EXPLORE
+                            showFavoritesOnlyInSheet = false
+                            showSpotPanel = true
+                        },
+                    )
+
+                    // 6. 3タブナビゲーションバー (スポット / 保存済み / 記録)
+                    GoogleNavTabBar(
+                        selectedTab = googleNavTab,
+                        onTabSelected = { tab ->
+                            googleNavTab = tab
+                            when (tab) {
+                                GoogleNavTab.EXPLORE -> {
+                                    showFavoritesOnlyInSheet = false
+                                    showSpotPanel = true
+                                }
+                                GoogleNavTab.SAVED -> {
+                                    showFavoritesOnlyInSheet = true
+                                    showSpotPanel = true
+                                }
+                                GoogleNavTab.RECORD -> {
+                                    showRecordPanel = true
+                                    scope.launch(Dispatchers.IO) {
+                                        val dataDir = cycleMapDataDir(context)
+                                        val loaded = loadGpxHistory(dataDir)
+                                        (context as? ComponentActivity)?.runOnUiThread { gpxHistory = loaded }
+                                    }
                                 }
                             }
-                            CyclingTab.SETTINGS -> showCyclingSettings = true
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
         }
     }
@@ -2795,6 +2993,7 @@ internal fun MapScreen(
                 showSpotPanel = false
                 bottomTab = CyclingTab.MAP
             },
+            initialShowFavoritesOnly = showFavoritesOnlyInSheet,
         )
     }
 
@@ -2892,6 +3091,9 @@ internal fun MapScreen(
                 animationEnabled = enabled
                 prefs.edit().putBoolean("animation_enabled", enabled).apply()
             },
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
+            batteryStatus = batteryStatus,
             autoReroute = autoRerouteEnabled,
             onAutoReroute = { autoRerouteEnabled = it },
             headingUp = isHeadingUp,

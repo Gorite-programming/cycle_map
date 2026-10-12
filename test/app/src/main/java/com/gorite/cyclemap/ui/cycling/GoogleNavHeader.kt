@@ -64,6 +64,10 @@ internal fun GoogleNavHeader(
         horizontalAlignment = if (isLandscape) Alignment.Start else Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        val isDarkTheme = MaterialTheme.colorScheme.background.red < 0.25f
+        val rerouteColor = if (isDarkTheme) Color(0xFF0D652D) else Color(0xFF1E8E3E)
+        val navCardColor = if (isDarkTheme) Color(0xFF0D652D) else Color(0xFF0F9D58)
+
         // 1. リルート中インジケータ
         AnimatedVisibility(
             visible = isRerouting,
@@ -72,7 +76,7 @@ internal fun GoogleNavHeader(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E8E3E)),
+                colors = CardDefaults.cardColors(containerColor = rerouteColor),
                 shape = if (isLandscape) RoundedCornerShape(16.dp) else RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -105,7 +109,7 @@ internal fun GoogleNavHeader(
             }
         }
 
-        // 2. マニューバ案内カード (深緑 Google Nav パネル)
+        // 2. マニューバ案内カード (深緑 Google Nav パネル: 夜間 #0D652D / 昼間 #0F9D58)
         if (!isRerouting && currentGuide != null && distanceMeters != null) {
             AnimatedContent(
                 targetState = currentGuide,
@@ -114,7 +118,7 @@ internal fun GoogleNavHeader(
                 modifier = Modifier.fillMaxWidth(),
             ) { guide ->
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF0F9D58)),
+                    colors = CardDefaults.cardColors(containerColor = navCardColor),
                     shape = if (isLandscape) RoundedCornerShape(16.dp) else RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                     modifier = Modifier.fillMaxWidth(),

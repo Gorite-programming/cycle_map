@@ -57,14 +57,25 @@ internal data class GooglePoiVisual(
 /** POIマーカーキャッシュ (カテゴリ + スポット名) */
 private val googlePoiCache = androidx.collection.LruCache<String, GooglePoiVisual>(350)
 
-/** カテゴリに応じたGoogleマップ風の濃いテキストカラー */
-internal fun poiTextColor(category: PoiCategory): Int = when (category) {
-    PoiCategory.CONVENIENCE, PoiCategory.BICYCLE -> android.graphics.Color.parseColor("#174EA6") // 濃いブルー
-    PoiCategory.FOOD, PoiCategory.BAKERY -> android.graphics.Color.parseColor("#A53B00") // 濃いオレンジ・ブラウン
-    PoiCategory.STATION, PoiCategory.PARK, PoiCategory.TOURISM -> android.graphics.Color.parseColor("#0D652D") // 濃いグリーン
-    PoiCategory.HOSPITAL -> android.graphics.Color.parseColor("#B31412") // 濃いレッド
-    PoiCategory.TOILET, PoiCategory.WATER, PoiCategory.BATH -> android.graphics.Color.parseColor("#006064") // 濃いティール
-    else -> android.graphics.Color.parseColor("#202124") // Google Maps標準ダークグレー
+/** カテゴリに応じたGoogleマップ風のテキストカラー (昼夜連動) */
+internal fun poiTextColor(category: PoiCategory, isNight: Boolean = false): Int = if (isNight) {
+    when (category) {
+        PoiCategory.CONVENIENCE, PoiCategory.BICYCLE -> android.graphics.Color.parseColor("#8AB4F8") // Google ライトブルー
+        PoiCategory.FOOD, PoiCategory.BAKERY -> android.graphics.Color.parseColor("#F2994A") // Google ライトオレンジ
+        PoiCategory.STATION, PoiCategory.PARK, PoiCategory.TOURISM -> android.graphics.Color.parseColor("#81C995") // Google ライトグリーン
+        PoiCategory.HOSPITAL -> android.graphics.Color.parseColor("#F28B82") // Google ライトレッド
+        PoiCategory.TOILET, PoiCategory.WATER, PoiCategory.BATH -> android.graphics.Color.parseColor("#4DD0E1") // Google ライトティール
+        else -> android.graphics.Color.parseColor("#E8EAED") // Google Mapsダーク標準白
+    }
+} else {
+    when (category) {
+        PoiCategory.CONVENIENCE, PoiCategory.BICYCLE -> android.graphics.Color.parseColor("#174EA6") // 濃いブルー
+        PoiCategory.FOOD, PoiCategory.BAKERY -> android.graphics.Color.parseColor("#A53B00") // 濃いオレンジ・ブラウン
+        PoiCategory.STATION, PoiCategory.PARK, PoiCategory.TOURISM -> android.graphics.Color.parseColor("#0D652D") // 濃いグリーン
+        PoiCategory.HOSPITAL -> android.graphics.Color.parseColor("#B31412") // 濃いレッド
+        PoiCategory.TOILET, PoiCategory.WATER, PoiCategory.BATH -> android.graphics.Color.parseColor("#006064") // 濃いティール
+        else -> android.graphics.Color.parseColor("#202124") // Google Maps標準ダークグレー
+    }
 }
 
 /** 長いスポット名を視認性の良い1〜2行に分割する */

@@ -77,6 +77,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gorite.cyclemap.R
@@ -385,11 +390,12 @@ fun SpotPanelSheet(
     onDismiss: () -> Unit,
     onQuickSpotTypeSelect: ((QuickSpotType) -> Unit)? = null,
     onRouteToSpot: ((NearbySpot) -> Unit)? = null,
+    initialShowFavoritesOnly: Boolean = false,
 ) {
     val context = LocalContext.current
     val favoritesManager = remember(context) { FavoritesManager.getInstance(context) }
     val favorites by favoritesManager.favorites.collectAsState()
-    var showFavoritesOnly by remember { mutableStateOf(false) }
+    var showFavoritesOnly by remember(initialShowFavoritesOnly) { mutableStateOf(initialShowFavoritesOnly) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
@@ -751,6 +757,9 @@ fun SettingsPanelSheet(
     onPoiToggle: (PoiCategory) -> Unit,
     voiceGuidanceMode: VoiceGuidanceMode = VoiceGuidanceMode.VOICEVOX,
     onVoiceGuidanceModeChange: (VoiceGuidanceMode) -> Unit = {},
+    themeMode: com.gorite.cyclemap.ui.theme.ThemeMode = com.gorite.cyclemap.ui.theme.ThemeMode.AUTO,
+    onThemeModeChange: (com.gorite.cyclemap.ui.theme.ThemeMode) -> Unit = {},
+    batteryStatus: com.gorite.cyclemap.power.BatteryStatus? = null,
     animationEnabled: Boolean = true,
     onAnimationEnabledChange: (Boolean) -> Unit = {},
     hasLocationPermission: Boolean,
@@ -863,8 +872,68 @@ fun SettingsPanelSheet(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text("全般", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             SettingSwitch("アニメーション効果", animationEnabled, onAnimationEnabledChange)
+
+            Spacer(modifier = Modifier.height(2.dp))
+            Text("テーマ（昼夜連動）", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                com.gorite.cyclemap.ui.theme.ThemeMode.entries.forEach { mode ->
+                    val isSelected = mode == themeMode
+                    val animEnabled = LocalAnimationEnabled.current
+                    val bgColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+                        label = "ThemeModeBg",
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = Motion.motionTween(Motion.DURATION_SHORT, enabled = animEnabled),
+                        label = "ThemeModeContent",
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = bgColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onThemeModeChange(mode) },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                when (mode) {
+                                    com.gorite.cyclemap.ui.theme.ThemeMode.AUTO -> "自動"
+                                    com.gorite.cyclemap.ui.theme.ThemeMode.LIGHT -> "ライト"
+                                    com.gorite.cyclemap.ui.theme.ThemeMode.DARK -> "ダーク"
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = contentColor,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (batteryStatus != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                val statusText = buildString {
+                    append("バッテリー: ${batteryStatus.levelPercent}%")
+                    if (batteryStatus.isCharging) append(" (充電中)")
+                    if (batteryStatus.isPowerSaveMode) append(" · OS省電力モード")
+                    if (batteryStatus.isLowPower) append(" · 省電力(3D→2D制限中)")
+                }
+                Text(
+                    statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (batteryStatus.isLowPower) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Text(
-                "位置情報: ${if (hasLocationPermission) "許可済み" else "未許可"} · 単位: km · テーマ: 常時ダーク",
+                "位置情報: ${if (hasLocationPermission) "許可済み" else "未許可"} · 単位: km",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -986,74 +1055,310 @@ fun formatRemainingTime(seconds: Double): String {
     }
 }
 
-/** 上部サーチバー (メニュー + 県名バッジ＋地名 + 検索)。 */
-/** 上部サーチバー (メニュー + 県名バッジ＋地名 + 検索: Google Maps スタイル)。 */
+/**
+ * Google Maps 完全再現: 上部白カプセル検索バー (SCR-01, SCR-02, SCR-10, SCR-11)
+ * - 白カプセル型 (高さ 52dp, 角丸 26dp, シャドウ 3dp)
+ * - 左端: ハンバーガーメニューアイコン ≡ (タップでサイドドロワー展開)
+ * - 中央: 「ここで検索」フォント 16sp, グレー #5F6368 (タップで検索画面へ)
+ * - 右端: 音声認識マイク 🎙️ (#5F6368) + 紫アバター丸「拓真」 (背景 #7B1FA2, 12sp ボールド白文字)
+ */
 @Composable
 fun TopSearchBar(
-    locationLabel: String,
     onMenuClick: () -> Unit,
     onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
+    locationLabel: String? = null,
+    onMicClick: () -> Unit = onSearchClick,
+    onAvatarClick: () -> Unit = {},
+    userAvatarText: String = "拓真",
+    placeholderText: String = "ここで検索",
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = Color.White,
+        shadowElevation = 3.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 左端: ハンバーガーメニューアイコン ≡
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onMenuClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_menu),
+                    contentDescription = "メニュー",
+                    tint = Color(0xFF5F6368),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // 中央: 「ここで検索」
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(onClick = onSearchClick),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = placeholderText,
+                    color = Color(0xFF5F6368),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // 右端: 音声認識マイク 🎙️
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onMicClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_google_mic),
+                    contentDescription = "音声検索",
+                    tint = Color(0xFF5F6368),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // 紫アバター丸「拓真」 (#7B1FA2)
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFF7B1FA2),
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onAvatarClick),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = userAvatarText,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        }
+    }
+}
+
+/**
+ * Google Maps 完全再現: 上部水平スクロール カテゴリチップ列 (SCR-01, SCR-02)
+ * - チップ高さ: 36dp, 角丸: 18dp
+ * - 「🔍 マップに相談」(水色背景 #E8F0FE, 青文字 #1A73E8)
+ * - 「🚗 自宅・4 分」(白背景, 枠線, 車アイコン, 緑所要時間 #188038)
+ * - 「🍴 レストラン」「🏪 コンビニ」「🚩 道の駅」「🚻 トイレ」等
+ */
+@Composable
+fun CategoryChipRow(
+    onConsultClick: () -> Unit,
+    onHomeClick: () -> Unit,
+    onSelectQuickSpot: (QuickSpotType) -> Unit,
+    modifier: Modifier = Modifier,
+    onSelectCategory: (String) -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp),
+) {
+    LazyRow(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = contentPadding,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DarkCircleButton(R.drawable.ic_lucide_menu, "メニュー", onMenuClick)
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color.White,
-            shadowElevation = 6.dp,
-            modifier = Modifier.weight(1f),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onSearchClick)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+        // 1. "🔍 マップに相談" (水色ピル: #E8F0FE, 青文字: #1A73E8)
+        item(key = "chip_consult") {
+            Surface(
+                onClick = onConsultClick,
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFFE8F0FE),
+                shadowElevation = 2.dp,
+                modifier = Modifier.height(36.dp),
             ) {
-                val prefIndex = locationLabel.indexOf("県")
-                if (prefIndex in 2..4) {
-                    val prefName = locationLabel.substring(0, prefIndex + 1)
-                    val restName = locationLabel.substring(prefIndex + 1)
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFE8F0FE),
-                        modifier = Modifier.padding(end = 6.dp),
-                    ) {
-                        Text(
-                            prefName,
-                            color = Color(0xFF1A73E8),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        )
-                    }
-                    Text(
-                        restName,
-                        color = Color(0xFF202124),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = if (restName.length > 12) 13.sp else 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_search),
+                        contentDescription = "マップに相談",
+                        tint = Color(0xFF1A73E8),
+                        modifier = Modifier.size(16.dp),
                     )
-                } else {
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        locationLabel,
-                        color = Color(0xFF202124),
+                        text = "マップに相談",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        fontSize = if (locationLabel.length > 14) 13.sp else 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
+                        color = Color(0xFF1A73E8),
                     )
                 }
             }
         }
-        DarkCircleButton(R.drawable.ic_lucide_search, "検索", onSearchClick)
+
+        // 2. "🚗 自宅・4 分" (白背景、枠線、車アイコン、緑所要時間)
+        item(key = "chip_home") {
+            Surface(
+                onClick = onHomeClick,
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFDADCE0)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.height(36.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_google_car),
+                        contentDescription = "自宅",
+                        tint = Color(0xFF5F6368),
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "自宅・",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF202124),
+                    )
+                    Text(
+                        text = "4 分",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF188038),
+                    )
+                }
+            }
+        }
+
+        // 3. "🍴 レストラン"
+        item(key = "chip_restaurant") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_utensils,
+                label = "レストラン",
+                onClick = { onSelectCategory("restaurant") },
+            )
+        }
+
+        // 4. "🏪 コンビニ"
+        item(key = "chip_convenience") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_store,
+                label = "コンビニ",
+                onClick = { onSelectQuickSpot(QuickSpotType.CONVENIENCE) },
+            )
+        }
+
+        // 5. "🚩 道の駅"
+        item(key = "chip_roadside") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_flag,
+                label = "道の駅",
+                onClick = { onSelectQuickSpot(QuickSpotType.ROAD_STATION) },
+            )
+        }
+
+        // 6. "🚻 トイレ"
+        item(key = "chip_toilet") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_toilet,
+                label = "トイレ",
+                onClick = { onSelectQuickSpot(QuickSpotType.RESTROOM) },
+            )
+        }
+
+        // 7. "🚴 自転車店"
+        item(key = "chip_bikeshop") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_wrench,
+                label = "自転車店",
+                onClick = { onSelectQuickSpot(QuickSpotType.BIKE_SHOP) },
+            )
+        }
+
+        // 8. "💧 給水"
+        item(key = "chip_water") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_droplets,
+                label = "給水スポット",
+                onClick = { onSelectQuickSpot(QuickSpotType.WATER) },
+            )
+        }
+
+        // 9. "🚉 駅"
+        item(key = "chip_station") {
+            GoogleCategoryChip(
+                iconRes = R.drawable.ic_lucide_train_front,
+                label = "駅",
+                onClick = { onSelectQuickSpot(QuickSpotType.STATION) },
+            )
+        }
+    }
+}
+
+@Composable
+fun GoogleCategoryChip(
+    iconRes: Int,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFDADCE0)),
+        shadowElevation = 2.dp,
+        modifier = modifier.height(36.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = label,
+                tint = Color(0xFF5F6368),
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF202124),
+            )
+        }
     }
 }
 
@@ -1113,7 +1418,7 @@ fun CompassDial(
     ) {
         Canvas(
             modifier = Modifier
-                .size(52.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onClick),
         ) {
@@ -1665,5 +1970,263 @@ private fun RouteStatCell(iconRes: Int, label: String, value: String, modifier: 
         Spacer(modifier = Modifier.height(2.dp))
         Text(label, color = Color(0xFF5F6368), fontSize = 11.sp)
         Text(value, color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+    }
+}
+
+/**
+ * Google Maps 完全再現: 地名・天候サマリーシート (SCR-01, SCR-02)
+ * - 白角丸シート (topStart = 20dp, topEnd = 20dp) + ドラッグハンドル (32dp x 4dp #DADCE0)
+ * - 左側: 現在地名 (20sp ボールド #202124、例: "井口明神")
+ * - 右側: 三日月アイコン 🌙「25℃」+ 黄色丸インジケータ「AQI」
+ */
+@Composable
+fun LocationSummarySheet(
+    locationName: String,
+    modifier: Modifier = Modifier,
+    temperatureText: String = "25℃",
+    aqiText: String = "AQI",
+    onClick: () -> Unit = {},
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        color = Color.White,
+        shadowElevation = 8.dp,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // ドラッグハンドル
+            Box(
+                modifier = Modifier
+                    .width(32.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFFDADCE0)),
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                // 左側: 現在地名 (井口明神 等)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = locationName.ifEmpty { "井口明神" },
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF202124),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "タップして周辺スポット・詳細情報を表示",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = Color(0xFF70757A),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // 右側: 天候 🌙 25℃ + AQI 黄色ドット (Google Maps 公式ピルコンテナ #F1F3F4)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF1F3F4),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        // 三日月 + 気温
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_google_moon),
+                                contentDescription = "天候",
+                                tint = Color(0xFF5F6368),
+                                modifier = Modifier.size(15.dp),
+                            )
+                            Text(
+                                text = temperatureText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF3C4043),
+                            )
+                        }
+
+                        // 中間ドット
+                        Text(
+                            text = "•",
+                            color = Color(0xFFBDC1C6),
+                            fontSize = 11.sp,
+                        )
+
+                        // AQI 黄色ドット
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFBBC04)), // Google Yellow AQI dot
+                            )
+                            Text(
+                                text = aqiText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF5F6368),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+}
+
+/**
+ * Google Maps 下部ナビゲーションタブ
+ */
+enum class GoogleNavTab {
+    EXPLORE,   // 「スポット」
+    SAVED,     // 「保存済み」
+    RECORD,    // 「記録」
+}
+
+/**
+ * Google Maps 完全再現: 3タブナビゲーションバー (SCR-01, SCR-02)
+ * - 高さ 56dp, 白背景, 上部ボーダー線 #E8EAED
+ * - タブ 1:「スポット」(水色ピル選択インジケータ #C2E7FF + 青ピン + 青文字)
+ * - タブ 2:「保存済み」(ブックマークアイコン)
+ * - タブ 3:「記録」(GPX走行ログ履歴)
+ */
+@Composable
+fun GoogleNavTabBar(
+    selectedTab: GoogleNavTab,
+    onTabSelected: (GoogleNavTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = Color.White,
+        shadowElevation = 8.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            HorizontalDivider(
+                color = Color(0xFFE8EAED),
+                thickness = 1.dp,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceAround,
+            ) {
+                // タブ 1: スポット
+                GoogleNavTabItem(
+                    label = "スポット",
+                    iconRes = R.drawable.ic_google_explore,
+                    isSelected = selectedTab == GoogleNavTab.EXPLORE,
+                    onClick = { onTabSelected(GoogleNavTab.EXPLORE) },
+                )
+
+                // タブ 2: 保存済み
+                GoogleNavTabItem(
+                    label = "保存済み",
+                    iconRes = R.drawable.ic_google_bookmark,
+                    isSelected = selectedTab == GoogleNavTab.SAVED,
+                    onClick = { onTabSelected(GoogleNavTab.SAVED) },
+                )
+
+                // タブ 3: 記録
+                GoogleNavTabItem(
+                    label = "記録",
+                    iconRes = R.drawable.ic_lucide_history,
+                    isSelected = selectedTab == GoogleNavTab.RECORD,
+                    onClick = { onTabSelected(GoogleNavTab.RECORD) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GoogleNavTabItem(
+    label: String,
+    iconRes: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (isSelected) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFC2E7FF),
+                modifier = Modifier.size(width = 56.dp, height = 28.dp),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(iconRes),
+                        contentDescription = label,
+                        tint = Color(0xFF001D35),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF001D35),
+            )
+        } else {
+            Box(
+                modifier = Modifier.size(width = 56.dp, height = 28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = label,
+                    tint = Color(0xFF5F6368),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF5F6368),
+            )
+        }
     }
 }

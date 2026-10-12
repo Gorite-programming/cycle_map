@@ -26,9 +26,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -44,6 +49,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gorite.cyclemap.data.SearchDbSelection
 import com.gorite.cyclemap.data.SearchDbSelector
+import com.gorite.cyclemap.power.CameraMotionPolicy
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
 import kotlinx.coroutines.Dispatchers
@@ -151,6 +157,71 @@ private fun drawableToBitmap(context: Context, drawableId: Int, sizePx: Int, tin
 }
 
 /**
+ * Google Maps 完全再現: 自車位置マーカー (白青ドット + 60°放射状前方扇形ビーム)
+ * - 中心: 白ドット (直径 7dp) + 濃青丸 (直径 17dp #1A73E8) + 外側白色フチ (直径 22dp) + 外側半透明パルス円
+ * - 前方ビーム (Heading Beam): 60° 放射状扇形コーン (半径 ~45dp, グラデーション #4285F4, alpha 0.40 -> 0.0)
+ */
+private fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val sizePx = if (hasBeam) (140 * density).toInt() else (64 * density).toInt()
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val cx = sizePx / 2f
+    val cy = sizePx / 2f
+
+    if (hasBeam) {
+        val beamRadius = 45f * density
+        val beamRect = RectF(cx - beamRadius, cy - beamRadius, cx + beamRadius, cy + beamRadius)
+        val beamPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            shader = RadialGradient(
+                cx, cy, beamRadius,
+                intArrayOf(
+                    Color.argb(102, 66, 133, 244), // #4285F4 (alpha 40%)
+                    Color.argb(40, 66, 133, 244),  // #4285F4 (alpha 16%)
+                    Color.argb(0, 66, 133, 244),   // 透過
+                ),
+                floatArrayOf(0.0f, 0.55f, 1.0f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+        // 前方 (上方向 / 270°) を中心とする 60 度の扇形 (240° から 60°)
+        canvas.drawArc(beamRect, 240f, 60f, true, beamPaint)
+    }
+
+    // 1. 外側半透明パルス円
+    val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(38, 66, 133, 244)
+    }
+    canvas.drawCircle(cx, cy, 20f * density, pulsePaint)
+
+    // 2. 外側白色フチ (白丸)
+    val whiteCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+        setShadowLayer(2f * density, 0f, 1f * density, Color.argb(50, 0, 0, 0))
+    }
+    canvas.drawCircle(cx, cy, 11f * density, whiteCirclePaint)
+
+    // 3. 濃青丸 (#1A73E8)
+    val blueCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.rgb(26, 115, 232)
+    }
+    canvas.drawCircle(cx, cy, 8.5f * density, blueCirclePaint)
+
+    // 4. 中心白ドット
+    val centerWhitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    }
+    canvas.drawCircle(cx, cy, 3.5f * density, centerWhitePaint)
+
+    return bitmap
+}
+
+/**
  * CycleMap-Test 用の MapLibre ベクター地図コンポーネント。
  * 本家 Liberty スタイルの完全オフライン描画、2D/3D シームレス切替、ルート描画に対応。
  */
@@ -160,6 +231,9 @@ internal fun VectorMapView(
     routePoints: List<GeoPoint> = emptyList(),
     currentLocation: GeoPoint? = null,
     bearing: Float? = null,
+    speedMps: Float? = null,
+    isNightMode: Boolean = false,
+    isPowerSaveActive: Boolean = false,
     selectedPoiSpot: NearbySpot? = null,
     followLocation: Boolean = true,
     isNavigationActive: Boolean = false,
@@ -175,12 +249,30 @@ internal fun VectorMapView(
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
+    // AndroidView factory 内の長期生存コールバックから最新値を参照するための状態ホルダー
+    val currentPowerSaveActive by rememberUpdatedState(isPowerSaveActive)
+    val currentNightMode by rememberUpdatedState(isNightMode)
+    val currentPoiVisible by rememberUpdatedState(poiVisible)
+    val currentNavigationActive by rememberUpdatedState(isNavigationActive)
+    val currentPoiSelected by rememberUpdatedState(poiSelected)
+    val currentOnTiltChanged by rememberUpdatedState(onTiltChanged)
+    val currentOnPoiClick by rememberUpdatedState(onPoiClick)
+    val currentOnUserPan by rememberUpdatedState(onUserPan)
+
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var currentTilt by remember { mutableDoubleStateOf(0.0) }
     var lastExtruded by remember { mutableStateOf(false) }
     var offlineDataMissing by remember { mutableStateOf(false) }
     var fetchPoisJob by remember { mutableStateOf<Job?>(null) }
     var triggerPoisRef by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // カメラ更新およびPOIフェッチのデバウンス制御用状態
+    var lastFollowLocation by remember { mutableStateOf(followLocation) }
+    var lastCameraLat by remember { mutableDoubleStateOf(Double.NaN) }
+    var lastCameraLon by remember { mutableDoubleStateOf(Double.NaN) }
+    var lastCameraUpdateTime by remember { mutableLongStateOf(0L) }
+    var lastPoiFetchCenter by remember { mutableStateOf<LatLng?>(null) }
+    var lastPoiFetchZoom by remember { mutableDoubleStateOf(-1.0) }
 
     val mapView = remember {
         val options = MapLibreMapOptions.createFromAttributes(context)
@@ -271,7 +363,7 @@ internal fun VectorMapView(
 
                         // 表示中領域のPOIをオフラインDBから動的フェッチして描画するヘルパー
                         fun triggerFetchPois(targetMap: MapLibreMap) {
-                            if (!poiVisible || isNavigationActive) {
+                            if (!currentPoiVisible || currentNavigationActive) {
                                 fetchPoisJob?.cancel()
                                 targetMap.getStyle { style ->
                                     style.getSourceAs<GeoJsonSource>("cyclemap-dynamic-pois")
@@ -303,7 +395,7 @@ internal fun VectorMapView(
                             val center = targetMap.cameraPosition.target ?: return
                             val dbFile = resolveSearchDbFile(context, center.latitude, center.longitude) ?: return
 
-                            val categoryPrefixes = poiSelected.flatMap { it.prefixes }
+                            val categoryPrefixes = currentPoiSelected.flatMap { it.prefixes }
 
                             fetchPoisJob?.cancel()
                             fetchPoisJob = coroutineScope.launch(Dispatchers.IO) {
@@ -328,7 +420,7 @@ internal fun VectorMapView(
                                     feature.addStringProperty("rawName", spot.name)
                                     feature.addStringProperty("category", spot.category)
                                     feature.addStringProperty("iconKey", "poi-pin-${cat.name}")
-                                    val colorInt = poiTextColor(cat)
+                                    val colorInt = poiTextColor(cat, currentNightMode)
                                     val hexColor = String.format(java.util.Locale.US, "#%06X", 0xFFFFFF and colorInt)
                                     feature.addStringProperty("textColor", hexColor)
                                     feature
@@ -346,7 +438,8 @@ internal fun VectorMapView(
                         // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
                         coroutineScope.launch {
                             val finalStyleJson = withContext(Dispatchers.IO) {
-                                val baseJson = context.assets.open("styles/protomaps_light.json")
+                                val styleAssetPath = if (isNightMode) "styles/protomaps_dark.json" else "styles/protomaps_light.json"
+                                val baseJson = context.assets.open(styleAssetPath)
                                     .bufferedReader().use { it.readText() }
                                 baseJson.replace("__LOCAL_PMTILES__", "pmtiles://file://$pmtilesPath")
                             }
@@ -363,23 +456,39 @@ internal fun VectorMapView(
                             }
                         }
 
-                        // カメラ停止時リスナー (R3): 現在画面内のPOIをオフラインDBから動的フェッチ
+                        // カメラ停止時リスナー (R3): 現在画面内のPOIをオフラインDBから動的フェッチ (デバウンス制御)
                         map.addOnCameraIdleListener {
+                            val target = map.cameraPosition.target
+                            val zoom = map.cameraPosition.zoom
+                            val last = lastPoiFetchCenter
+                            if (last != null && target != null &&
+                                CameraMotionPolicy.distanceMeters(last.latitude, last.longitude, target.latitude, target.longitude) < 20.0 &&
+                                kotlin.math.abs(zoom - lastPoiFetchZoom) < 0.2
+                            ) {
+                                return@addOnCameraIdleListener // 停止中・微小移動時の無駄なDBクエリ・GPU再描画を抑止
+                            }
+                            lastPoiFetchCenter = target
+                            lastPoiFetchZoom = zoom
                             triggerFetchPois(map)
                         }
 
                         // カメラ変更リスナー: 傾斜角に応じて 2D/3D をヒステリシス制御で切り替え
-                        // 17°超で 3D 押し出し、13°未満で 2D 平面図形に切替。13°〜17°は現在の状態を維持してチャタリングを完全防止
+                        // 省電力モード時は強制的に2D平面表示を維持 (Snapdragon 888の発熱・電力消費を抑制)
+                        // 通常時は 17°超で 3D 押し出し、13°未満で 2D 平面図形に切替。13°〜17°は現在の状態を維持
                         map.addOnCameraMoveListener {
                             val pos = map.cameraPosition
                             currentTilt = pos.tilt
                             onTiltChanged(pos.tilt)
 
                             val currentExtruded = lastExtruded
-                            val shouldExtrude = when {
-                                pos.tilt > 17.0 -> true
-                                pos.tilt < 13.0 -> false
-                                else -> currentExtruded
+                            val shouldExtrude = if (isPowerSaveActive) {
+                                false
+                            } else {
+                                when {
+                                    pos.tilt > 17.0 -> true
+                                    pos.tilt < 13.0 -> false
+                                    else -> currentExtruded
+                                }
                             }
                             if (shouldExtrude != lastExtruded) {
                                 lastExtruded = shouldExtrude
@@ -396,7 +505,7 @@ internal fun VectorMapView(
                                             PropertyFactory.visibility(
                                                 if (shouldExtrude) Property.VISIBLE else Property.NONE
                                             ),
-                                            PropertyFactory.fillExtrusionColor("#F0F1F5"),
+                                            PropertyFactory.fillExtrusionColor(if (isNightMode) "#2E3035" else "#F0F1F5"),
                                             PropertyFactory.fillExtrusionOpacity(0.95f),
                                             PropertyFactory.fillExtrusionVerticalGradient(true),
                                         )
@@ -486,21 +595,62 @@ internal fun VectorMapView(
         }
 
         // 現在地および案内矢印の更新反映
-        LaunchedEffect(currentLocation, bearing, mapLibreMap) {
+        LaunchedEffect(currentLocation, bearing, isNavigationActive, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
             map.getStyle { style ->
-                updateLocationPoint(style, currentLocation, bearing)
+                updateLocationPoint(style, currentLocation, bearing, isNavigationActive)
             }
         }
 
-        // 現在地追従（followLocation が有効な場合）
-        LaunchedEffect(currentLocation, followLocation, mapLibreMap) {
+        // 昼夜連動ナイトモードの動的切替反映
+        LaunchedEffect(isNightMode, mapLibreMap) {
+            val map = mapLibreMap ?: return@LaunchedEffect
+            map.getStyle { style ->
+                applyNightModeColors(style, isNightMode)
+            }
+        }
+
+        // 省電力モード時の 3D -> 2D 自動フォールバック即時反映
+        LaunchedEffect(isPowerSaveActive, mapLibreMap) {
+            val map = mapLibreMap ?: return@LaunchedEffect
+            if (isPowerSaveActive && lastExtruded) {
+                lastExtruded = false
+                map.getStyle { style ->
+                    val b2d = style.getLayer("buildings-2d")
+                    val b3d = style.getLayer("buildings-3d")
+                    b2d?.setProperties(PropertyFactory.visibility(Property.VISIBLE))
+                    b3d?.setProperties(PropertyFactory.visibility(Property.NONE))
+                }
+            }
+        }
+
+        // 現在地追従（停止時・低速巡航時のデバウンス制御）
+        LaunchedEffect(currentLocation, followLocation, speedMps, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
             val loc = currentLocation ?: return@LaunchedEffect
-            if (followLocation) {
+            if (!followLocation) return@LaunchedEffect
+
+            val now = android.os.SystemClock.elapsedRealtime()
+            val dist = if (!lastCameraLat.isNaN()) {
+                CameraMotionPolicy.distanceMeters(lastCameraLat, lastCameraLon, loc.latitude, loc.longitude)
+            } else {
+                Double.MAX_VALUE
+            }
+            val elapsed = now - lastCameraUpdateTime
+
+            val decision = CameraMotionPolicy.evaluate(
+                speedMps = speedMps,
+                distanceMeters = dist,
+                elapsedMillisSinceLastUpdate = elapsed,
+            )
+
+            if (decision.shouldUpdateCamera) {
+                lastCameraLat = loc.latitude
+                lastCameraLon = loc.longitude
+                lastCameraUpdateTime = now
                 map.easeCamera(
                     CameraUpdateFactory.newLatLng(LatLng(loc.latitude, loc.longitude)),
-                    500
+                    decision.animationDurationMs
                 )
             }
         }
@@ -552,10 +702,14 @@ internal fun VectorMapView(
  * ルート描画および現在地・案内矢印描画用の GeoJSON ソース・レイヤーを初期化
  */
 private fun setupRouteLayers(context: Context, style: Style) {
-    // ナビ案内矢印アイコン (ic_nav_arrow) & 現在地ドット (ic_location_dot) をスタイルに登録
+    // Google Maps 自車位置マーカー (通常ドット、60°扇形前方ビーム、ナビ案内矢印) をスタイルに登録
     if (style.getImage("cyclemap-location-dot-icon") == null) {
-        val dotBitmap = drawableToBitmap(context, R.drawable.ic_location_dot, 72)
+        val dotBitmap = createGoogleLocationPuckBitmap(context, hasBeam = false)
         style.addImage("cyclemap-location-dot-icon", dotBitmap)
+    }
+    if (style.getImage("cyclemap-location-beam-icon") == null) {
+        val beamBitmap = createGoogleLocationPuckBitmap(context, hasBeam = true)
+        style.addImage("cyclemap-location-beam-icon", beamBitmap)
     }
     if (style.getImage("cyclemap-nav-arrow-icon") == null) {
         val arrowBitmap = drawableToBitmap(context, R.drawable.ic_nav_arrow, 84)
@@ -612,22 +766,36 @@ private fun setupRouteLayers(context: Context, style: Style) {
         val locationSource = GeoJsonSource("cyclemap-location-source")
         style.addSource(locationSource)
 
-        // 停止時・方位なし: 標準青丸ドット (ic_location_dot)
+        // 1. 停止時・方位なし: Google Maps 青丸パック (cyclemap-location-dot-icon)
         val dotLayer = SymbolLayer("cyclemap-location-dot", "cyclemap-location-source").apply {
             setProperties(
                 PropertyFactory.iconImage("cyclemap-location-dot-icon"),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
-                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT), // チルト時も正面を向く！
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconAllowOverlap(true),
                 PropertyFactory.iconIgnorePlacement(true),
-                PropertyFactory.iconSize(0.6f),
             )
-            setFilter(Expression.eq(Expression.get("hasBearing"), Expression.literal(false)))
+            setFilter(Expression.eq(Expression.get("mode"), Expression.literal("dot")))
         }
         style.addLayer(dotLayer)
 
-        // 移動時・案内時: ナビ矢印マーカー (ic_nav_arrow)
+        // 2. 通常地図表示・方位あり: Google Maps 60°前方放射状ビーム付きパック (cyclemap-location-beam-icon)
+        val beamLayer = SymbolLayer("cyclemap-location-beam", "cyclemap-location-source").apply {
+            setProperties(
+                PropertyFactory.iconImage("cyclemap-location-beam-icon"),
+                PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
+                PropertyFactory.iconRotate(Expression.get("bearing")),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP), // 地図の北基準で追従回転
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT), // チルト時も正面を向く
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            )
+            setFilter(Expression.eq(Expression.get("mode"), Expression.literal("beam")))
+        }
+        style.addLayer(beamLayer)
+
+        // 3. ナビ案内時: ナビ矢印マーカー (ic_nav_arrow)
         val arrowLayer = SymbolLayer("cyclemap-location-arrow", "cyclemap-location-source").apply {
             setProperties(
                 PropertyFactory.iconImage("cyclemap-nav-arrow-icon"),
@@ -639,7 +807,7 @@ private fun setupRouteLayers(context: Context, style: Style) {
                 PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.iconSize(0.6f),
             )
-            setFilter(Expression.eq(Expression.get("hasBearing"), Expression.literal(true)))
+            setFilter(Expression.eq(Expression.get("mode"), Expression.literal("arrow")))
         }
         style.addLayer(arrowLayer)
     }
@@ -668,9 +836,14 @@ private fun setupRouteLayers(context: Context, style: Style) {
 }
 
 /**
- * 現在地座標および進行方向を GeoJSON に更新
+ * 現在地座標および進行方向を GeoJSON に更新 (通常地図ビーム/停止時ドット/案内時矢印の動的切り替え)
  */
-private fun updateLocationPoint(style: Style, location: GeoPoint?, bearing: Float?) {
+private fun updateLocationPoint(
+    style: Style,
+    location: GeoPoint?,
+    bearing: Float?,
+    isNavigationActive: Boolean = false,
+) {
     val source = style.getSourceAs<GeoJsonSource>("cyclemap-location-source") ?: return
     if (location == null) {
         source.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
@@ -678,7 +851,13 @@ private fun updateLocationPoint(style: Style, location: GeoPoint?, bearing: Floa
     }
     val point = Point.fromLngLat(location.longitude, location.latitude)
     val hasBearing = bearing != null && bearing.isFinite()
+    val mode = when {
+        isNavigationActive && hasBearing -> "arrow"
+        hasBearing -> "beam"
+        else -> "dot"
+    }
     val feature = Feature.fromGeometry(point).apply {
+        addStringProperty("mode", mode)
         addNumberProperty("bearing", (bearing ?: 0f).toDouble())
         addBooleanProperty("hasBearing", hasBearing)
     }
@@ -763,3 +942,60 @@ private fun setupDynamicPoiLayers(context: Context, style: Style) {
         }
     }
 }
+
+/**
+ * 昼夜モード切替時に MapLibre の主要レイヤーの描画色を動的に上書きするヘルパー
+ */
+private fun applyNightModeColors(style: Style, isNight: Boolean) {
+    val bgColor = if (isNight) "#1F1F1F" else "#F5F6F8"
+    val waterColor = if (isNight) "#17263C" else "#D7E6EC"
+    val b2dColor = if (isNight) "#28292A" else "#E9EAEF"
+    val b2dOutline = if (isNight) "#3C4043" else "#DBDAE0"
+    val b3dColor = if (isNight) "#2E3035" else "#F0F1F5"
+    val parkColor = if (isNight) "#1B2A22" else "#C2F0D6"
+    val roadMinorColor = if (isNight) "#2C313A" else "#FFFFFF"
+    val roadMajorColor = if (isNight) "#3C4452" else "#FFFFFF"
+    val roadCasingColor = if (isNight) "#181B20" else "#D6DDE5"
+
+    style.getLayer("background")?.setProperties(PropertyFactory.backgroundColor(bgColor))
+    style.getLayer("earth")?.setProperties(PropertyFactory.fillColor(bgColor))
+    style.getLayer("water")?.setProperties(PropertyFactory.fillColor(waterColor))
+    style.getLayer("water_stream")?.setProperties(PropertyFactory.lineColor(waterColor))
+    style.getLayer("water_river")?.setProperties(PropertyFactory.lineColor(waterColor))
+    style.getLayer("landuse_park")?.setProperties(PropertyFactory.fillColor(parkColor))
+    style.getLayer("landuse_urban_green")?.setProperties(PropertyFactory.fillColor(parkColor))
+
+    style.getLayer("buildings-2d")?.setProperties(
+        PropertyFactory.fillColor(b2dColor),
+        PropertyFactory.fillOutlineColor(b2dOutline),
+    )
+    style.getLayer("buildings-3d")?.setProperties(
+        PropertyFactory.fillExtrusionColor(b3dColor),
+    )
+
+    // 市民道路・細街路・トンネル・橋梁
+    listOf(
+        "roads_other", "roads_minor", "roads_minor_service", "roads_link",
+        "roads_tunnels_other", "roads_tunnels_minor", "roads_tunnels_link",
+        "roads_bridges_other", "roads_bridges_minor", "roads_bridges_link"
+    ).forEach { layerId ->
+        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadMinorColor))
+    }
+
+    // 主要道路
+    listOf(
+        "roads_major", "roads_tunnels_major", "roads_bridges_major"
+    ).forEach { layerId ->
+        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadMajorColor))
+    }
+
+    // 道路縁取り (ケーシング)
+    listOf(
+        "roads_other_casing", "roads_minor_casing", "roads_minor_service_casing",
+        "roads_tunnels_other_casing", "roads_tunnels_minor_casing",
+        "roads_bridges_other_casing", "roads_bridges_minor_casing"
+    ).forEach { layerId ->
+        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadCasingColor))
+    }
+}
+
