@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "weekday": [
+    {"startHour": 0, "endHour": 6, "factor": 1.10},
+    {"startHour": 7, "endHour": 9, "factor": 0.85},
+    {"startHour": 10, "endHour": 16, "factor": 1.00},
+    {"startHour": 17, "endHour": 19, "factor": 0.80},
+    {"startHour": 20, "endHour": 24, "factor": 1.05}
+  ],
+  "weekend": [
+    {"startHour": 0, "endHour": 8, "factor": 1.10},
+    {"startHour": 9, "endHour": 17, "factor": 0.95},
+    {"startHour": 18, "endHour": 24, "factor": 1.05}
+  ]
+}

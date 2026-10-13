@@ -1,0 +1,107 @@
+{
+  "version": 8,
+  "name": "Offline Hiroshima GSI Vector",
+  "sources": {
+    "gsi_vector": {
+      "type": "vector",
+      "url": "__LOCAL_PMTILES_URL__",
+      "minzoom": 4,
+      "maxzoom": 16
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#F8F5EE"
+      }
+    },
+    {
+      "id": "water_area",
+      "type": "fill",
+      "source": "gsi_vector",
+      "source-layer": "WA",
+      "paint": {
+        "fill-color": "#A5D6A7",
+        "fill-opacity": 0.8
+      }
+    },
+    {
+      "id": "coastline",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "Cstline",
+      "paint": {
+        "line-color": "#81D4FA",
+        "line-width": 1.5
+      }
+    },
+    {
+      "id": "river_line",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "RvrCL",
+      "paint": {
+        "line-color": "#4FC3F7",
+        "line-width": 2.0
+      }
+    },
+    {
+      "id": "contour_line",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "Cntr",
+      "minzoom": 12,
+      "paint": {
+        "line-color": "#D7CCC8",
+        "line-width": 0.8
+      }
+    },
+    {
+      "id": "road_minor",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "RdCL",
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#FFFFFF",
+        "line-width": 3.0
+      }
+    },
+    {
+      "id": "road_major",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "RdCL",
+      "paint": {
+        "line-color": "#FFA726",
+        "line-width": 4.5
+      }
+    },
+    {
+      "id": "railway",
+      "type": "line",
+      "source": "gsi_vector",
+      "source-layer": "RailCL",
+      "paint": {
+        "line-color": "#424242",
+        "line-width": 2.0,
+        "line-dasharray": [3, 3]
+      }
+    },
+    {
+      "id": "building_3d",
+      "type": "fill-extrusion",
+      "source": "gsi_vector",
+      "source-layer": "BldA",
+      "minzoom": 14,
+      "paint": {
+        "fill-extrusion-color": "#E0E0E0",
+        "fill-extrusion-height": 18,
+        "fill-extrusion-base": 0,
+        "fill-extrusion-opacity": 0.85
+      }
+    }
+  ]
+}

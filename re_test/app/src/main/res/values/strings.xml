@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">CycleMap</string>
+
+    <!-- Navigation & Route -->
+    <string name="nav_start">案内を開始</string>
+    <string name="nav_stop">終了</string>
+    <string name="nav_mute">ミュート中</string>
+    <string name="nav_unmute">音声ON</string>
+    <string name="nav_recalculating">ルート再検索中…</string>
+    <string name="nav_arrival">目的地に到着しました</string>
+    <string name="go_here">ここへ行く</string>
+    <string name="save_place">保存</string>
+    <string name="saved_place">保存済み</string>
+    <string name="close">閉じる</string>
+    <string name="recommended">おすすめ</string>
+    <string name="route_select_title">ルートの選択</string>
+
+    <!-- Map Controls -->
+    <string name="compass_reset_north">北を上にリセット</string>
+    <string name="zoom_in">拡大</string>
+    <string name="zoom_out">縮小</string>
+    <string name="current_location">現在地</string>
+    <string name="layer_switch">レイヤー切替</string>
+
+    <!-- Connectivity -->
+    <string name="status_offline">完全オフライン</string>
+    <string name="status_metered">従量制通信</string>
+    <string name="status_unmetered">高速通信 (Wi-Fi)</string>
+
+    <!-- Search & POI -->
+    <string name="search_hint">場所やカテゴリを検索…</string>
+    <string name="category_convenience">コンビニ</string>
+    <string name="category_station">駅</string>
+    <string name="category_toilet">トイレ</string>
+    <string name="category_cafe">カフェ</string>
+    <string name="category_cycle">駐輪場</string>
+
+    <!-- Data Management -->
+    <string name="data_management_title">オフライン地図データ管理</string>
+    <string name="data_status_verified">整合性確認済み (SHA-256一致)</string>
+    <string name="data_status_corrupted">データ不整合</string>
+    <string name="data_delete">データを削除</string>
+    <string name="data_download_wifi">Wi-Fi時のみ自動更新</string>
+</resources>

@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">CycleMap</string>
+
+    <!-- Navigation & Route -->
+    <string name="nav_start">Start Navigation</string>
+    <string name="nav_stop">Exit</string>
+    <string name="nav_mute">Muted</string>
+    <string name="nav_unmute">Voice Guidance On</string>
+    <string name="nav_recalculating">Rerouting…</string>
+    <string name="nav_arrival">You have arrived at your destination</string>
+    <string name="go_here">Directions</string>
+    <string name="save_place">Save</string>
+    <string name="saved_place">Saved</string>
+    <string name="close">Close</string>
+    <string name="recommended">Recommended</string>
+    <string name="route_select_title">Select Route</string>
+
+    <!-- Map Controls -->
+    <string name="compass_reset_north">Reset North Up</string>
+    <string name="zoom_in">Zoom In</string>
+    <string name="zoom_out">Zoom Out</string>
+    <string name="current_location">Current Location</string>
+    <string name="layer_switch">Change Map Layer</string>
+
+    <!-- Connectivity -->
+    <string name="status_offline">Offline Mode</string>
+    <string name="status_metered">Metered Network</string>
+    <string name="status_unmetered">Wi-Fi (Fast)</string>
+
+    <!-- Search & POI -->
+    <string name="search_hint">Search places or categories…</string>
+    <string name="category_convenience">Convenience Store</string>
+    <string name="category_station">Station</string>
+    <string name="category_toilet">Restroom</string>
+    <string name="category_cafe">Cafe</string>
+    <string name="category_cycle">Bike Parking</string>
+
+    <!-- Data Management -->
+    <string name="data_management_title">Offline Map Management</string>
+    <string name="data_status_verified">Verified (SHA-256 Valid)</string>
+    <string name="data_status_corrupted">Data Corrupted</string>
+    <string name="data_delete">Delete Package</string>
+    <string name="data_download_wifi">Auto-update on Wi-Fi only</string>
+</resources>

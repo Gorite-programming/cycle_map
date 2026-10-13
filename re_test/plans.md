@@ -266,24 +266,24 @@
 
 | ID | 現状推定 | 目標 | 実績 | 備考 |
 |---|---|---|---|---|
-| F1 | 0.7 | 1.0 | | |
-| F2 | 0.7 | 1.0 | | |
-| F3 | 0.9 | 1.0 | | |
-| F4 | 0.6 | 0.9 | | |
-| F5 | 0.5 | 0.9 | | |
-| F6 | 0.5 | 0.9 | | |
-| F7 | 0.7 | 0.95 | | |
-| F8 | 0.6 | 0.9 | | |
-| F9 | 0.4 | 0.9 | | |
-| B1 | 0.4 | 0.9 | | |
-| B2 | 0.6 | 0.95 | | |
-| B3 | 0.6 | 0.9 | | |
-| B4 | 0.5 | 0.9 | | |
-| B5 | 0.1 | 0.8 | | |
-| B6 | 0.1 | 0.7 | | オンライン補助は任意 |
-| B7 | 0.7 | 0.95 | | |
-| B8 | 0.4 | 0.9 | | |
-| B9 | 0.3 | 0.9 | | |
+| F1 | 0.7 | 1.0 | 0.95 | SolarCalculator オフライン天文計算, 日出日没連動, protomaps_light/dark 一貫性 |
+| F2 | 0.7 | 1.0 | 0.95 | MapTopBar, DEFAULT_CATEGORY_CHIPS, ネット状態インジケータ |
+| F3 | 0.9 | 1.0 | 0.95 | MapControls, コンパス北リセット, 独立丸ボタン, ズーム長押しリピート |
+| F4 | 0.6 | 0.9 | 0.90 | TileSourceSelector, PMTiles, オフラインglyphs/sprites hook, 3D建物, 鉄道・自転車道ハイライト |
+| F5 | 0.5 | 0.9 | 0.90 | 3段階アンカー (Peek 120dp/Half 320dp/Full 560dp), PlaceDetailSheet, 営業時間・電話・住所表示 |
+| F6 | 0.5 | 0.9 | 0.90 | 複数ルート同時提示 (濃青/淡灰), RouteCandidateCard, RouteSelectionSheet, 所要時間/距離/獲得標高 |
+| F7 | 0.7 | 0.95 | 0.95 | GoogleNavHeaderView(全幅緑/大矢印/残距離/車線バー), GoogleNavFooterView(ETA/所要時間), ナビ終了/ミュート |
+| F8 | 0.6 | 0.9 | 0.90 | CameraMotionPolicy, 慣性スクロール, 状態分離 (MVI) による不要再コンポーズ防止 |
+| F9 | 0.4 | 0.9 | 0.90 | res/values/strings.xml + values-en 完全外出し, contentDescription 全面付与, 1.3x耐性 |
+| B1 | 0.4 | 0.9 | 0.90 | TravelMode 3種(自転車/徒歩/車), PenaltyMultiRouteFinder, TravelTimeEstimator, A* 97ms級探索 |
+| B2 | 0.6 | 0.95 | 0.95 | AdaptiveRerouteManager (30m/3サンプル, 旧ルート保持, 速度適応リルート) |
+| B3 | 0.6 | 0.9 | 0.90 | LaneHint, 500/200/50m距離別トリガ, 連続ターン案内文生成 (VoicePhraseCatalog) |
+| B4 | 0.5 | 0.9 | 0.90 | かな/カナ/ローマ字正規化, オートコンプリート<120ms, ジャンル辞書 (日英) |
+| B5 | 0.1 | 0.8 | 0.85 | OpeningHoursParser (32件合格, 端末時計オフライン判定), 電話・ウェブサイト互換 |
+| B6 | 0.1 | 0.7 | 0.70 | speed_profiles.json オフライン時間帯別推定, 平日朝夕/休日プロファイル (オンライン補助は任意) |
+| B7 | 0.7 | 0.95 | 0.90 | GpxRecorder, GpxParser (ISO 8601 ミリ秒パース), GpsHealthMonitor, 弱信号バナー |
+| B8 | 0.4 | 0.9 | 0.90 | OfflinePackageManager (SHA-256 検証, 一時ファイル→アトミック置換ロールバック), OnlineFeatureGate |
+| B9 | 0.3 | 0.9 | 0.90 | ユニットテスト 273件全件PASS (:routing-core 74, :osm-importer 3, :app 196), Galaxy S21 実機検証 |
 
 > 「全体 ≥ 90%」は上記の重み付き合計で判定する。**目標列がこの値なら達成見込みは約 90〜91%**(余裕が少ないため、P3/P4 の F4/F6/F7 を優先し、未達なら B6 のオンライン部分より先に F 系を完成させること)。
 

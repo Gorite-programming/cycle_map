@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- 現在地ドット (静止・進行方向不明時用。矢印なし) -->
+    <!-- 白縁 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M24,10 A14,14 0,1 0,24 38 A14,14 0,1 0,24 10" />
+    <!-- 青ドット -->
+    <path
+        android:fillColor="#1A73E8"
+        android:pathData="M24,14 A10,10 0,1 0,24 34 A10,10 0,1 0,24 14" />
+</vector>
