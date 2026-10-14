@@ -20,6 +20,9 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -57,6 +60,7 @@ internal class RouteExecutionContext(
         summary: RouteSummary,
         isReroute: Boolean,
     ) -> Unit,
+    val onRouteOptionsCalculated: ((List<com.gorite.cyclemap.contract.RouteOption>) -> Unit)? = null,
 )
 
 internal fun executeRouteCalculation(
@@ -167,9 +171,20 @@ internal fun executeRouteCalculation(
     env.routeJobRef.set(routeJob)
     val jobGraphName = env.getLoadedGraphName()
     val jobGraph = graph
-    routeJob.thread = Thread {
+    routeJob.job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
         try {
-            if (routeJob.isCancelled()) return@Thread
+            if (routeJob.isCancelled()) return@launch
+
+            // RealRoutePlanner により推奨ルートおよび裏道ルート (RouteOption) を算出
+            val planner = com.gorite.cyclemap.real.RealRoutePlanner(graphProvider = { jobGraph })
+            val routeOptions = planner.planRoutes(
+                startLat = start.latitude,
+                startLon = start.longitude,
+                destLat = goal.latitude,
+                destLon = goal.longitude,
+                travelMode = com.gorite.cyclemap.contract.TravelModeType.Bicycle
+            )
+
             val stops = ArrayList<GeoPoint>().apply {
                 add(start)
                 addAll(currentWaypoints)
@@ -184,19 +199,19 @@ internal fun executeRouteCalculation(
 
             val pref = preferenceOverride ?: env.getRoutePreference()
             for (i in 0 until stops.size - 1) {
-                if (routeJob.isCancelled()) return@Thread
+                if (routeJob.isCancelled()) return@launch
                 val legStart = stops[i]
                 val legGoal = stops[i + 1]
                 val legResult = env.graphLock.read {
-                    if (routeJob.isCancelled()) return@Thread
+                    if (routeJob.isCancelled()) return@launch
                     val startIndex = graph.nearestNodeIndex(legStart.latitude, legStart.longitude)
-                    if (routeJob.isCancelled()) return@Thread
+                    if (routeJob.isCancelled()) return@launch
                     val goalIndex = graph.nearestNodeIndex(legGoal.latitude, legGoal.longitude)
                     Log.i(
                         "CycleMapRoute",
                         "ROUTE_SNAP leg=$i startNode=$startIndex goalNode=$goalIndex pref=$pref",
                     )
-                    if (routeJob.isCancelled()) return@Thread
+                    if (routeJob.isCancelled()) return@launch
                     graph.route(
                         startIndex,
                         goalIndex,
@@ -205,7 +220,7 @@ internal fun executeRouteCalculation(
                         preference = pref,
                     )
                 }
-                if (routeJob.isCancelled() || legResult.wasCancelled) return@Thread
+                if (routeJob.isCancelled() || legResult.wasCancelled) return@launch
                 if (!legResult.isReachable) {
                     isAllReachable = false
                     break
@@ -235,8 +250,8 @@ internal fun executeRouteCalculation(
                 wasCancelled = false,
                 wasTruncated = isAnyTruncated,
             )
-            if (routeJob.isCancelled()) return@Thread
-            if (result.wasCancelled) return@Thread
+            if (routeJob.isCancelled()) return@launch
+            if (result.wasCancelled) return@launch
             Log.i(
                 "CycleMapRoute",
                 "ROUTE_RESULT success=${result.isReachable} truncated=${result.wasTruncated} " +
@@ -319,6 +334,8 @@ internal fun executeRouteCalculation(
                 val navigationManeuvers = extractManeuvers(navigationRoute)
                 val routeSummary = RouteSummary(result.totalDistanceMeters, result.nodeIds.size - 1)
 
+                env.onRouteOptionsCalculated?.invoke(routeOptions)
+
                 env.onRouteCalculated(
                     polyline,
                     navigationRoute,
@@ -339,7 +356,7 @@ internal fun executeRouteCalculation(
                 env.routeJobRef.compareAndSet(routeJob, null)
             }
         } catch (t: Throwable) {
-            if (routeJob.isCancelled()) return@Thread
+            if (routeJob.isCancelled()) return@launch
             Log.e("CycleMapGraph", "route failed", t)
             Log.e("CycleMapRoute", "ROUTE_FAILURE reason=exception exception=${t::class.java.simpleName}:${t.message}")
             (env.context as? ComponentActivity)?.runOnUiThread {
@@ -351,5 +368,4 @@ internal fun executeRouteCalculation(
             }
         }
     }
-    routeJob.thread.start()
 }

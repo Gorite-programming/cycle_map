@@ -149,14 +149,16 @@ object TurnClassifier {
             )
         }
         return (1 until nodeIds.lastIndex).mapNotNull { i ->
-            val incoming = bearingBetween(
-                points[i - 1].latitude, points[i - 1].longitude,
-                points[i].latitude, points[i].longitude,
-            ) ?: return@mapNotNull null
-            val outgoing = bearingBetween(
-                points[i].latitude, points[i].longitude,
-                points[i + 1].latitude, points[i + 1].longitude,
-            ) ?: return@mapNotNull null
+            val incoming = incomingBearing(points, i)
+                ?: bearingBetween(
+                    points[i - 1].latitude, points[i - 1].longitude,
+                    points[i].latitude, points[i].longitude,
+                ) ?: return@mapNotNull null
+            val outgoing = outgoingBearing(points, i)
+                ?: bearingBetween(
+                    points[i].latitude, points[i].longitude,
+                    points[i + 1].latitude, points[i + 1].longitude,
+                ) ?: return@mapNotNull null
             val options = view.branches(nodeIds[i]).map { raw ->
                 val isChoice = if (raw.targetNodeId != null) {
                     raw.targetNodeId == nodeIds[i + 1]
@@ -535,5 +537,31 @@ object TurnClassifier {
             }
         }
         return result
+    }
+
+    private fun incomingBearing(points: List<RoutePoint>, index: Int, targetDistanceMeters: Double = 15.0): Double? {
+        var k = index - 1
+        var dist = haversineMeters(points[k].latitude, points[k].longitude, points[index].latitude, points[index].longitude)
+        while (k > 0 && dist < targetDistanceMeters) {
+            val prevK = k - 1
+            val nextDist = haversineMeters(points[prevK].latitude, points[prevK].longitude, points[index].latitude, points[index].longitude)
+            if (nextDist > 30.0) break
+            k = prevK
+            dist = nextDist
+        }
+        return bearingBetween(points[k].latitude, points[k].longitude, points[index].latitude, points[index].longitude)
+    }
+
+    private fun outgoingBearing(points: List<RoutePoint>, index: Int, targetDistanceMeters: Double = 15.0): Double? {
+        var k = index + 1
+        var dist = haversineMeters(points[index].latitude, points[index].longitude, points[k].latitude, points[k].longitude)
+        while (k < points.lastIndex && dist < targetDistanceMeters) {
+            val nextK = k + 1
+            val nextDist = haversineMeters(points[index].latitude, points[index].longitude, points[nextK].latitude, points[nextK].longitude)
+            if (nextDist > 30.0) break
+            k = nextK
+            dist = nextDist
+        }
+        return bearingBetween(points[index].latitude, points[index].longitude, points[k].latitude, points[k].longitude)
     }
 }

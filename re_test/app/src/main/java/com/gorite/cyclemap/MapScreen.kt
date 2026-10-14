@@ -107,6 +107,9 @@ internal fun MapScreen(
                 state.warningMessageState.value = null
             }
         },
+        onRouteOptionsCalculated = { options ->
+            state.calculatedRouteOptionsState.value = options
+        },
     )
 
     val runRouteCalculation: (start: GeoPoint, goal: GeoPoint, isReroute: Boolean, waypointsOverride: List<GeoPoint>?, preferenceOverride: RoutePreference?) -> Unit = { start, goal, isReroute, waypointsOverride, preferenceOverride ->

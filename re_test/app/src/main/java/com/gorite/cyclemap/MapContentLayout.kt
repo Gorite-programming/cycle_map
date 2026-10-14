@@ -268,6 +268,7 @@ internal fun MapContentLayout(
                     isRerouting = isRerouting,
                     offRouteDetector = offRouteDetector,
                     autoRerouteEnabled = autoRerouteEnabled,
+                    networkLink = networkLink,
                 )
 
                 // Right-Side Controls: Google Maps Style

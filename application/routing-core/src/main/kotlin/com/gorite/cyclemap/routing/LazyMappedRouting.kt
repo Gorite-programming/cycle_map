@@ -140,7 +140,7 @@ class LazyMappedRoadGraph private constructor(
             lastExpandedNodes = 0
             return MappedRouteResult(listOf(nodeIds[start]), 0.0, 0.0, listOf(latitudes[start] to longitudes[start]))
         }
-        data class Entry(val index: Int, val estimate: Double) : Comparable<Entry> {
+        data class Entry(val index: Int, val cost: Double, val estimate: Double) : Comparable<Entry> {
             override fun compareTo(other: Entry): Int = estimate.compareTo(other.estimate)
         }
         val open = PriorityQueue<Entry>()
@@ -149,9 +149,13 @@ class LazyMappedRoadGraph private constructor(
         val cameFrom = HashMap<Int, Int>()
         var expandedNodes = 0
         cost[start] = 0.0; distance[start] = 0.0
-        open += Entry(start, heuristic(start, goal, heuristicMultiplier))
+        open += Entry(start, 0.0, heuristic(start, goal, heuristicMultiplier))
         while (open.isNotEmpty()) {
-            val current = open.remove().index
+            val entry = open.remove()
+            val current = entry.index
+            if (entry.cost > cost.getOrDefault(current, Double.POSITIVE_INFINITY)) {
+                continue
+            }
             expandedNodes++
             // 1024展開ごとにキャンセル・上限を判定 (毎回の判定コストを避ける)
             if ((expandedNodes and 1023) == 0) {
@@ -189,7 +193,7 @@ class LazyMappedRoadGraph private constructor(
                 if (multiplier != null && (!arterialOnly || isArterial(record.type) || current == start || target == goal)) {
                     if (target >= 0 && (target == goal || bounds == null ||
                         bounds.contains(latitudes[target], longitudes[target]))) {
-                        val arterialBias = if (isArterial(record.type)) 1.0 else arterialPenaltyMultiplier
+                        val arterialBias = if (isArterial(record.type)) arterialPenaltyMultiplier else 1.0
                         val combinedMultiplier = (multiplier * gradePenalty(record.grade, preference) * arterialBias).coerceAtLeast(0.90)
                         val stepCost = record.distance * combinedMultiplier
                         val newCost = cost.getValue(current) + stepCost
@@ -197,7 +201,7 @@ class LazyMappedRoadGraph private constructor(
                             cost[target] = newCost
                             distance[target] = distance.getValue(current) + record.distance
                             cameFrom[target] = current
-                            open += Entry(target, newCost + heuristic(target, goal, heuristicMultiplier))
+                            open += Entry(target, newCost, newCost + heuristic(target, goal, heuristicMultiplier))
                         }
                     }
                 }
@@ -257,19 +261,19 @@ class LazyMappedRoadGraph private constructor(
             RoutePreference.RECOMMENDED -> when {
                 g >= 0.0 -> 1.0 + (g * 0.02) + (g * g * 0.002) // 緩やかな上りは+2%、急勾配は二次関数的に増加
                 g >= -4.0 -> (1.0 + g * 0.02).coerceAtLeast(0.95) // 緩やかな下りは軽快（最大-5%）
-                else -> 1.0 + abs(g + 4.0) * 0.03 // -4%を超える急坂下りは減速ペナルティ
+                else -> 0.95 + abs(g + 4.0) * 0.03 // -4%を超える急坂下りは減速ペナルティ（-4%で0.95から滑らかに接続）
             }
             RoutePreference.FLAT -> when {
                 // 上り坂を強く回避（上限5.0倍でクランプし探索空間の球状化を防止）
                 g > 0.0 -> (1.0 + g * 0.10 + g * g * 0.01).coerceAtMost(5.0)
                 g >= -5.0 -> (1.0 + g * 0.01).coerceAtLeast(0.95)
-                else -> (1.0 + abs(g + 5.0) * 0.04).coerceAtMost(3.0)
+                else -> (0.95 + abs(g + 5.0) * 0.04).coerceAtMost(3.0)
             }
             RoutePreference.HILL_CLIMB -> when {
                 // 上り坂を優先（ペナルティなし）
                 g > 0.0 -> 1.0
-                // 平坦および下り坂に相対ペナルティ（上限2.0倍）
-                else -> (1.0 + (5.0 - abs(g)).coerceAtLeast(0.0) * 0.05).coerceAtMost(2.0)
+                // 平坦および下り坂に相対ペナルティ（0%で1.0から下り勾配に応じて滑らかに増加、上限2.0倍）
+                else -> (1.0 + abs(g) * 0.05).coerceAtMost(2.0)
             }
         }
     }

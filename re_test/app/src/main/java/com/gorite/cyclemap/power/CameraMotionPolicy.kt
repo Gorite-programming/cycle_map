@@ -36,7 +36,8 @@ object CameraMotionPolicy {
         val a = sin(dLat / 2) * sin(dLat / 2) +
                 cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
                 sin(dLon / 2) * sin(dLon / 2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        val clampedA = a.coerceIn(0.0, 1.0)
+        val c = 2 * atan2(sqrt(clampedA), sqrt(1.0 - clampedA))
         return r * c
     }
 

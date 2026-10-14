@@ -42,4 +42,21 @@ class TileSourceSelectorTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun doesNotUseAnotherPrefecturesTileWhenSelectedTileIsMissing() {
+        val tempDir = File(System.getProperty("java.io.tmpdir"), "cyclemap_tile_test_${System.currentTimeMillis()}")
+        tempDir.mkdirs()
+        try {
+            File(tempDir, "Hiroshima_osm.pmtiles").writeText("Hiroshima tiles")
+
+            val missingYamaguchi = TileSourceSelector.resolveTileForLocation(tempDir, 34.185, 131.471)
+            val unsupportedTokyo = TileSourceSelector.resolveTileForLocation(tempDir, 35.68, 139.76)
+
+            assertEquals(null, missingYamaguchi)
+            assertEquals(null, unsupportedTokyo)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }

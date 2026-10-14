@@ -1,6 +1,8 @@
 package com.gorite.cyclemap
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import com.gorite.cyclemap.routing.NavigationStats
 import com.gorite.cyclemap.routing.RoutePoint
@@ -47,6 +49,8 @@ internal fun MapPanelsHost(
     quickSpotResults: List<NearbySpot>,
     onSelectPoiSpot: (NearbySpot) -> Unit,
     mapView: MapView?,
+    calculatedRoutes: List<com.gorite.cyclemap.contract.RouteOption> = emptyList(),
+    selectedPoiSpot: NearbySpot? = null,
 ) {
     if (showRoutePanel) {
         val routeProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(routeSummary, navigationRoute) {
@@ -74,7 +78,37 @@ internal fun MapPanelsHost(
         )
     }
 
-    if (showSpotPanel) {
+    // 契約 PlaceDetail 3段階アンカーボトムシート (Peek120 / Half320 / Full560)
+    var sheetAnchor by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(com.gorite.cyclemap.ui.map.BottomSheetAnchor.Half)
+    }
+
+    var placeDetail by androidx.compose.runtime.remember(selectedPoiSpot) {
+        androidx.compose.runtime.mutableStateOf<com.gorite.cyclemap.contract.PlaceDetail?>(null)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(selectedPoiSpot) {
+        val spot = selectedPoiSpot ?: return@LaunchedEffect
+        val context = mapView?.context
+        val provider = com.gorite.cyclemap.real.RealPlaceDetailProvider(
+            searchDbFileProvider = {
+                context?.let { resolveSearchDbFile(it, spot.latitude, spot.longitude) }
+            }
+        )
+        val loaded = provider.getPlaceDetail(spot.name)
+        placeDetail = loaded ?: com.gorite.cyclemap.contract.PlaceDetail(
+            id = "${spot.name}_${spot.latitude}_${spot.longitude}",
+            name = spot.name,
+            category = spot.category,
+            address = "周辺エリア",
+            distanceMeters = spot.distanceM,
+            lat = spot.latitude,
+            lon = spot.longitude,
+            businessStatus = com.gorite.cyclemap.contract.BusinessStatus.Unknown
+        )
+    }
+
+    if (showSpotPanel && placeDetail == null) {
         SpotPanelSheet(
             selectedCategory = spotCategory,
             onCategorySelect = onSpotCategoryChange,
@@ -112,6 +146,64 @@ internal fun MapPanelsHost(
                 onRouteToSpot(GeoPoint(spot.latitude, spot.longitude))
             },
             onDismiss = onCloseQuickSpotSheet,
+        )
+    }
+
+    if (showSpotPanel && placeDetail != null) {
+        val currentDetail = placeDetail!!
+        com.gorite.cyclemap.ui.map.ThreeStageBottomSheet(
+            anchor = sheetAnchor,
+            onAnchorChange = { sheetAnchor = it }
+        ) {
+            com.gorite.cyclemap.ui.map.PlaceDetailContent(
+                detail = currentDetail,
+                isFavorite = false,
+                onToggleFavorite = {},
+                onStartRoute = {
+                    placeDetail = null
+                    onCloseSpotPanel()
+                    onRouteToSpot(GeoPoint(currentDetail.lat, currentDetail.lon))
+                },
+                onClose = {
+                    placeDetail = null
+                    onCloseSpotPanel()
+                }
+            )
+        }
+    }
+
+    // 複数経路選択シート (RouteSelectionSheetV2)
+    val routes = if (calculatedRoutes.isNotEmpty()) {
+        calculatedRoutes
+    } else {
+        listOfNotNull(
+            routeSummary?.let {
+                com.gorite.cyclemap.contract.RouteOption(
+                    id = "route_primary",
+                    title = "主要サイクリングルート (推奨)",
+                    travelMode = com.gorite.cyclemap.contract.TravelModeType.Bicycle,
+                    distanceMeters = it.distanceMeters,
+                    durationSeconds = it.distanceMeters / 4.2,
+                    elevationGainMeters = 0.0,
+                    isPrimary = true
+                )
+            }
+        )
+    }
+    var selectedRouteIdx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var selectedTravelMode by remember { androidx.compose.runtime.mutableStateOf(com.gorite.cyclemap.contract.TravelModeType.Bicycle) }
+
+    if (showRoutePanel && routes.isNotEmpty()) {
+        com.gorite.cyclemap.ui.map.RouteSelectionSheet(
+            routes = routes,
+            selectedRouteIndex = selectedRouteIdx.coerceIn(0, routes.lastIndex),
+            selectedMode = selectedTravelMode,
+            onSelectMode = { selectedTravelMode = it },
+            onSelectRoute = { selectedRouteIdx = it },
+            onStartNavigation = {
+                onCloseRoutePanel()
+            },
+            onClose = onCloseRoutePanel
         )
     }
 }

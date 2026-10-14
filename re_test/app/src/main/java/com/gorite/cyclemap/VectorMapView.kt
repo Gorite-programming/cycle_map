@@ -25,6 +25,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.gorite.cyclemap.data.TileSourceSelection
+import com.gorite.cyclemap.data.TileSourceSelector
 import com.gorite.cyclemap.power.CameraMotionPolicy
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
@@ -92,6 +94,7 @@ internal fun VectorMapView(
     var currentTilt by remember { mutableDoubleStateOf(0.0) }
     var lastExtruded by remember { mutableStateOf(false) }
     var offlineDataMissing by remember { mutableStateOf(false) }
+    var offlineMissingPrefecture by remember { mutableStateOf<String?>(null) }
     var fetchPoisJob by remember { mutableStateOf<Job?>(null) }
     var triggerPoisRef by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -167,10 +170,8 @@ internal fun VectorMapView(
                             }
                         }
 
-                        // 初期カメラ位置（現在地が有効データ範囲内なら現在地、範囲外またはnullなら広島中心部）
-                        val initialTarget = if (currentLocation != null &&
-                            HiroshimaVectorBounds.contains(currentLocation.latitude, currentLocation.longitude)
-                        ) {
+                        // 現在地の県を優先し、未導入なら別県のタイルへ切り替えない。
+                        val initialTarget = if (currentLocation != null) {
                             LatLng(currentLocation.latitude, currentLocation.longitude)
                         } else {
                             LatLng(34.3965, 132.4596)
@@ -183,9 +184,14 @@ internal fun VectorMapView(
                             .build()
 
                         // オフライン Liberty スタイルを適用 (完全オフラインフェイルセーフ)
-                        val pmtilesPath = resolveOfflinePmtilesPath(context)
+                        val tileSelection = TileSourceSelector.select(initialTarget.latitude, initialTarget.longitude)
+                        val pmtilesPath = resolveOfflinePmtilesPath(context, initialTarget.latitude, initialTarget.longitude)
                         if (pmtilesPath == null) {
                             // オンラインへフォールバックせず安全に中断
+                            offlineMissingPrefecture = when (tileSelection) {
+                                is TileSourceSelection.Available -> tileSelection.prefectureName
+                                is TileSourceSelection.Unavailable -> tileSelection.prefectureName
+                            }
                             offlineDataMissing = true
                             return@getMapAsync
                         }
@@ -356,7 +362,10 @@ internal fun VectorMapView(
 
         // オフラインデータ未検出時の警告オーバーレイ (完全オフラインフェイルセーフ)
         if (offlineDataMissing) {
-            OfflineVectorMissingBanner(modifier = Modifier.align(Alignment.TopCenter))
+            OfflineVectorMissingBanner(
+                prefectureName = offlineMissingPrefecture,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
 
 
@@ -471,5 +480,4 @@ internal fun VectorMapView(
         }
     }
 }
-
 

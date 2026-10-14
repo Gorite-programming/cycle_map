@@ -5,6 +5,8 @@ import android.location.Location
 import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import com.gorite.cyclemap.routing.AdaptiveRerouteManager
 import com.gorite.cyclemap.routing.DeadReckoner
 import com.gorite.cyclemap.routing.Maneuver
 import com.gorite.cyclemap.routing.NavigationStats
@@ -69,6 +71,20 @@ internal fun MapTrackingEffects(
     onHeadingChanged: (Float) -> Unit,
     onHeadingSensorFixChanged: (Boolean) -> Unit,
 ) {
+    val adaptiveRerouteManager = remember {
+        AdaptiveRerouteManager(
+            rerouteDistanceThreshold = 30.0,
+            consecutiveSamples = 3,
+            routerAction = { _, _ -> null }
+        )
+    }
+
+    LaunchedEffect(navigationRoute) {
+        if (navigationRoute.isNotEmpty()) {
+            adaptiveRerouteManager.setInitialRoute(emptyList())
+        }
+    }
+
     // 位置追跡サービス (Foreground Service) の起動・停止ポリシー制御
     LaunchedEffect(hasLocationPermission, appLifecycleState, isNavigationActive, isRecording) {
         if (!hasLocationPermission) {
@@ -140,7 +156,13 @@ internal fun MapTrackingEffects(
                             )
                         }
                     } else if (progress != null && !isRerouting) {
-                        val offRoute = offRouteDetector.update(progress.distanceToRouteMeters)
+                        adaptiveRerouteManager.onLocationUpdate(
+                            distanceToRouteMeters = progress.distanceToRouteMeters,
+                            currentSpeedMps = location.speed,
+                            currentNodeId = 0L,
+                            goalNodeId = 0L,
+                        )
+                        val offRoute = adaptiveRerouteManager.state.value.isOffRoute
                         val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)
                         voiceNavigator.onLocationUpdated(
                             traveledMeters = progress.distanceFromStartMeters,

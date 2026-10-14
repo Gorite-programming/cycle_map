@@ -1,6 +1,7 @@
 package com.gorite.cyclemap
 
 import android.content.Context
+import com.gorite.cyclemap.data.OfflinePackageManager
 import com.gorite.cyclemap.data.SearchDbSelection
 import com.gorite.cyclemap.data.SearchDbSelector
 import com.gorite.cyclemap.data.TileSourceSelection
@@ -23,34 +24,12 @@ import androidx.compose.ui.unit.sp
 import java.io.File
 
 /**
- * 広島エリアのオフラインベクターデータ有効範囲 (BBox)
- */
-internal object HiroshimaVectorBounds {
-    const val MIN_LAT = 34.15
-    const val MAX_LAT = 34.65
-    const val MIN_LON = 132.15
-    const val MAX_LON = 132.65
-    fun contains(lat: Double, lon: Double): Boolean =
-        lat in MIN_LAT..MAX_LAT && lon in MIN_LON..MAX_LON
-}
-
-
-/**
  * 端末内の PMTiles ファイルを探すヘルパー関数。
- * CycleMap のデータディレクトリ、アプリ個別ファイル領域、テストアプリの領域を順次探索する。
+ * 現在地の県に対応するファイルだけを返し、未導入時に他県のタイルへフォールバックしない。
  */
-fun resolveOfflinePmtilesPath(context: Context, lat: Double? = null, lon: Double? = null): String? {
+fun resolveOfflinePmtilesPath(context: Context, lat: Double, lon: Double): String? {
     val dataDir = cycleMapDataDir(context)
-    if (lat != null && lon != null) {
-        val sel = TileSourceSelector.select(lat, lon)
-        if (sel is TileSourceSelection.Available) {
-            val f = TileSourceSelector.resolveTileFile(dataDir, sel.fileName)
-            if (f != null && f.exists() && f.length() > 0) return f.absolutePath
-        }
-    }
-    val fallback = TileSourceSelector.findFirstAvailableTile(dataDir)
-        ?: TileSourceSelector.resolveTileFile(dataDir, "Hiroshima_osm.pmtiles")
-    return fallback?.takeIf { it.exists() && it.length() > 0 }?.absolutePath
+    return TileSourceSelector.resolveTileForLocation(dataDir, lat, lon)?.absolutePath
 }
 
 /**
@@ -81,8 +60,23 @@ fun resolveSearchDbFile(context: Context, lat: Double, lon: Double): File? {
     return null
 }
 
+/**
+ * オフラインパッケージファイルの検証を行うヘルパー関数。
+ */
+fun verifyOfflineDataPackage(file: File, expectedSha256: String? = null): Boolean {
+    if (!file.exists() || file.length() == 0L) return false
+    return if (!expectedSha256.isNullOrBlank()) {
+        OfflinePackageManager.verifyPackageIntegrity(file, expectedSha256)
+    } else {
+        true
+    }
+}
+
 @Composable
-internal fun OfflineVectorMissingBanner(modifier: Modifier = Modifier) {
+internal fun OfflineVectorMissingBanner(
+    prefectureName: String?,
+    modifier: Modifier = Modifier,
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F)),
         shape = RoundedCornerShape(12.dp),
@@ -99,12 +93,11 @@ internal fun OfflineVectorMissingBanner(modifier: Modifier = Modifier) {
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Hiroshima_osm.pmtiles が配置されていません。\n端末ストレージ (Documents/CycleMap/tiles/ 等) を確認してください。\n※完全オフライン運用の安全のため、外部通信への自動フォールバックは行いません。",
+                text = "${prefectureName ?: "この地域"}の地図データが未導入です。\n端末ストレージ (Documents/CycleMap/ または tiles/) を確認してください。\n他県のデータや外部通信へは自動フォールバックしません。",
                 color = Color.White.copy(alpha = 0.9f),
                 fontSize = 12.sp,
             )
         }
     }
 }
-
 

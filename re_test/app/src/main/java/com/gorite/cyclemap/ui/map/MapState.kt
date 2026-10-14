@@ -55,8 +55,11 @@ data class MapUiState(
     val activeLayer: MapLayerMode = MapLayerMode.Vector3D,
     val selectedCategory: String? = null,
     val selectedPlace: SelectedPlace? = null,
+    val activePlaceDetail: com.gorite.cyclemap.contract.PlaceDetail? = null,
+    val selectedTravelMode: com.gorite.cyclemap.contract.TravelModeType = com.gorite.cyclemap.contract.TravelModeType.Bicycle,
     val selectedRouteIndex: Int = 0,
     val routes: List<RouteCandidate> = emptyList(),
+    val availableRoutes: List<com.gorite.cyclemap.contract.RouteOption> = emptyList(),
     val isNightMode: Boolean = false,
     val isGpsWeak: Boolean = false,
     val networkLink: Link = Link.Offline,
@@ -87,6 +90,10 @@ data class NavProgressState(
     val remainingSeconds: Double = 0.0,
     val currentInstruction: RouteInstruction? = null,
     val nextInstruction: RouteInstruction? = null,
+    val currentStep: com.gorite.cyclemap.contract.GuidanceStep? = null,
+    val nextStep: com.gorite.cyclemap.contract.GuidanceStep? = null,
+    val laneHints: List<com.gorite.cyclemap.contract.LaneInfo> = emptyList(),
+    val eta: com.gorite.cyclemap.contract.EtaInfo? = null,
     val currentLanes: List<String> = emptyList(),
     val isRerouting: Boolean = false
 )
@@ -94,6 +101,9 @@ data class NavProgressState(
 sealed interface MapUiIntent {
     data class SelectCategory(val category: String?) : MapUiIntent
     data class SelectPlace(val place: SelectedPlace?) : MapUiIntent
+    data class ShowPlaceDetail(val detail: com.gorite.cyclemap.contract.PlaceDetail?) : MapUiIntent
+    data class SetTravelMode(val mode: com.gorite.cyclemap.contract.TravelModeType) : MapUiIntent
+    data class SetAvailableRoutes(val routes: List<com.gorite.cyclemap.contract.RouteOption>) : MapUiIntent
     data class OpenSheet(val sheet: SheetType) : MapUiIntent
     data object CloseSheet : MapUiIntent
     data class SwitchLayer(val mode: MapLayerMode) : MapUiIntent
@@ -122,6 +132,29 @@ class MapViewModel : ViewModel() {
                 it.copy(
                     selectedPlace = intent.place,
                     activeSheet = if (intent.place != null) SheetType.PlaceDetail else it.activeSheet
+                )
+            }
+            is MapUiIntent.ShowPlaceDetail -> _uiState.update {
+                it.copy(
+                    activePlaceDetail = intent.detail,
+                    activeSheet = if (intent.detail != null) SheetType.PlaceDetail else it.activeSheet
+                )
+            }
+            is MapUiIntent.SetTravelMode -> _uiState.update { it.copy(selectedTravelMode = intent.mode) }
+            is MapUiIntent.SetAvailableRoutes -> _uiState.update {
+                it.copy(
+                    availableRoutes = intent.routes,
+                    routes = intent.routes.mapIndexed { idx, opt ->
+                        RouteCandidate(
+                            index = idx,
+                            title = opt.title,
+                            distanceMeters = opt.distanceMeters,
+                            durationSeconds = opt.durationSeconds,
+                            elevationGainMeters = opt.elevationGainMeters,
+                            isPrimary = opt.isPrimary
+                        )
+                    },
+                    selectedRouteIndex = 0
                 )
             }
             is MapUiIntent.OpenSheet -> _uiState.update { it.copy(activeSheet = intent.sheet) }

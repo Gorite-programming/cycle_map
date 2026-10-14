@@ -41,4 +41,25 @@
     <string name="data_status_corrupted">データ不整合</string>
     <string name="data_delete">データを削除</string>
     <string name="data_download_wifi">Wi-Fi時のみ自動更新</string>
+
+    <!-- Travel Modes -->
+    <string name="mode_bicycle">自転車</string>
+    <string name="mode_walk">徒歩</string>
+    <string name="mode_car">車</string>
+
+    <!-- Business Status -->
+    <string name="status_open">営業中</string>
+    <string name="status_closing_soon">まもなく閉店 (%s)</string>
+    <string name="status_closed">営業時間外</string>
+
+    <!-- Navigation HUD & Turn -->
+    <string name="turn_straight">直進</string>
+    <string name="turn_left">左折</string>
+    <string name="turn_right">右折</string>
+    <string name="turn_slight_left">斜め左</string>
+    <string name="turn_slight_right">斜め右</string>
+    <string name="turn_uturn">Uターン</string>
+    <string name="turn_roundabout">ロータリー</string>
+    <string name="lane_guidance">車線案内</string>
+    <string name="next_turn">次の案内</string>
 </resources>

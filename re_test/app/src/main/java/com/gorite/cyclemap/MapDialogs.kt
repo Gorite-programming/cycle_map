@@ -261,6 +261,21 @@ internal fun LicenseDialog(onDismiss: () -> Unit) {
                 )
 
                 Text(
+                    "■ ベクター地図のスタイル・アイコン\n" +
+                        "Protomaps Basemaps (BSD 3-Clause、スタイルデザイン CC0)\n" +
+                        "https://github.com/protomaps/basemaps\n" +
+                        "Tangram Icons (MIT License)\n" +
+                        "https://github.com/tangrams/icons",
+                )
+
+                Text(
+                    "■ 地図ラベル用フォント\n" +
+                        "Noto Sans (SIL Open Font License 1.1)\n" +
+                        "https://github.com/protomaps/basemaps-assets\n" +
+                        "ライセンス本文はアプリパッケージ内 assets/licenses に同梱しています。",
+                )
+
+                Text(
                     "■ ライブラリ\n" +
                         "ベクター地図表示：MapLibre Native Android SDK (BSD 2-Clause License)\n" +
                         "ラスター地図表示：osmdroid (Apache License 2.0)\n" +

@@ -7,11 +7,14 @@
 あなたは `/Users/gorite/Desktop/cycle_map/re_test/` の**是正担当**です。前回の夜間自律実行は `FINAL_REPORT.md` で互換度 90.15% と報告しましたが、監査の結果、**実態は約 55%** でした。原因は「新規クラスを作ってテストしただけで、アプリ本体に接続していない」ことと、スクリーンショットや採点が事実とずれていたことです。あなたの仕事は、**実際に動く状態に接続し、報告を事実に直す**ことです。
 
 ## 0. 最初に読む
-1. `/Users/gorite/Desktop/cycle_map/AGENTS.md`
-2. `re_test/overhaul_plan.md`(§2-A/B/C は決定済み。覆さない)
-3. `re_test/plans.md`、`re_test/cautions.md`、`re_test/parity_checklist.md`
-4. `re_test/FINAL_REPORT.md` と `re_test/NIGHT_LOG.md`(前回の主張。**鵜呑みにしない**)
-5. `re_test/scripts/check_wiring.sh`(接続検査。§3 で使う)
+1. `/Users/gorite/Developer/cycle_map/AGENTS.md`
+2. `test/oparations/re_plans.md`(現在のフェーズ順、採点、受入条件の正本)
+3. `re_test/overhaul_plan.md`(§2-A/B/C は決定済み。覆さない)
+4. `re_test/plans.md`、`re_test/cautions.md`、`re_test/parity_checklist.md`
+5. `re_test/FINAL_REPORT.md` と `re_test/NIGHT_LOG.md`(前回の主張。**鵜呑みにしない**)
+6. `re_test/scripts/check_wiring.sh`(接続検査。§3 で使う)
+
+現在の作業順と完了判定は `test/oparations/re_plans.md` を優先する。このプロンプトに記載されたフェーズ名や「最初のタスク」は過去の作業指示であり、現在の進捗を示すものではない。
 
 ## 1. 監査で判明した事実(あなたが直す対象)
 1. **巨大ファイルが未分割**: `MapScreen.kt` 4,133 行、`CyclingPanels.kt` 2,232 行、`SearchHelper.kt` 1,355 行、`VectorMapView.kt` 約 1,019 行、`Prefectures.kt` 約 711 行。P0-1/P0-2(各ファイル 500 行以内)は未達成。

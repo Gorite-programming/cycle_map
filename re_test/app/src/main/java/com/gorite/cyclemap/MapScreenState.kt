@@ -171,6 +171,7 @@ internal class MapScreenState(
     val routeOverlayState: MutableState<Polyline?>,
     val gpxTrackOverlayState: MutableState<Polyline?>,
     val routeSummaryState: MutableState<RouteSummary?>,
+    val calculatedRouteOptionsState: MutableState<List<com.gorite.cyclemap.contract.RouteOption>>,
     val selectedRoutePreferenceState: MutableState<RoutePreference>,
     val navigationRouteState: MutableState<List<RoutePoint>>,
     val navigationManeuversState: MutableState<List<Maneuver>>,

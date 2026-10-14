@@ -22,16 +22,13 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.osmdroid.util.GeoPoint
-
 /**
  * VectorDrawable を Bitmap に変換するヘルパー関数
  */
 internal fun drawableToBitmap(context: Context, drawableId: Int, sizePx: Int, tintColor: Int? = null): Bitmap {
     val drawable = ContextCompat.getDrawable(context, drawableId)?.mutate()
         ?: return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-    if (tintColor != null) {
-        drawable.setTint(tintColor)
-    }
+    if (tintColor != null) drawable.setTint(tintColor)
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     drawable.setBounds(0, 0, canvas.width, canvas.height)
@@ -40,9 +37,7 @@ internal fun drawableToBitmap(context: Context, drawableId: Int, sizePx: Int, ti
 }
 
 /**
- * Google Maps 完全再現: 自車位置マーカー (白青ドット + 60°放射状前方扇形ビーム)
- * - 中心: 白ドット (直径 7dp) + 濃青丸 (直径 17dp #1A73E8) + 外側白色フチ (直径 22dp) + 外側半透明パルス円
- * - 前方ビーム (Heading Beam): 60° 放射状扇形コーン (半径 ~45dp, グラデーション #4285F4, alpha 0.40 -> 0.0)
+ * Google Maps 自車位置マーカー (白青ドット + 60°放射状前方扇形ビーム)
  */
 internal fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean): Bitmap {
     val density = context.resources.displayMetrics.density
@@ -355,24 +350,21 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style) {
 internal fun applyNightModeColors(style: Style, isNight: Boolean) {
     val bgColor = if (isNight) "#1F1F1F" else "#F5F6F8"
     val waterColor = if (isNight) "#17263C" else "#D7E6EC"
-    val b2dColor = if (isNight) "#28292A" else "#E9EAEF"
     val b2dOutline = if (isNight) "#3C4043" else "#DBDAE0"
     val b3dColor = if (isNight) "#2E3035" else "#F0F1F5"
-    val parkColor = if (isNight) "#1B2A22" else "#C2F0D6"
     val roadMinorColor = if (isNight) "#2C313A" else "#FFFFFF"
     val roadMajorColor = if (isNight) "#3C4452" else "#FFFFFF"
     val roadCasingColor = if (isNight) "#181B20" else "#D6DDE5"
 
     style.getLayer("background")?.setProperties(PropertyFactory.backgroundColor(bgColor))
     style.getLayer("earth")?.setProperties(PropertyFactory.fillColor(bgColor))
-    style.getLayer("water")?.setProperties(PropertyFactory.fillColor(waterColor))
+    vectorMapAreaFillColors(isNight).forEach { (layerId, color) ->
+        style.getLayer(layerId)?.setProperties(PropertyFactory.fillColor(color))
+    }
     style.getLayer("water_stream")?.setProperties(PropertyFactory.lineColor(waterColor))
     style.getLayer("water_river")?.setProperties(PropertyFactory.lineColor(waterColor))
-    style.getLayer("landuse_park")?.setProperties(PropertyFactory.fillColor(parkColor))
-    style.getLayer("landuse_urban_green")?.setProperties(PropertyFactory.fillColor(parkColor))
 
     style.getLayer("buildings-2d")?.setProperties(
-        PropertyFactory.fillColor(b2dColor),
         PropertyFactory.fillOutlineColor(b2dOutline),
     )
     style.getLayer("buildings-3d")?.setProperties(
@@ -405,6 +397,44 @@ internal fun applyNightModeColors(style: Style, isNight: Boolean) {
     }
 }
 
+internal fun vectorMapAreaFillColors(isNight: Boolean): Map<String, String> = if (isNight) {
+    mapOf(
+        "water" to "#17263C",
+        "landuse_park" to "#1B2A22",
+        "landuse_urban_green" to "#1B2A22",
+        "landuse_hospital" to "#252628",
+        "landuse_industrial" to "#252628",
+        "landuse_school" to "#252628",
+        "landuse_beach" to "#262523",
+        "landuse_zoo" to "#1E2828",
+        "landuse_aerodrome" to "#28292C",
+        "landuse_runway" to "#25272B",
+        "landuse_pedestrian" to "#242528",
+        "landuse_pier" to "#242528",
+        "landuse_platform" to "#332E28",
+        "buildings-2d" to "#28292A",
+        "buildings_station" to "#332E28",
+    )
+} else {
+    mapOf(
+        "water" to "#D7E6EC",
+        "landuse_park" to "#C2F0D6",
+        "landuse_urban_green" to "#C2F0D6",
+        "landuse_hospital" to "#FDF9EE",
+        "landuse_industrial" to "#eceae6",
+        "landuse_school" to "#FDF9EE",
+        "landuse_beach" to "#f5f0e6",
+        "landuse_zoo" to "#c6dcdc",
+        "landuse_aerodrome" to "#dadbdf",
+        "landuse_runway" to "#e9e9ed",
+        "landuse_pedestrian" to "#f3f0ec",
+        "landuse_pier" to "#e0e0e0",
+        "landuse_platform" to "#FFE8D6",
+        "buildings-2d" to "#E9EAEF",
+        "buildings_station" to "#FFE8D6",
+    )
+}
+
 internal fun buildVectorStyleJson(context: Context, isNightMode: Boolean, pmtilesPath: String): String {
     val styleAssetPath = if (isNightMode) "styles/protomaps_dark.json" else "styles/protomaps_light.json"
     val baseJson = context.assets.open(styleAssetPath).bufferedReader().use { it.readText() }
@@ -416,13 +446,13 @@ internal fun buildVectorStyleJson(context: Context, isNightMode: Boolean, pmtile
     val glyphsUri = if (localFontsDir.isDirectory && (localFontsDir.listFiles()?.isNotEmpty() == true)) {
         "file://${localFontsDir.absolutePath}/{fontstack}/{range}.pbf"
     } else {
-        "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf"
+        "asset://fonts/{fontstack}/{range}.pbf"
     }
 
     val spritesUri = if (localSpritesDir.isDirectory && (localSpritesDir.listFiles()?.isNotEmpty() == true)) {
         "file://${localSpritesDir.absolutePath}/" + (if (isNightMode) "dark" else "light")
     } else {
-        "https://protomaps.github.io/basemaps-assets/sprites/v4/" + (if (isNightMode) "dark" else "light")
+        "asset://sprites/" + (if (isNightMode) "dark" else "light")
     }
 
     return baseJson
@@ -430,7 +460,6 @@ internal fun buildVectorStyleJson(context: Context, isNightMode: Boolean, pmtile
         .replace("__LOCAL_GLYPHS__", glyphsUri)
         .replace("__LOCAL_SPRITES__", spritesUri)
 }
-
 internal fun createPoiFeatures(spots: List<com.gorite.cyclemap.ui.cycling.NearbySpot>, zoom: Double, isNightMode: Boolean): List<Feature> {
     return spots.mapNotNull { spot ->
         val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
@@ -468,5 +497,3 @@ internal fun updateBuildingExtrusion(style: Style, shouldExtrude: Boolean, isNig
         )
     }
 }
-
-

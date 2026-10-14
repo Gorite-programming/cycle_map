@@ -130,27 +130,39 @@ internal const val PRE_START_ASSUMED_SPEED_MPS = 15_000.0 / 3_600.0
 
 internal class RouteCalculationJob {
     private val cancelled = AtomicBoolean(false)
-    lateinit var thread: Thread
+    var job: kotlinx.coroutines.Job? = null
+    var thread: Thread? = null
 
     fun cancel() {
         cancelled.set(true)
-        if (::thread.isInitialized) thread.interrupt()
+        job?.cancel()
+        thread?.interrupt()
     }
 
-    /** キャンセルしてスレッドが完全停止するまで待機する（最大 2 秒）。
+    /** キャンセルしてスレッド/ジョブが完全停止するまで待機する（最大 2 秒）。
      *  グラフの close() を呼ぶ前に必ず呼ぶこと。 */
     fun cancelAndJoin() {
         cancel()
-        if (::thread.isInitialized) {
+        thread?.let {
             try {
-                thread.join(2_000L)
+                it.join(2_000L)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             }
         }
+        job?.let {
+            try {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(2_000L) {
+                        it.join()
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
     }
 
-    fun isCancelled(): Boolean = cancelled.get() || Thread.currentThread().isInterrupted
+    fun isCancelled(): Boolean = cancelled.get() || (job?.isCancelled == true) || Thread.currentThread().isInterrupted
 }
 
 internal data class RouteRequest(

@@ -33,8 +33,11 @@ class AdaptiveRerouteManager(
     private var activeRerouteJob: Job? = null
     val currentRerouteJob: Job? get() = activeRerouteJob
 
+    private var lastRerouteStartNodeId: Long? = null
+
     fun setInitialRoute(nodeIds: List<Long>) {
         detector.reset()
+        lastRerouteStartNodeId = null
         _state.value = RerouteState(currentRouteNodeIds = nodeIds)
     }
 
@@ -55,16 +58,24 @@ class AdaptiveRerouteManager(
         // If threshold needs update, detector is queried with dynamic scaling
         val isOff = detector.update(distanceToRouteMeters * (rerouteDistanceThreshold / dynamicThreshold))
 
-        if (isOff && !wasOffRoute) {
+        if (isOff) {
             _state.value = _state.value.copy(isOffRoute = true)
-            triggerReroute(currentNodeId, goalNodeId)
-        } else if (!isOff && wasOffRoute) {
+            if (!wasOffRoute || currentNodeId != lastRerouteStartNodeId) {
+                lastRerouteStartNodeId = currentNodeId
+                triggerReroute(currentNodeId, goalNodeId)
+            }
+        } else if (wasOffRoute) {
+            lastRerouteStartNodeId = null
             _state.value = _state.value.copy(isOffRoute = false)
         }
     }
 
+    @Volatile
+    private var latestLocationNodeId: Long? = null
+
     private fun triggerReroute(startNodeId: Long, goalNodeId: Long) {
-        if (activeRerouteJob?.isActive == true) return
+        // 直前の実行中ジョブはキャンセルし、最新の位置基準で再探索 (plans.md §6 P1-3)
+        activeRerouteJob?.cancel()
 
         _state.value = _state.value.copy(
             isRerouting = true,
@@ -73,7 +84,7 @@ class AdaptiveRerouteManager(
 
         activeRerouteJob = scope.launch {
             try {
-                // バックグラウンドで再探索。結果到着まで旧ルートを表示し続ける (plans.md §6 P1-3)
+                // バックグラウンドで再探索。結果到着まで旧ルートを表示し続ける (旧ルートは消さない)
                 val newRoute = routerAction(startNodeId, goalNodeId)
                 if (newRoute != null && newRoute.isNotEmpty()) {
                     detector.reset()
@@ -85,8 +96,10 @@ class AdaptiveRerouteManager(
                 } else {
                     _state.value = _state.value.copy(isRerouting = false)
                 }
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(isRerouting = false)
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    _state.value = _state.value.copy(isRerouting = false)
+                }
             }
         }
     }

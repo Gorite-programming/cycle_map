@@ -34,6 +34,44 @@ val GoogleGreen = Color(0xFF0F9D58)
 
 @Composable
 fun GoogleNavHeaderView(
+    currentStep: com.gorite.cyclemap.contract.GuidanceStep?,
+    nextStep: com.gorite.cyclemap.contract.GuidanceStep?,
+    laneHints: List<com.gorite.cyclemap.contract.LaneInfo>,
+    isRerouting: Boolean,
+    modifier: Modifier = Modifier
+) {
+    GoogleNavHeaderV2(
+        currentStep = currentStep,
+        nextStep = nextStep,
+        laneHints = laneHints,
+        isRerouting = isRerouting,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun GoogleNavFooterView(
+    eta: com.gorite.cyclemap.contract.EtaInfo?,
+    remainingDistanceMeters: Double,
+    remainingSeconds: Double,
+    isMuted: Boolean,
+    onToggleMute: () -> Unit,
+    onStopNavigation: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GoogleNavFooterV2(
+        eta = eta,
+        remainingDistanceMeters = remainingDistanceMeters,
+        remainingSeconds = remainingSeconds,
+        isMuted = isMuted,
+        onToggleMute = onToggleMute,
+        onStopNavigation = onStopNavigation,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun GoogleNavHeaderView(
     distanceToTurnMeters: Double,
     instructionText: String,
     streetName: String?,

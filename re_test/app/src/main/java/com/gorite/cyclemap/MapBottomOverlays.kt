@@ -93,25 +93,22 @@ internal fun BoxScope.MapBottomOverlays(
     context: Context,
 ) {
     if (isNavigationActive && routeSummary != null) {
-        // アクティブナビ案内フッター (GoogleNavFooter)
-        GoogleNavFooter(
-            navStats = navStats,
-            totalDistanceMeters = routeSummary.distanceMeters,
-            speedKmh = speedKmh,
-            isRecording = isRecording,
-            gpxPointCount = gpxPointCount,
-            onToggleRecording = {
-                if (!hasLocationPermission) {
-                    onWarningMessage("GPX記録には位置情報の許可が必要です")
-                } else if (isRecording) {
-                    LocationTrackingService.stopRecording(context)
-                } else {
-                    LocationTrackingService.startRecording(context)
-                }
+        // アクティブナビ案内フッター (GoogleNavFooterView)
+        com.gorite.cyclemap.ui.map.GoogleNavFooterView(
+            eta = navStats?.let {
+                val nowMs = System.currentTimeMillis()
+                com.gorite.cyclemap.contract.EtaInfo(
+                    remainingDistanceMeters = it.remainingMeters,
+                    remainingSeconds = it.durationRemainingSeconds,
+                    arrivalEpochMillis = nowMs + (it.durationRemainingSeconds * 1000).toLong(),
+                    currentSpeedKmh = speedKmh
+                )
             },
+            remainingDistanceMeters = routeSummary.distanceMeters,
+            remainingSeconds = routeSummary.distanceMeters / 4.2,
+            isMuted = false,
+            onToggleMute = {},
             onStopNavigation = onStopNavigation,
-            onShowLicense = onShowLicense,
-            isLandscape = isLandscape,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = systemInsets.calculateBottomPadding())
@@ -301,7 +298,7 @@ internal fun BoxScope.MapBottomOverlays(
             ) {
                 // Left: Large Speedometer (ルート未設定時のみ)
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(20.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                 ) {
@@ -313,14 +310,14 @@ internal fun BoxScope.MapBottomOverlays(
                             text = "%.1f".format(speedKmh.coerceAtLeast(0.0)),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF202124),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "km/h",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF5F6368),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 3.dp),
                         )
                     }
@@ -329,7 +326,7 @@ internal fun BoxScope.MapBottomOverlays(
                 // Right: GPX Controls
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isRecording) Color(0xFFD93025) else Color.White,
+                        containerColor = if (isRecording) Color(0xFFD93025) else MaterialTheme.colorScheme.surface,
                     ),
                     shape = RoundedCornerShape(20.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
@@ -359,7 +356,7 @@ internal fun BoxScope.MapBottomOverlays(
                             text = if (isRecording) "記録中 (${gpxPointCount}pt)" else "GPX記録",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
-                            color = if (isRecording) Color.White else Color(0xFF202124),
+                            color = if (isRecording) Color.White else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }

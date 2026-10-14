@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -18,6 +19,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.gorite.cyclemap.data.TileSourceSelector
 import com.gorite.cyclemap.routing.RoutePoint
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
@@ -157,36 +159,41 @@ internal fun MapViewsContainer(
 
         // VectorMapView (MapLibre Native Android + PMTiles 完全オフライン Liberty)
         if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-            VectorMapView(
-                modifier = Modifier.fillMaxSize(),
-                routePoints = navigationRoute.map { GeoPoint(it.latitude, it.longitude) },
-                currentLocation = currentLocation?.let { GeoPoint(it.latitude, it.longitude) },
-                bearing = if (currentLocation != null && currentLocation.hasBearing() && currentLocation.speed >= 1.0f) {
-                    currentLocation.bearing
-                } else if (hasHeadingSensorFix && headingDegrees.isFinite()) {
-                    headingDegrees
-                } else null,
-                speedMps = currentLocation?.speed,
-                isNightMode = isDarkTheme,
-                isPowerSaveActive = isLowPowerMode,
-                selectedPoiSpot = selectedPoiSpot,
-                followLocation = followLocation,
-                isNavigationActive = isNavigationActive,
-                poiVisible = poiVisible,
-                poiSelected = poiSelected,
-                cameraPadding = androidx.compose.foundation.layout.PaddingValues(
-                    top = if (isNavigationActive) {
-                        if (isLandscape) 50.dp else (systemInsets.calculateTopPadding() + 140.dp)
-                    } else 0.dp,
-                    bottom = if (isNavigationActive) {
-                        if (isLandscape) 64.dp else (systemInsets.calculateBottomPadding() + 130.dp)
-                    } else 0.dp,
-                ),
-                onTiltChanged = onTiltChanged,
-                onPoiClick = onPoiClick,
-                onUserPan = onUserPan,
-                onMapReady = onVectorMapReady,
-            )
+            val vectorTileSelection = currentLocation?.let {
+                TileSourceSelector.select(it.latitude, it.longitude)
+            } ?: "initial"
+            key(vectorTileSelection) {
+                VectorMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    routePoints = navigationRoute.map { GeoPoint(it.latitude, it.longitude) },
+                    currentLocation = currentLocation?.let { GeoPoint(it.latitude, it.longitude) },
+                    bearing = if (currentLocation != null && currentLocation.hasBearing() && currentLocation.speed >= 1.0f) {
+                        currentLocation.bearing
+                    } else if (hasHeadingSensorFix && headingDegrees.isFinite()) {
+                        headingDegrees
+                    } else null,
+                    speedMps = currentLocation?.speed,
+                    isNightMode = isDarkTheme,
+                    isPowerSaveActive = isLowPowerMode,
+                    selectedPoiSpot = selectedPoiSpot,
+                    followLocation = followLocation,
+                    isNavigationActive = isNavigationActive,
+                    poiVisible = poiVisible,
+                    poiSelected = poiSelected,
+                    cameraPadding = androidx.compose.foundation.layout.PaddingValues(
+                        top = if (isNavigationActive) {
+                            if (isLandscape) 50.dp else (systemInsets.calculateTopPadding() + 140.dp)
+                        } else 0.dp,
+                        bottom = if (isNavigationActive) {
+                            if (isLandscape) 64.dp else (systemInsets.calculateBottomPadding() + 130.dp)
+                        } else 0.dp,
+                    ),
+                    onTiltChanged = onTiltChanged,
+                    onPoiClick = onPoiClick,
+                    onUserPan = onUserPan,
+                    onMapReady = onVectorMapReady,
+                )
+            }
         }
 
         // Area-select touch capture + rectangle drawing overlay (Compose layer, above map)

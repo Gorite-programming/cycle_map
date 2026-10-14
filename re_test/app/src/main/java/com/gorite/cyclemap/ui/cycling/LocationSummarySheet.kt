@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,7 +49,7 @@ fun LocationSummarySheet(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 8.dp,
         modifier = modifier.fillMaxWidth(),
     ) {
@@ -64,7 +65,7 @@ fun LocationSummarySheet(
                     .width(32.dp)
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFDADCE0)),
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -80,7 +81,7 @@ fun LocationSummarySheet(
                         text = locationName.ifEmpty { "井口明神" },
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF202124),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -88,7 +89,7 @@ fun LocationSummarySheet(
                         text = "タップして周辺スポット・詳細情報を表示",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Normal,
-                        color = Color(0xFF70757A),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -181,7 +182,7 @@ fun GoogleNavTabBar(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 8.dp,
         modifier = modifier
             .fillMaxWidth()
@@ -189,7 +190,7 @@ fun GoogleNavTabBar(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             HorizontalDivider(
-                color = Color(0xFFE8EAED),
+                color = MaterialTheme.colorScheme.outlineVariant,
                 thickness = 1.dp,
             )
             Row(
@@ -246,7 +247,7 @@ fun GoogleNavTabItem(
         if (isSelected) {
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = Color(0xFFC2E7FF),
+                color = MaterialTheme.colorScheme.secondaryContainer,
                 modifier = Modifier.size(width = 56.dp, height = 28.dp),
             ) {
                 Box(
@@ -256,7 +257,7 @@ fun GoogleNavTabItem(
                     Icon(
                         painter = painterResource(iconRes),
                         contentDescription = label,
-                        tint = Color(0xFF001D35),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -265,7 +266,7 @@ fun GoogleNavTabItem(
                 text = label,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF001D35),
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         } else {
             Box(
@@ -275,7 +276,7 @@ fun GoogleNavTabItem(
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = label,
-                    tint = Color(0xFF5F6368),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -283,7 +284,7 @@ fun GoogleNavTabItem(
                 text = label,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF5F6368),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

@@ -78,6 +78,7 @@ internal fun MapModalsHost(
     onQuickSpotTypeSelectFromSpotPanel: (QuickSpotType) -> Unit,
     onRouteToSpot: (GeoPoint) -> Unit,
     showFavoritesOnlyInSheet: Boolean,
+    calculatedRoutes: List<com.gorite.cyclemap.contract.RouteOption> = emptyList(),
     // Settings dialogs props
     showRecordPanel: Boolean,
     isRecording: Boolean,
@@ -205,6 +206,8 @@ internal fun MapModalsHost(
         quickSpotResults = quickSpotResults,
         onSelectPoiSpot = onSelectPoiSpot,
         mapView = mapView,
+        calculatedRoutes = calculatedRoutes,
+        selectedPoiSpot = selectedPoiSpot,
     )
 
     MapSettingsDialogs(

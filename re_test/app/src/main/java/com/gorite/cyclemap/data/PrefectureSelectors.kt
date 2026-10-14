@@ -220,13 +220,9 @@ object TileSourceSelector {
         return candidates.firstOrNull { it.isFile && it.length() > 0 }
     }
 
-    fun findFirstAvailableTile(dataDir: File): File? {
-        val pmtiles = dataDir.listFiles { f -> f.isFile && f.name.endsWith(".pmtiles") && f.length() > 0 }
-            ?.sortedBy { it.name }
-        if (!pmtiles.isNullOrEmpty()) return pmtiles.first()
-
-        val subFiles = File(dataDir, "tiles").listFiles { f -> f.isFile && f.name.endsWith(".pmtiles") && f.length() > 0 }
-            ?.sortedBy { it.name }
-        return subFiles?.firstOrNull()
+    fun resolveTileForLocation(dataDir: File, latitude: Double, longitude: Double): File? {
+        val selection = select(latitude, longitude)
+        if (selection !is TileSourceSelection.Available) return null
+        return resolveTileFile(dataDir, selection.fileName)
     }
 }

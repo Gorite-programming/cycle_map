@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -18,10 +20,7 @@ import androidx.compose.ui.zIndex
 import com.gorite.cyclemap.routing.OffRouteDetector
 import com.gorite.cyclemap.routing.RouteInstruction
 import com.gorite.cyclemap.routing.RouteProgress
-import com.gorite.cyclemap.ui.cycling.CategoryChipRow
-import com.gorite.cyclemap.ui.cycling.GoogleNavHeader
 import com.gorite.cyclemap.ui.cycling.QuickSpotType
-import com.gorite.cyclemap.ui.cycling.TopSearchBar
 import com.gorite.cyclemap.ui.theme.Motion
 
 @Composable
@@ -43,6 +42,7 @@ internal fun BoxScope.MapTopOverlays(
     isRerouting: Boolean,
     offRouteDetector: OffRouteDetector,
     autoRerouteEnabled: Boolean,
+    networkLink: com.gorite.cyclemap.net.Link = com.gorite.cyclemap.net.Link.Offline,
 ) {
     // Normal Top Bar
     AnimatedVisibility(
@@ -56,32 +56,24 @@ internal fun BoxScope.MapTopOverlays(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Top Search Bar: 白カプセル (≡ + ここで検索 + 🎙️ + 拓真アバター)
-            TopSearchBar(
-                onMenuClick = onMenuClick,
+            // Google Maps 完全準拠 MapTopBar (≡ + 検索 + 雲/オフライン + 🎙️ + アバター + 通知バナー + カテゴリチップ)
+            com.gorite.cyclemap.ui.map.MapTopBar(
+                queryText = "",
                 onSearchClick = onSearchClick,
+                onMenuClick = onMenuClick,
+                networkLink = networkLink,
+                selectedCategory = null,
+                onCategoryClick = onSelectCategory,
                 onMicClick = onSearchClick,
                 onAvatarClick = onAvatarClick,
                 userAvatarText = "拓真",
                 placeholderText = "ここで検索",
-                modifier = Modifier.padding(horizontal = 12.dp),
+                bannerContent = {
+                    notificationBannerGroup(Modifier.fillMaxWidth())
+                },
+                modifier = Modifier.fillMaxWidth()
             )
-
-            // DEF-01: 通常時は検索バーの直下に通知バナーを配置
-            notificationBannerGroup(Modifier.padding(horizontal = 12.dp))
-
-            // Google Maps 完全再現: 水平スクロール カテゴリチップ列
-            if (!isLandscape) {
-                CategoryChipRow(
-                    onConsultClick = onSearchClick,
-                    onHomeClick = onHomeClick,
-                    onSelectQuickSpot = onSelectQuickSpot,
-                    onSelectCategory = onSelectCategory,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
     }
 
@@ -114,21 +106,91 @@ internal fun BoxScope.MapTopOverlays(
 
         val traveled = progress?.distanceFromStartMeters ?: 0.0
         val futureInstructions = navigationInstructions.filter { it.distanceFromStartMeters > traveled }
+        val nextInstruction = futureInstructions.firstOrNull()
         val nextAfterThis = futureInstructions.getOrNull(1)
         val distNextAfterThis = nextAfterThis?.let { (it.distanceFromStartMeters - traveled).coerceAtLeast(0.0) }
 
-        GoogleNavHeader(
-            currentGuide = guide,
-            distanceMeters = distanceMeters,
-            nextAfterThis = nextAfterThis,
-            distanceToNextAfterThis = distNextAfterThis,
-            isRerouting = isRerouting,
-            isOffRoute = offRouteDetector.isOffRoute && !isRerouting,
-            autoRerouteEnabled = autoRerouteEnabled,
-            effectiveAnimationEnabled = effectiveAnimationEnabled,
-            isLandscape = isLandscape,
-            statusBarTopPadding = effectiveTopPadding,
-            notificationBannerGroup = { notificationBannerGroup(Modifier) },
-        )
+        val laneProvider = androidx.compose.runtime.remember {
+            com.gorite.cyclemap.real.RealLaneGuidanceProvider()
+        }
+        var activeLaneHints by androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf<List<com.gorite.cyclemap.contract.LaneInfo>>(emptyList())
+        }
+        androidx.compose.runtime.LaunchedEffect(nextInstruction, progress) {
+            val turnType = when (nextInstruction?.type) {
+                com.gorite.cyclemap.routing.InstructionType.LEFT_TURN -> com.gorite.cyclemap.contract.TurnType.Left
+                com.gorite.cyclemap.routing.InstructionType.RIGHT_TURN -> com.gorite.cyclemap.contract.TurnType.Right
+                com.gorite.cyclemap.routing.InstructionType.SHARP_LEFT -> com.gorite.cyclemap.contract.TurnType.SharpLeft
+                com.gorite.cyclemap.routing.InstructionType.SHARP_RIGHT -> com.gorite.cyclemap.contract.TurnType.SharpRight
+                com.gorite.cyclemap.routing.InstructionType.FORK_LEFT,
+                com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_LEFT,
+                com.gorite.cyclemap.routing.InstructionType.FORK_UP_LEFT,
+                com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_LEFT -> com.gorite.cyclemap.contract.TurnType.SlightLeft
+                com.gorite.cyclemap.routing.InstructionType.FORK_RIGHT,
+                com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_RIGHT,
+                com.gorite.cyclemap.routing.InstructionType.FORK_UP_RIGHT,
+                com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_RIGHT -> com.gorite.cyclemap.contract.TurnType.SlightRight
+                com.gorite.cyclemap.routing.InstructionType.ROUNDABOUT -> com.gorite.cyclemap.contract.TurnType.Roundabout
+                com.gorite.cyclemap.routing.InstructionType.U_TURN_LEFT,
+                com.gorite.cyclemap.routing.InstructionType.U_TURN_RIGHT -> com.gorite.cyclemap.contract.TurnType.Uturn
+                else -> com.gorite.cyclemap.contract.TurnType.Straight
+            }
+            val hints = laneProvider.getLaneHints(nextInstruction?.nodeId ?: 0L, turnType)
+            val hintsFromLaneHint: List<com.gorite.cyclemap.routing.LaneHint> = hints.map {
+                com.gorite.cyclemap.routing.LaneHint(
+                    direction = it.direction.name.lowercase(),
+                    isActiveForRoute = it.isRecommended
+                )
+            }
+            activeLaneHints = hintsFromLaneHint.map {
+                com.gorite.cyclemap.contract.LaneInfo(
+                    direction = when (it.direction) {
+                        "left" -> com.gorite.cyclemap.contract.TurnType.Left
+                        "slightleft" -> com.gorite.cyclemap.contract.TurnType.SlightLeft
+                        "sharpleft" -> com.gorite.cyclemap.contract.TurnType.SharpLeft
+                        "right" -> com.gorite.cyclemap.contract.TurnType.Right
+                        "slightright" -> com.gorite.cyclemap.contract.TurnType.SlightRight
+                        "sharpright" -> com.gorite.cyclemap.contract.TurnType.SharpRight
+                        "roundabout" -> com.gorite.cyclemap.contract.TurnType.Roundabout
+                        "uturn" -> com.gorite.cyclemap.contract.TurnType.Uturn
+                        else -> com.gorite.cyclemap.contract.TurnType.Straight
+                    },
+                    isRecommended = it.isActiveForRoute
+                )
+            }
+        }
+
+        if (isLandscape) {
+            com.gorite.cyclemap.ui.map.LandscapeNavHudBar(
+                currentStep = com.gorite.cyclemap.contract.GuidanceStep(
+                    turnType = com.gorite.cyclemap.contract.TurnType.Straight,
+                    instructionText = guide?.text ?: "直進",
+                    streetName = null,
+                    distanceToTurnMeters = distanceMeters ?: 0.0
+                ),
+                eta = null,
+                remainingSeconds = (remaining ?: 0.0) / 4.2,
+                onStopNavigation = {}
+            )
+        } else {
+            com.gorite.cyclemap.ui.map.GoogleNavHeaderView(
+                currentStep = com.gorite.cyclemap.contract.GuidanceStep(
+                    turnType = com.gorite.cyclemap.contract.TurnType.Straight,
+                    instructionText = guide?.text ?: "直進",
+                    streetName = null,
+                    distanceToTurnMeters = distanceMeters ?: 0.0
+                ),
+                nextStep = nextAfterThis?.let {
+                    com.gorite.cyclemap.contract.GuidanceStep(
+                        turnType = com.gorite.cyclemap.contract.TurnType.Left,
+                        instructionText = it.reason,
+                        streetName = null,
+                        distanceToTurnMeters = distNextAfterThis ?: 0.0
+                    )
+                },
+                laneHints = activeLaneHints,
+                isRerouting = isRerouting
+            )
+        }
     }
 }

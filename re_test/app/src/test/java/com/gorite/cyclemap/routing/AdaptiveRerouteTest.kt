@@ -48,4 +48,42 @@ class AdaptiveRerouteTest {
         assertFalse(manager.state.value.isOffRoute)
         assertEquals(listOf(10L, 20L, 30L), manager.state.value.currentRouteNodeIds)
     }
+
+    @Test
+    fun cancelsPreviousRerouteJobWhenNewTriggerArrives() = runBlocking {
+        var firstJobStarted = false
+        var secondJobCompleted = false
+
+        val manager = AdaptiveRerouteManager(
+            scope = CoroutineScope(Dispatchers.Default),
+            rerouteDistanceThreshold = 30.0,
+            consecutiveSamples = 1, // 1回で即発火
+            routerAction = { startId, _ ->
+                if (startId == 10L) {
+                    firstJobStarted = true
+                    kotlinx.coroutines.delay(500) // 遅い旧ジョブ
+                    listOf(10L, 20L)
+                } else {
+                    secondJobCompleted = true
+                    listOf(startId, 99L)
+                }
+            }
+        )
+
+        manager.setInitialRoute(listOf(1L, 2L))
+
+        // 1回目のトリガー (startId = 10L)
+        manager.onLocationUpdate(distanceToRouteMeters = 35.0, currentSpeedMps = 4.0f, currentNodeId = 10L, goalNodeId = 30L)
+        val firstJob = manager.currentRerouteJob
+
+        // 直後に2回目のトリガー (startId = 50L) -> 1回目のジョブはキャンセルされるべき
+        manager.onLocationUpdate(distanceToRouteMeters = 40.0, currentSpeedMps = 4.0f, currentNodeId = 50L, goalNodeId = 30L)
+        val secondJob = manager.currentRerouteJob
+
+        secondJob?.join()
+
+        assertTrue(secondJobCompleted)
+        assertTrue(firstJob?.isCancelled == true)
+        assertEquals(listOf(50L, 99L), manager.state.value.currentRouteNodeIds)
+    }
 }

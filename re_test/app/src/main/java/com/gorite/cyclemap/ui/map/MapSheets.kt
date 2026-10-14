@@ -207,6 +207,29 @@ fun RouteCandidateCard(
     }
 }
 
+@Composable
+fun RouteSelectionSheet(
+    routes: List<com.gorite.cyclemap.contract.RouteOption>,
+    selectedRouteIndex: Int,
+    selectedMode: com.gorite.cyclemap.contract.TravelModeType,
+    onSelectMode: (com.gorite.cyclemap.contract.TravelModeType) -> Unit,
+    onSelectRoute: (Int) -> Unit,
+    onStartNavigation: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    RouteSelectionSheetV2(
+        routes = routes,
+        selectedRouteIndex = selectedRouteIndex,
+        selectedMode = selectedMode,
+        onSelectMode = onSelectMode,
+        onSelectRoute = onSelectRoute,
+        onStartNavigation = onStartNavigation,
+        onClose = onClose,
+        modifier = modifier
+    )
+}
+
 /**
  * 複数経路候補リスト表示シート
  */

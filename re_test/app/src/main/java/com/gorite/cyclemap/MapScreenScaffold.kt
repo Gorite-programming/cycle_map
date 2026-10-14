@@ -236,6 +236,7 @@ internal fun MapScreenScaffold(
         onQuickSpotResultsChange = { state.quickSpotResultsState.value = it },
         selectedPoiSpot = state.selectedPoiSpotState.value,
         onSelectPoiSpot = { state.selectedPoiSpotState.value = it },
+        calculatedRoutes = state.calculatedRouteOptionsState.value,
         showRoutePanel = state.showRoutePanelState.value,
         onCloseRoutePanel = {
             state.showRoutePanelState.value = false

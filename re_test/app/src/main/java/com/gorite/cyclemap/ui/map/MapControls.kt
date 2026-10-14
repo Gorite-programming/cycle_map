@@ -27,7 +27,10 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gorite.cyclemap.R
 import kotlinx.coroutines.delay
 
@@ -39,7 +42,11 @@ fun MapControls(
     onMyLocationClick: () -> Unit,
     onZoomIn: () -> Unit,
     onZoomOut: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onToggleTilt: (() -> Unit)? = null,
+    is3D: Boolean = false,
+    onAreaSelectToggle: (() -> Unit)? = null,
+    isAreaSelectMode: Boolean = false,
 ) {
     Column(
         modifier = modifier,
@@ -62,7 +69,7 @@ fun MapControls(
                     painter = painterResource(R.drawable.ic_lucide_compass),
                     contentDescription = null,
                     modifier = Modifier
-                        .size(22.dp)
+                        .size(24.dp)
                         .rotate(-safeBearing),
                     tint = Color(0xFFD32F2F)
                 )
@@ -77,9 +84,39 @@ fun MapControls(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_layers),
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
                 tint = MaterialTheme.colorScheme.onSurface
             )
+        }
+
+        // Google Maps 風 3D / 2D 切替ボタン
+        if (onToggleTilt != null) {
+            FloatingCircleButton(
+                onClick = onToggleTilt,
+                contentDescription = if (is3D) "2D表示に切替" else "3D表示に切替"
+            ) {
+                Text(
+                    text = if (is3D) "2D" else "3D",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (is3D) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // エリアダウンロード枠線ボタン
+        if (onAreaSelectToggle != null) {
+            FloatingCircleButton(
+                onClick = onAreaSelectToggle,
+                contentDescription = "エリア選択ダウンロード"
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_square_dashed),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (isAreaSelectMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
 
         // 現在地ボタン
@@ -90,7 +127,7 @@ fun MapControls(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_navigation),
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
@@ -131,12 +168,12 @@ fun FloatingCircleButton(
         tonalElevation = 3.dp,
         shadowElevation = 4.dp,
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick)
     ) {
         Box(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(48.dp),
             contentAlignment = Alignment.Center
         ) {
             content()

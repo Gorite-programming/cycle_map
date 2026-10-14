@@ -41,4 +41,25 @@
     <string name="data_status_corrupted">Data Corrupted</string>
     <string name="data_delete">Delete Package</string>
     <string name="data_download_wifi">Auto-update on Wi-Fi only</string>
+
+    <!-- Travel Modes -->
+    <string name="mode_bicycle">Bicycle</string>
+    <string name="mode_walk">Walk</string>
+    <string name="mode_car">Car</string>
+
+    <!-- Business Status -->
+    <string name="status_open">Open</string>
+    <string name="status_closing_soon">Closing soon (%s)</string>
+    <string name="status_closed">Closed</string>
+
+    <!-- Navigation HUD & Turn -->
+    <string name="turn_straight">Go Straight</string>
+    <string name="turn_left">Turn Left</string>
+    <string name="turn_right">Turn Right</string>
+    <string name="turn_slight_left">Slight Left</string>
+    <string name="turn_slight_right">Slight Right</string>
+    <string name="turn_uturn">U-Turn</string>
+    <string name="turn_roundabout">Roundabout</string>
+    <string name="lane_guidance">Lane Guidance</string>
+    <string name="next_turn">Next</string>
 </resources>

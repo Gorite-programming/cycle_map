@@ -102,3 +102,10 @@ fun CycleMapTheme(
         content = content,
     )
 }
+
+/**
+ * 緯度経度から日没後（夜間）かどうかを判定するヘルパー。
+ */
+fun isSolarNight(latitude: Double, longitude: Double): Boolean {
+    return SolarCalculator.isNight(latitude, longitude)
+}

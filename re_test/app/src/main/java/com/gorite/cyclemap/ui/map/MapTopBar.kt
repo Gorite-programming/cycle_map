@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -60,20 +61,25 @@ fun MapTopBar(
     networkLink: Link,
     selectedCategory: String?,
     onCategoryClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
     isGpsWeak: Boolean = false,
-    modifier: Modifier = Modifier
+    onMicClick: () -> Unit = onSearchClick,
+    onAvatarClick: () -> Unit = {},
+    userAvatarText: String = "拓真",
+    placeholderText: String = "ここで検索",
+    bannerContent: (@Composable () -> Unit)? = null
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
-        // 検索バー
+        // Google Maps 完全再現: カプセル型検索バー (≡ + ここで検索 + 雲/オフライン + 🎙️ + アバター)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(24.dp))
+                .height(52.dp)
+                .clip(RoundedCornerShape(26.dp))
                 .clickable { onSearchClick() },
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 3.dp,
@@ -81,13 +87,14 @@ fun MapTopBar(
         ) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 左: ハンバーガーメニュー
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .clickable { onMenuClick() },
                     contentAlignment = Alignment.Center
@@ -96,21 +103,59 @@ fun MapTopBar(
                         painter = painterResource(R.drawable.ic_lucide_menu),
                         contentDescription = "メニュー",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
+                // 中央: 検索プレースホルダー
                 Text(
-                    text = queryText.ifEmpty { "目的地を検索 (駅・コンビニ・観光)" },
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = queryText.ifEmpty { placeholderText },
+                    style = MaterialTheme.typography.bodyLarge,
                     color = if (queryText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
 
-                // ネットワーク状態表示 (plans.md §2.3: 常駐バナーではなく小アイコン)
-                NetworkStatusIndicator(networkLink)
+                // 右群: 通信状態 + 音声マイク + ユーザーアバター
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    NetworkStatusIndicator(networkLink)
+
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable { onMicClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_google_mic),
+                            contentDescription = "音声検索",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Google アバター (紫丸型)
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF7B1FA2))
+                            .clickable { onAvatarClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = userAvatarText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
 
@@ -134,6 +179,12 @@ fun MapTopBar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                 )
             }
+        }
+
+        // 通知バナー群 (DEF-01: 検索バー直下に挿入)
+        if (bannerContent != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            bannerContent()
         }
 
         Spacer(modifier = Modifier.height(8.dp))
