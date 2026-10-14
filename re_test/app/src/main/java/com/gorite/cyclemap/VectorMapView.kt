@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gorite.cyclemap.data.TileSourceSelection
 import com.gorite.cyclemap.data.TileSourceSelector
 import com.gorite.cyclemap.power.CameraMotionPolicy
+import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +69,7 @@ internal fun VectorMapView(
     selectedPoiSpot: NearbySpot? = null,
     followLocation: Boolean = true,
     isNavigationActive: Boolean = false,
+    gpsStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY,
     poiVisible: Boolean = true,
     poiSelected: Set<PoiCategory> = PoiCategory.defaults(),
     cameraPadding: PaddingValues = PaddingValues(0.dp),
@@ -97,8 +99,8 @@ internal fun VectorMapView(
     var offlineMissingPrefecture by remember { mutableStateOf<String?>(null) }
     var fetchPoisJob by remember { mutableStateOf<Job?>(null) }
     var triggerPoisRef by remember { mutableStateOf<(() -> Unit)?>(null) }
-
-    // カメラ更新およびPOIフェッチのデバウンス制御用状態
+    var activePmtilesPath by remember { mutableStateOf<String?>(null) }
+    var lastLoadedNightMode by remember { mutableStateOf<Boolean?>(null) }
     var lastFollowLocation by remember { mutableStateOf(followLocation) }
     var lastCameraLat by remember { mutableDoubleStateOf(Double.NaN) }
     var lastCameraLon by remember { mutableDoubleStateOf(Double.NaN) }
@@ -148,6 +150,7 @@ internal fun VectorMapView(
                         map.prefetchZoomDelta = 2
 
                         // 2本指上下移動によるチルト（表示角度）変更ジェスチャーを有効化
+                        map.uiSettings.isCompassEnabled = false
                         map.uiSettings.isTiltGesturesEnabled = true
                         map.uiSettings.isRotateGesturesEnabled = true
                         map.uiSettings.isScrollGesturesEnabled = true
@@ -253,6 +256,7 @@ internal fun VectorMapView(
                             }
                         }
                         triggerPoisRef = { triggerFetchPois(map) }
+                        activePmtilesPath = pmtilesPath
 
                         // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
                         coroutineScope.launch {
@@ -260,13 +264,14 @@ internal fun VectorMapView(
                                 buildVectorStyleJson(context, isNightMode, pmtilesPath)
                             }
 
-
                             withContext(Dispatchers.Main) {
                                 map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
+                                    lastLoadedNightMode = isNightMode
+                                    map.uiSettings.isCompassEnabled = false
                                     // ルート表示用 GeoJson レイヤーおよび現在地・案内矢印マーカーを登録
                                     setupRouteLayers(context, style)
                                     // Googleマップ風動的POIレイヤーを登録
-                                    setupDynamicPoiLayers(context, style)
+                                    setupDynamicPoiLayers(context, style, isNightMode)
                                     // 初期表示時のPOIを描画
                                     triggerFetchPois(map)
                                 }
@@ -333,14 +338,7 @@ internal fun VectorMapView(
                                 val category = feat.getStringProperty("category") ?: ""
                                 val geom = feat.geometry() as? Point
                                 if (geom != null) {
-                                    val spot = NearbySpot(
-                                        name = name,
-                                        category = category,
-                                        latitude = geom.latitude(),
-                                        longitude = geom.longitude(),
-                                        distanceM = 0.0,
-                                    )
-                                    onPoiClick(spot)
+                                    onPoiClick(NearbySpot(name, category, geom.latitude(), geom.longitude(), 0.0))
                                     return@addOnMapClickListener true
                                 }
                             }
@@ -349,9 +347,7 @@ internal fun VectorMapView(
 
                         // ユーザーのドラッグ操作検知 (追従解除用)
                         map.addOnMoveListener(object : MapLibreMap.OnMoveListener {
-                            override fun onMoveBegin(detector: org.maplibre.android.gestures.MoveGestureDetector) {
-                                onUserPan()
-                            }
+                            override fun onMoveBegin(detector: org.maplibre.android.gestures.MoveGestureDetector) { onUserPan() }
                             override fun onMove(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
                             override fun onMoveEnd(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
                         })
@@ -368,7 +364,6 @@ internal fun VectorMapView(
             )
         }
 
-
         // ルート更新の反映
         LaunchedEffect(routePoints, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
@@ -377,19 +372,30 @@ internal fun VectorMapView(
             }
         }
 
-        // 現在地および案内矢印の更新反映
-        LaunchedEffect(currentLocation, bearing, isNavigationActive, mapLibreMap) {
+        // 現在地および案内矢印の更新反映 (GPS状態連動)
+        LaunchedEffect(currentLocation, bearing, isNavigationActive, gpsStatus, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
             map.getStyle { style ->
-                updateLocationPoint(style, currentLocation, bearing, isNavigationActive)
+                updateLocationPoint(style, currentLocation, bearing, isNavigationActive, gpsStatus)
             }
         }
 
-        // 昼夜連動ナイトモードの動的切替反映
+        // 昼夜連動ナイトモードの動的切替反映 (完全スタイル再構築)
         LaunchedEffect(isNightMode, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
-            map.getStyle { style ->
-                applyNightModeColors(style, isNightMode)
+            val pPath = activePmtilesPath ?: return@LaunchedEffect
+            if (lastLoadedNightMode == isNightMode) return@LaunchedEffect
+            val finalStyleJson = withContext(Dispatchers.IO) {
+                buildVectorStyleJson(context, isNightMode, pPath)
+            }
+            map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
+                lastLoadedNightMode = isNightMode
+                map.uiSettings.isCompassEnabled = false
+                setupRouteLayers(context, style)
+                setupDynamicPoiLayers(context, style, isNightMode)
+                updateRouteLine(style, routePoints)
+                updateLocationPoint(style, currentLocation, bearing, isNavigationActive, gpsStatus)
+                triggerPoisRef?.invoke()
             }
         }
 

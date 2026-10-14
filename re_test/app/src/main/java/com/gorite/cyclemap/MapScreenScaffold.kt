@@ -105,6 +105,7 @@ internal fun MapScreenScaffold(
             hasLocationPermission = state.hasLocationPermissionState.value,
             permissionLauncher = permissionLauncher,
             gpsStatus = state.gpsStatusState.value,
+            isLocationServiceEnabled = state.isLocationServiceEnabledState.value,
             hasReceivedFirstFix = state.gpsHealthMonitor.hasReceivedFirstFix,
             warningMessage = state.warningMessageState.value,
             onDismissWarning = { state.warningMessageState.value = null },

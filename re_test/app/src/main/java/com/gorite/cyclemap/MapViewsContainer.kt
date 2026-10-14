@@ -21,6 +21,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import com.gorite.cyclemap.data.TileSourceSelector
 import com.gorite.cyclemap.routing.RoutePoint
+import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
 import org.maplibre.android.maps.MapLibreMap
@@ -52,6 +53,7 @@ internal fun MapViewsContainer(
     selectedPoiSpot: NearbySpot?,
     followLocation: Boolean,
     isNavigationActive: Boolean,
+    gpsStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY,
     poiVisible: Boolean,
     poiSelected: Set<PoiCategory>,
     isLandscape: Boolean,
@@ -178,6 +180,7 @@ internal fun MapViewsContainer(
                     selectedPoiSpot = selectedPoiSpot,
                     followLocation = followLocation,
                     isNavigationActive = isNavigationActive,
+                    gpsStatus = gpsStatus,
                     poiVisible = poiVisible,
                     poiSelected = poiSelected,
                     cameraPadding = androidx.compose.foundation.layout.PaddingValues(

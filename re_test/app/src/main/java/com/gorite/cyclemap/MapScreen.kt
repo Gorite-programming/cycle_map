@@ -238,6 +238,7 @@ internal fun MapScreen(
         headingDegrees = state.headingDegreesState.floatValue,
         onHeadingChanged = { state.headingDegreesState.floatValue = it },
         onHeadingSensorFixChanged = { state.hasHeadingSensorFixState.value = it },
+        onLocationServiceEnabledChanged = { state.isLocationServiceEnabledState.value = it },
     )
 
     // MVI StateFlow 同期: 高頻度位置情報

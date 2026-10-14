@@ -5,10 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import androidx.core.content.ContextCompat
+import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.ui.cycling.PoiCategory
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -26,20 +28,23 @@ import org.osmdroid.util.GeoPoint
  * VectorDrawable を Bitmap に変換するヘルパー関数
  */
 internal fun drawableToBitmap(context: Context, drawableId: Int, sizePx: Int, tintColor: Int? = null): Bitmap {
-    val drawable = ContextCompat.getDrawable(context, drawableId)?.mutate()
-        ?: return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val drawable = ContextCompat.getDrawable(context, drawableId)?.mutate() ?: return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
     if (tintColor != null) drawable.setTint(tintColor)
-    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    drawable.setBounds(0, 0, canvas.width, canvas.height)
-    drawable.draw(canvas)
-    return bitmap
+    return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888).also { bmp ->
+        val canvas = Canvas(bmp)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+    }
 }
 
 /**
- * Google Maps 自車位置マーカー (白青ドット + 60°放射状前方扇形ビーム)
+ * Google Maps 自車位置マーカー (青/青斜線/赤ドット + 60°放射状前方扇形ビーム)
  */
-internal fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean): Bitmap {
+internal fun createGoogleLocationPuckBitmap(
+    context: Context,
+    hasBeam: Boolean,
+    gpsStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY,
+): Bitmap {
     val density = context.resources.displayMetrics.density
     val sizePx = if (hasBeam) (140 * density).toInt() else (64 * density).toInt()
     val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
@@ -55,22 +60,21 @@ internal fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean):
             shader = RadialGradient(
                 cx, cy, beamRadius,
                 intArrayOf(
-                    Color.argb(102, 66, 133, 244), // #4285F4 (alpha 40%)
-                    Color.argb(40, 66, 133, 244),  // #4285F4 (alpha 16%)
-                    Color.argb(0, 66, 133, 244),   // 透過
+                    Color.argb(102, 66, 133, 244),
+                    Color.argb(40, 66, 133, 244),
+                    Color.argb(0, 66, 133, 244),
                 ),
                 floatArrayOf(0.0f, 0.55f, 1.0f),
                 Shader.TileMode.CLAMP,
             )
         }
-        // 前方 (上方向 / 270°) を中心とする 60 度の扇形 (240° から 60°)
         canvas.drawArc(beamRect, 240f, 60f, true, beamPaint)
     }
 
-    // 1. 外側半透明パルス円
+    // 1. 外側半透明パルス円 (LOST時は赤系、それ以外は青系)
     val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = Color.argb(38, 66, 133, 244)
+        color = if (gpsStatus == GpsSignalStatus.LOST) Color.argb(38, 217, 48, 37) else Color.argb(38, 66, 133, 244)
     }
     canvas.drawCircle(cx, cy, 20f * density, pulsePaint)
 
@@ -82,19 +86,46 @@ internal fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean):
     }
     canvas.drawCircle(cx, cy, 11f * density, whiteCirclePaint)
 
-    // 3. 濃青丸 (#1A73E8)
-    val blueCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.rgb(26, 115, 232)
+    // 3. 中心丸 (HEALTHY:青, WEAK:青地に白斜線, LOST:赤)
+    val innerRadius = 8.5f * density
+    when (gpsStatus) {
+        GpsSignalStatus.HEALTHY -> {
+            val bluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.rgb(26, 115, 232)
+            }
+            canvas.drawCircle(cx, cy, innerRadius, bluePaint)
+        }
+        GpsSignalStatus.WEAK -> {
+            val clipPath = Path().apply { addCircle(cx, cy, innerRadius, Path.Direction.CW) }
+            canvas.save()
+            canvas.clipPath(clipPath)
+            val bluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.rgb(26, 115, 232)
+            }
+            canvas.drawCircle(cx, cy, innerRadius, bluePaint)
+            val stripePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1.6f * density
+                color = Color.WHITE
+            }
+            val step = 4.0f * density
+            var offset = -innerRadius * 2
+            while (offset <= innerRadius * 2) {
+                canvas.drawLine(cx + offset - innerRadius, cy - innerRadius, cx + offset + innerRadius, cy + innerRadius, stripePaint)
+                offset += step
+            }
+            canvas.restore()
+        }
+        GpsSignalStatus.LOST -> {
+            val redPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = Color.rgb(217, 48, 37)
+            }
+            canvas.drawCircle(cx, cy, innerRadius, redPaint)
+        }
     }
-    canvas.drawCircle(cx, cy, 8.5f * density, blueCirclePaint)
-
-    // 4. 中心白ドット
-    val centerWhitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        color = Color.WHITE
-    }
-    canvas.drawCircle(cx, cy, 3.5f * density, centerWhitePaint)
 
     return bitmap
 }
@@ -103,14 +134,22 @@ internal fun createGoogleLocationPuckBitmap(context: Context, hasBeam: Boolean):
  * ルート描画および現在地・案内矢印描画用の GeoJSON ソース・レイヤーを初期化
  */
 internal fun setupRouteLayers(context: Context, style: Style) {
-    // Google Maps 自車位置マーカー (通常ドット、60°扇形前方ビーム、ナビ案内矢印) をスタイルに登録
+    for (status in GpsSignalStatus.entries) {
+        val suffix = status.name.lowercase()
+        val dotId = "cyclemap-location-dot-$suffix"
+        if (style.getImage(dotId) == null) {
+            style.addImage(dotId, createGoogleLocationPuckBitmap(context, false, status))
+        }
+        val beamId = "cyclemap-location-beam-$suffix"
+        if (style.getImage(beamId) == null) {
+            style.addImage(beamId, createGoogleLocationPuckBitmap(context, true, status))
+        }
+    }
     if (style.getImage("cyclemap-location-dot-icon") == null) {
-        val dotBitmap = createGoogleLocationPuckBitmap(context, hasBeam = false)
-        style.addImage("cyclemap-location-dot-icon", dotBitmap)
+        style.addImage("cyclemap-location-dot-icon", createGoogleLocationPuckBitmap(context, false))
     }
     if (style.getImage("cyclemap-location-beam-icon") == null) {
-        val beamBitmap = createGoogleLocationPuckBitmap(context, hasBeam = true)
-        style.addImage("cyclemap-location-beam-icon", beamBitmap)
+        style.addImage("cyclemap-location-beam-icon", createGoogleLocationPuckBitmap(context, true))
     }
     if (style.getImage("cyclemap-nav-arrow-icon") == null) {
         val arrowBitmap = drawableToBitmap(context, R.drawable.ic_nav_arrow, 84)
@@ -124,93 +163,75 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         // ① 通常のルート線（100%不透明度、地面レベル） -> 3D建物の下に潜り込ませる
         val casingLayer = LineLayer("cyclemap-route-casing", "cyclemap-route-source").apply {
             setProperties(
-                PropertyFactory.lineColor(Color.parseColor("#0D47A1")), // 濃い青
-                PropertyFactory.lineWidth(9f),
-                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineColor(Color.parseColor("#0D47A1")), PropertyFactory.lineWidth(9f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
             )
         }
         val routeLayer = LineLayer("cyclemap-route-line", "cyclemap-route-source").apply {
             setProperties(
-                PropertyFactory.lineColor(Color.parseColor("#00B0FF")), // 鮮やかなシアン
-                PropertyFactory.lineWidth(6f),
-                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineColor(Color.parseColor("#00B0FF")), PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
             )
         }
-
-        val hasBuilding3d = style.getLayer("buildings-3d") != null
-        if (hasBuilding3d) {
+        if (style.getLayer("buildings-3d") != null) {
             style.addLayerBelow(casingLayer, "buildings-3d")
             style.addLayerBelow(routeLayer, "buildings-3d")
         } else {
             style.addLayer(casingLayer)
             style.addLayer(routeLayer)
         }
-
-        // ② 建物越し用のX-Rayルート線（50%薄め） -> 3D建物の最前面に配置
-        // 建物がない場所では下層の100%線と重なって100%になり、建物の奥にあるときだけ50%に透けて見える
-        val xrayRouteLayer = LineLayer("cyclemap-route-xray", "cyclemap-route-source").apply {
+        style.addLayer(LineLayer("cyclemap-route-xray", "cyclemap-route-source").apply {
             setProperties(
-                PropertyFactory.lineColor(Color.parseColor("#00B0FF")),
-                PropertyFactory.lineWidth(6f),
-                PropertyFactory.lineOpacity(0.50f), // 建物越しは50%に薄める
-                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineColor(Color.parseColor("#00B0FF")), PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineOpacity(0.50f), PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
                 PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
             )
-        }
-        style.addLayer(xrayRouteLayer)
+        })
     }
 
-    // 現在地マーカー用レイヤー (3Dチルト時も縮小せず、画面正面を向いて適正サイズを維持)
+    // 現在地マーカー用レイヤー (3Dチルト時も画面正面を向きサイズ維持)
     if (style.getSource("cyclemap-location-source") == null) {
         val locationSource = GeoJsonSource("cyclemap-location-source")
         style.addSource(locationSource)
 
-        // 1. 停止時・方位なし: Google Maps 青丸パック (cyclemap-location-dot-icon)
-        val dotLayer = SymbolLayer("cyclemap-location-dot", "cyclemap-location-source").apply {
+        // 1. 停止時・方位なし
+        style.addLayer(SymbolLayer("cyclemap-location-dot", "cyclemap-location-source").apply {
             setProperties(
-                PropertyFactory.iconImage("cyclemap-location-dot-icon"),
+                PropertyFactory.iconImage(Expression.get("icon")),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
                 PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
             )
             setFilter(Expression.eq(Expression.get("mode"), Expression.literal("dot")))
-        }
-        style.addLayer(dotLayer)
+        })
 
-        // 2. 通常地図表示・方位あり: Google Maps 60°前方放射状ビーム付きパック (cyclemap-location-beam-icon)
-        val beamLayer = SymbolLayer("cyclemap-location-beam", "cyclemap-location-source").apply {
+        // 2. 通常地図表示・方位あり (前方ビーム)
+        style.addLayer(SymbolLayer("cyclemap-location-beam", "cyclemap-location-source").apply {
             setProperties(
-                PropertyFactory.iconImage("cyclemap-location-beam-icon"),
+                PropertyFactory.iconImage(Expression.get("icon")),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
                 PropertyFactory.iconRotate(Expression.get("bearing")),
-                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP), // 地図の北基準で追従回転
-                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT), // チルト時も正面を向く
-                PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
             )
             setFilter(Expression.eq(Expression.get("mode"), Expression.literal("beam")))
-        }
-        style.addLayer(beamLayer)
+        })
 
-        // 3. ナビ案内時: ナビ矢印マーカー (ic_nav_arrow)
-        val arrowLayer = SymbolLayer("cyclemap-location-arrow", "cyclemap-location-source").apply {
+        // 3. ナビ案内時
+        style.addLayer(SymbolLayer("cyclemap-location-arrow", "cyclemap-location-source").apply {
             setProperties(
                 PropertyFactory.iconImage("cyclemap-nav-arrow-icon"),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
                 PropertyFactory.iconRotate(Expression.get("bearing")),
-                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP), // 地図の北基準で追従
-                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT), // チルト時も縮まない！
-                PropertyFactory.iconAllowOverlap(true),
-                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.iconSize(0.6f),
             )
             setFilter(Expression.eq(Expression.get("mode"), Expression.literal("arrow")))
-        }
-        style.addLayer(arrowLayer)
+        })
     }
 
     // DEF-07: POIハイライトピン用アイコン・ソース・レイヤーの登録
@@ -219,10 +240,8 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         style.addImage("cyclemap-poi-pin-icon", pinBitmap)
     }
     if (style.getSource("cyclemap-poi-source") == null) {
-        val poiSource = GeoJsonSource("cyclemap-poi-source")
-        style.addSource(poiSource)
-
-        val poiLayer = SymbolLayer("cyclemap-poi-pin", "cyclemap-poi-source").apply {
+        style.addSource(GeoJsonSource("cyclemap-poi-source"))
+        style.addLayer(SymbolLayer("cyclemap-poi-pin", "cyclemap-poi-source").apply {
             setProperties(
                 PropertyFactory.iconImage("cyclemap-poi-pin-icon"),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
@@ -231,8 +250,7 @@ internal fun setupRouteLayers(context: Context, style: Style) {
                 PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.iconSize(1.0f),
             )
-        }
-        style.addLayer(poiLayer)
+        })
     }
 }
 
@@ -244,6 +262,7 @@ internal fun updateLocationPoint(
     location: GeoPoint?,
     bearing: Float?,
     isNavigationActive: Boolean = false,
+    gpsStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY,
 ) {
     val source = style.getSourceAs<GeoJsonSource>("cyclemap-location-source") ?: return
     if (location == null) {
@@ -257,8 +276,15 @@ internal fun updateLocationPoint(
         hasBearing -> "beam"
         else -> "dot"
     }
+    val suffix = gpsStatus.name.lowercase()
+    val iconName = when (mode) {
+        "arrow" -> "cyclemap-nav-arrow-icon"
+        "beam" -> "cyclemap-location-beam-$suffix"
+        else -> "cyclemap-location-dot-$suffix"
+    }
     val feature = Feature.fromGeometry(point).apply {
         addStringProperty("mode", mode)
+        addStringProperty("icon", iconName)
         addNumberProperty("bearing", (bearing ?: 0f).toDouble())
         addBooleanProperty("hasBearing", hasBearing)
     }
@@ -286,7 +312,7 @@ internal fun updateRouteLine(style: Style, points: List<GeoPoint>) {
 /**
  * 標準地図と完全同一の Googleマップ風しずく型ピン画像をスタイルに登録する
  */
-internal fun setupDynamicPoiLayers(context: Context, style: Style) {
+internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: Boolean = false) {
     // 全13カテゴリのしずく型ピン画像をスタイルに登録
     for (category in PoiCategory.entries) {
         val key = "poi-pin-${category.name}"
@@ -308,29 +334,20 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style) {
         val poiSource = GeoJsonSource("cyclemap-dynamic-pois")
         style.addSource(poiSource)
 
+        val haloColor = if (isNightMode) Color.parseColor("#202124") else Color.WHITE
         val poiSymbolLayer = SymbolLayer("cyclemap-dynamic-poi-symbols", "cyclemap-dynamic-pois").apply {
             setProperties(
                 PropertyFactory.iconImage(Expression.get("iconKey")),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                 PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                PropertyFactory.iconAllowOverlap(false),
-                PropertyFactory.iconIgnorePlacement(false),
-                PropertyFactory.iconOptional(false),
-
-                PropertyFactory.textField(Expression.get("name")),
-                PropertyFactory.textSize(10.5f),
-                PropertyFactory.textColor(Expression.get("textColor")),
-                PropertyFactory.textHaloColor(Color.WHITE),
-                PropertyFactory.textHaloWidth(2.2f),
-                PropertyFactory.textHaloBlur(0.3f),
-                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_LEFT),
-                PropertyFactory.textOffset(arrayOf(1.0f, -0.9f)),
+                PropertyFactory.iconAllowOverlap(false), PropertyFactory.iconIgnorePlacement(false), PropertyFactory.iconOptional(false),
+                PropertyFactory.textField(Expression.get("name")), PropertyFactory.textSize(10.5f), PropertyFactory.textColor(Expression.get("textColor")),
+                PropertyFactory.textHaloColor(haloColor), PropertyFactory.textHaloWidth(2.2f), PropertyFactory.textHaloBlur(0.3f),
+                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_LEFT), PropertyFactory.textOffset(arrayOf(1.0f, -0.9f)),
                 PropertyFactory.textPitchAlignment(Property.TEXT_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.textRotationAlignment(Property.TEXT_ROTATION_ALIGNMENT_VIEWPORT),
-                PropertyFactory.textAllowOverlap(false),
-                PropertyFactory.textIgnorePlacement(false),
-                PropertyFactory.textOptional(true),
+                PropertyFactory.textAllowOverlap(false), PropertyFactory.textIgnorePlacement(false), PropertyFactory.textOptional(true),
                 PropertyFactory.textMaxWidth(7.5f),
             )
         }
@@ -381,9 +398,7 @@ internal fun applyNightModeColors(style: Style, isNight: Boolean) {
     }
 
     // 主要道路
-    listOf(
-        "roads_major", "roads_tunnels_major", "roads_bridges_major"
-    ).forEach { layerId ->
+    listOf("roads_major", "roads_tunnels_major", "roads_bridges_major").forEach { layerId ->
         style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadMajorColor))
     }
 
@@ -397,43 +412,23 @@ internal fun applyNightModeColors(style: Style, isNight: Boolean) {
     }
 }
 
-internal fun vectorMapAreaFillColors(isNight: Boolean): Map<String, String> = if (isNight) {
-    mapOf(
-        "water" to "#17263C",
-        "landuse_park" to "#1B2A22",
-        "landuse_urban_green" to "#1B2A22",
-        "landuse_hospital" to "#252628",
-        "landuse_industrial" to "#252628",
-        "landuse_school" to "#252628",
-        "landuse_beach" to "#262523",
-        "landuse_zoo" to "#1E2828",
-        "landuse_aerodrome" to "#28292C",
-        "landuse_runway" to "#25272B",
-        "landuse_pedestrian" to "#242528",
-        "landuse_pier" to "#242528",
-        "landuse_platform" to "#332E28",
-        "buildings-2d" to "#28292A",
-        "buildings_station" to "#332E28",
-    )
-} else {
-    mapOf(
-        "water" to "#D7E6EC",
-        "landuse_park" to "#C2F0D6",
-        "landuse_urban_green" to "#C2F0D6",
-        "landuse_hospital" to "#FDF9EE",
-        "landuse_industrial" to "#eceae6",
-        "landuse_school" to "#FDF9EE",
-        "landuse_beach" to "#f5f0e6",
-        "landuse_zoo" to "#c6dcdc",
-        "landuse_aerodrome" to "#dadbdf",
-        "landuse_runway" to "#e9e9ed",
-        "landuse_pedestrian" to "#f3f0ec",
-        "landuse_pier" to "#e0e0e0",
-        "landuse_platform" to "#FFE8D6",
-        "buildings-2d" to "#E9EAEF",
-        "buildings_station" to "#FFE8D6",
-    )
-}
+internal fun vectorMapAreaFillColors(isNight: Boolean): Map<String, String> = listOf(
+    "water" to if (isNight) "#17263C" else "#D7E6EC",
+    "landuse_park" to if (isNight) "#1B2A22" else "#C2F0D6",
+    "landuse_urban_green" to if (isNight) "#1B2A22" else "#C2F0D6",
+    "landuse_hospital" to if (isNight) "#252628" else "#FDF9EE",
+    "landuse_industrial" to if (isNight) "#252628" else "#eceae6",
+    "landuse_school" to if (isNight) "#252628" else "#FDF9EE",
+    "landuse_beach" to if (isNight) "#262523" else "#f5f0e6",
+    "landuse_zoo" to if (isNight) "#1E2828" else "#c6dcdc",
+    "landuse_aerodrome" to if (isNight) "#28292C" else "#dadbdf",
+    "landuse_runway" to if (isNight) "#25272B" else "#e9e9ed",
+    "landuse_pedestrian" to if (isNight) "#242528" else "#f3f0ec",
+    "landuse_pier" to if (isNight) "#242528" else "#e0e0e0",
+    "landuse_platform" to if (isNight) "#332E28" else "#FFE8D6",
+    "buildings-2d" to if (isNight) "#28292A" else "#E9EAEF",
+    "buildings_station" to if (isNight) "#332E28" else "#FFE8D6",
+).toMap()
 
 internal fun buildVectorStyleJson(context: Context, isNightMode: Boolean, pmtilesPath: String): String {
     val styleAssetPath = if (isNightMode) "styles/protomaps_dark.json" else "styles/protomaps_light.json"
@@ -464,9 +459,8 @@ internal fun createPoiFeatures(spots: List<com.gorite.cyclemap.ui.cycling.Nearby
     return spots.mapNotNull { spot ->
         val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
         if (zoom < 15.0 && !cat.important) return@mapNotNull null
-
         val feature = Feature.fromGeometry(Point.fromLngLat(spot.longitude, spot.latitude))
-        val displayName = if (zoom >= 15.0) spot.name else ""
+        val displayName = if (zoom >= 13.8) spot.name else ""
         feature.addStringProperty("name", displayName)
         feature.addStringProperty("rawName", spot.name)
         feature.addStringProperty("category", spot.category)

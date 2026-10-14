@@ -103,9 +103,10 @@ fun GoogleLayerButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = Color.White,
-        shadowElevation = 3.dp,
-        modifier = modifier.size(40.dp),
+        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 5.dp,
+        modifier = modifier.size(42.dp),
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -114,7 +115,7 @@ fun GoogleLayerButton(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_layers),
                 contentDescription = "地図レイヤー切替: $label",
-                tint = Color(0xFF3C4043),
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -133,8 +134,9 @@ fun GoogleGpsButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = Color.White,
-        shadowElevation = 4.dp,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 5.dp,
         modifier = modifier.size(48.dp),
     ) {
         Box(
@@ -146,6 +148,38 @@ fun GoogleGpsButton(
                 contentDescription = "現在地へ移動",
                 tint = if (following) Color(0xFF1A73E8) else Color(0xFF5F6368),
                 modifier = Modifier.size(24.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Google Maps スタイル ズームボタン (白丸 42dp, 拡大/縮小アイコン)
+ */
+@Composable
+fun GoogleZoomButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 5.dp,
+        modifier = modifier.size(42.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp),
             )
         }
     }

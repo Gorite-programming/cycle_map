@@ -105,6 +105,7 @@ internal class MapScreenState(
     val animationEnabledState: MutableState<Boolean>,
     val appLifecycleStateState: MutableState<AppLifecycleState>,
     val hasLocationPermissionState: MutableState<Boolean>,
+    val isLocationServiceEnabledState: MutableState<Boolean>,
     val currentLocationState: MutableState<Location?>,
     val gpsStatusState: MutableState<GpsSignalStatus>,
     val lastValidLocationState: MutableState<Location?>,

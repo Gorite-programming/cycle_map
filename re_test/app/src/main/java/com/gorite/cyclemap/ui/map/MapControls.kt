@@ -136,8 +136,8 @@ fun MapControls(
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 3.dp,
-            shadowElevation = 4.dp
+            tonalElevation = 0.dp,
+            shadowElevation = 5.dp
         ) {
             Column {
                 RepeatActionButton(
@@ -165,8 +165,8 @@ fun FloatingCircleButton(
     Surface(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        shadowElevation = 4.dp,
+        tonalElevation = 0.dp,
+        shadowElevation = 5.dp,
         modifier = modifier
             .size(48.dp)
             .clip(CircleShape)

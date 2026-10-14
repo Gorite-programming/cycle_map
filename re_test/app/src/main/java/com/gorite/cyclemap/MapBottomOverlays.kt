@@ -288,8 +288,8 @@ internal fun BoxScope.MapBottomOverlays(
                 }
             }
 
-            // Main HUD: Speedometer & GPX Controls (通常探索時)
-            Row(
+            // Main HUD: Speedometer & GPX Controls (走行中またはGPX記録中のみ表示)
+            if (isRecording || speedKmh >= 1.5) Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -364,9 +364,7 @@ internal fun BoxScope.MapBottomOverlays(
 
             if (!isLandscape) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding(),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     // 5. 地名・天候サマリーシート (SCR-01, SCR-02)
                     LocationSummarySheet(

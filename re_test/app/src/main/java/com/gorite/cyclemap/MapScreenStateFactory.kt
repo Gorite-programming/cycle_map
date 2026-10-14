@@ -1,6 +1,8 @@
 package com.gorite.cyclemap
 
 import android.content.Context
+import android.location.LocationManager
+import androidx.core.location.LocationManagerCompat
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -111,6 +113,10 @@ internal fun rememberMapScreenState(
     }
 
     val hasLocationPermissionState = remember { mutableStateOf(context.hasLocationPermission()) }
+    val locationManager = remember(context) { context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager }
+    val isLocationServiceEnabledState = remember {
+        mutableStateOf(locationManager?.let { LocationManagerCompat.isLocationEnabled(it) } ?: true)
+    }
     val currentLocationState = remember { mutableStateOf<android.location.Location?>(null) }
     val gpsHealthMonitor = remember { GpsHealthMonitor() }
     val gpsStatusState = remember { mutableStateOf(GpsSignalStatus.HEALTHY) }
@@ -306,6 +312,7 @@ internal fun rememberMapScreenState(
         animationEnabledState = animationEnabledState,
         appLifecycleStateState = appLifecycleStateState,
         hasLocationPermissionState = hasLocationPermissionState,
+        isLocationServiceEnabledState = isLocationServiceEnabledState,
         currentLocationState = currentLocationState,
         gpsStatusState = gpsStatusState,
         lastValidLocationState = lastValidLocationState,

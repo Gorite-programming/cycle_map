@@ -1,11 +1,17 @@
 package com.gorite.cyclemap
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.location.Location
+import android.location.LocationManager
 import android.os.SystemClock
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.core.location.LocationManagerCompat
 import com.gorite.cyclemap.routing.AdaptiveRerouteManager
 import com.gorite.cyclemap.routing.DeadReckoner
 import com.gorite.cyclemap.routing.Maneuver
@@ -70,7 +76,35 @@ internal fun MapTrackingEffects(
     headingDegrees: Float,
     onHeadingChanged: (Float) -> Unit,
     onHeadingSensorFixChanged: (Boolean) -> Unit,
+    onLocationServiceEnabledChanged: (Boolean) -> Unit = {},
 ) {
+    // 端末の位置情報サービス (GPS Provider) オン/オフの監視
+    DisposableEffect(context) {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                val enabled = locationManager?.let { LocationManagerCompat.isLocationEnabled(it) } ?: true
+                onLocationServiceEnabledChanged(enabled)
+            }
+        }
+        val filter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
+        context.registerReceiver(receiver, filter)
+        val initialEnabled = locationManager?.let { LocationManagerCompat.isLocationEnabled(it) } ?: true
+        onLocationServiceEnabledChanged(initialEnabled)
+
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(appLifecycleState) {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val enabled = locationManager?.let { LocationManagerCompat.isLocationEnabled(it) } ?: true
+        onLocationServiceEnabledChanged(enabled)
+    }
+
     val adaptiveRerouteManager = remember {
         AdaptiveRerouteManager(
             rerouteDistanceThreshold = 30.0,

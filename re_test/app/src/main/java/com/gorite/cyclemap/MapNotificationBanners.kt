@@ -1,6 +1,9 @@
 package com.gorite.cyclemap
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,7 +48,9 @@ internal fun MapNotificationBanners(
     onDismissTileProgress: () -> Unit,
     isSwitchingGraph: Boolean,
     isCalculatingRoute: Boolean,
+    isLocationServiceEnabled: Boolean = true,
 ) {
+    val context = LocalContext.current
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -110,17 +115,16 @@ internal fun MapNotificationBanners(
             }
         }
 
-        // GPS 精度低下・ロスト通知バナー
+        // 端末の位置情報サービスOFF通知バナー (設定アプリへの誘導)
         AnimatedVisibility(
-            visible = gpsStatus != GpsSignalStatus.HEALTHY && hasLocationPermission && hasReceivedFirstFix,
+            visible = hasLocationPermission && !isLocationServiceEnabled,
             enter = Motion.bannerEnter(effectiveAnimationEnabled),
             exit = Motion.bannerExit(effectiveAnimationEnabled),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            val isLost = gpsStatus == GpsSignalStatus.LOST
             Card(
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isLost) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
                 ),
                 shape = RoundedCornerShape(12.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
@@ -130,11 +134,19 @@ internal fun MapNotificationBanners(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = if (isLost) "GPS信号を受信できません（GPSロスト）" else "GPS信号が弱まっています（推測移動中）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isLost) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                        text = "端末の位置情報がOFFです",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.weight(1f),
                     )
+                    FilledTonalButton(onClick = {
+                        val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    }) {
+                        Text("設定を開く")
+                    }
                 }
             }
         }

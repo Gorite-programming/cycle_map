@@ -92,6 +92,7 @@ internal fun MapContentLayout(
     hasLocationPermission: Boolean,
     permissionLauncher: ActivityResultLauncher<Array<String>>,
     gpsStatus: GpsSignalStatus,
+    isLocationServiceEnabled: Boolean = true,
     hasReceivedFirstFix: Boolean,
     warningMessage: String?,
     onDismissWarning: () -> Unit,
@@ -209,6 +210,7 @@ internal fun MapContentLayout(
                     isLandscape = isLandscape,
                     systemInsets = systemInsets,
                     navDotDrawable = navDotDrawable,
+                    gpsStatus = gpsStatus,
                     onMapCreated = onMapCreated,
                     onUserPan = { onFollowLocationChange(false) },
                     onPoiRefresh = onPoiRefresh,
@@ -247,6 +249,7 @@ internal fun MapContentLayout(
                         onDismissTileProgress = onDismissTileProgress,
                         isSwitchingGraph = isSwitchingGraph,
                         isCalculatingRoute = isCalculatingRoute,
+                        isLocationServiceEnabled = isLocationServiceEnabled,
                     )
                 }
 
