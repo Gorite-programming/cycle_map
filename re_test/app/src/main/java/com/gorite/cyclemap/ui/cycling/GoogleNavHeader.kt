@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gorite.cyclemap.NavInstruction
+import com.gorite.cyclemap.navigation.NavInstruction
 import com.gorite.cyclemap.R
 import com.gorite.cyclemap.routing.IconResolver
 import com.gorite.cyclemap.routing.RouteInstruction

@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.sp
 import com.gorite.cyclemap.R
 import com.gorite.cyclemap.data.FavoriteSpot
 import com.gorite.cyclemap.data.FavoritesManager
-import com.gorite.cyclemap.formatCategoryLabel
+import com.gorite.cyclemap.search.formatCategoryLabel
 
 /**
  * MapScreen上部等に配置するクイックスポットフィルタの水平ピルボタン列。

@@ -1,6 +1,6 @@
 package com.gorite.cyclemap.tracking
 
-import com.gorite.cyclemap.haversineMeters
+import com.gorite.cyclemap.utils.haversineMeters
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File

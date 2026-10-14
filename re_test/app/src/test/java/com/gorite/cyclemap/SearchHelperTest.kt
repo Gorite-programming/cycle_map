@@ -1,5 +1,6 @@
 package com.gorite.cyclemap
 
+import com.gorite.cyclemap.search.*
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import org.junit.Assert.assertEquals
 import org.junit.Test

@@ -1,6 +1,6 @@
 package com.gorite.cyclemap.data
 
-import com.gorite.cyclemap.haversineMeters
+import com.gorite.cyclemap.utils.haversineMeters
 import android.database.sqlite.SQLiteDatabase
 import java.io.File
 import kotlin.math.asin

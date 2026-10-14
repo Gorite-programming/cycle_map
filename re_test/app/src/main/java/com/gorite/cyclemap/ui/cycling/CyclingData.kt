@@ -338,13 +338,7 @@ enum class PoiCategory(
 // 周辺スポット (オフライン検索DB由来)
 // ---------------------------------------------------------------------------
 
-data class NearbySpot(
-    val name: String,
-    val category: String,
-    val latitude: Double,
-    val longitude: Double,
-    val distanceM: Double,
-)
+typealias NearbySpot = com.gorite.cyclemap.contract.NearbySpot
 
 /** スポットシートのクイックカテゴリ (POI体系へのエイリアス)。 */
 enum class SpotQuickCategory(

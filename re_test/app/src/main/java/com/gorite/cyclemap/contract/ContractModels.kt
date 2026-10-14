@@ -69,3 +69,11 @@ data class EtaInfo(
     val arrivalEpochMillis: Long,
     val currentSpeedKmh: Double
 )
+
+data class NearbySpot(
+    val name: String,
+    val category: String,
+    val latitude: Double,
+    val longitude: Double,
+    val distanceM: Double
+)
