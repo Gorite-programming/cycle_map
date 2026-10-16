@@ -360,6 +360,7 @@ internal fun CompassUpdates(
 internal class MapOrientationAnimator(
     private val getMapView: () -> MapView?,
     private val getVectorMap: () -> org.maplibre.android.maps.MapLibreMap? = { null },
+    private val isVectorActive: () -> Boolean = { false },
     private val onOrientationUpdated: () -> Unit,
 ) {
     private var currentAnimator: ValueAnimator? = null
@@ -371,7 +372,10 @@ internal class MapOrientationAnimator(
         val vectorView = getVectorMap()
         if (view == null && vectorView == null) return
 
-        val currentHeading = if (view != null) {
+        val isVector = isVectorActive() && vectorView != null
+        val currentHeading = if (isVector) {
+            vectorView!!.cameraPosition.bearing.toFloat()
+        } else if (view != null) {
             -view.mapOrientation
         } else if (vectorView != null) {
             vectorView.cameraPosition.bearing.toFloat()

@@ -1,21 +1,22 @@
 package com.gorite.cyclemap.ui.effects
 
-import com.gorite.cyclemap.*
-import com.gorite.cyclemap.utils.*
-import com.gorite.cyclemap.navigation.*
 import android.content.Context
 import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.gorite.cyclemap.R
+import com.gorite.cyclemap.utils.cycleMapDataDir
 import com.gorite.cyclemap.data.SearchDbSelection
 import com.gorite.cyclemap.data.SearchDbSelector
-import com.gorite.cyclemap.search.*
+import com.gorite.cyclemap.search.searchNearbyPlaces
+import com.gorite.cyclemap.search.searchNearbyQuickSpots
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.QuickSpotType
 import com.gorite.cyclemap.ui.cycling.SpotQuickCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.maplibre.android.maps.MapLibreMap
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -26,6 +27,7 @@ internal fun MapSearchEffects(
     showSpotPanel: Boolean,
     currentLocation: Location?,
     mapView: MapView?,
+    vectorMap: MapLibreMap? = null,
     context: Context,
     onSpotLoadingChange: (Boolean) -> Unit,
     onSpotMessageChange: (String?) -> Unit,
@@ -44,6 +46,7 @@ internal fun MapSearchEffects(
         onSpotLoadingChange(true)
         onSpotMessageChange(null)
         val center = currentLocation?.let { it.latitude to it.longitude }
+            ?: (vectorMap?.cameraPosition?.target)?.let { it.latitude to it.longitude }
             ?: (mapView?.mapCenter as? GeoPoint)?.let { it.latitude to it.longitude }
         if (center == null) {
             onSpotLoadingChange(false)
@@ -93,6 +96,7 @@ internal fun MapSearchEffects(
         onQuickSpotResultsChange(emptyList())
         onQuickSpotMessageChange(null)
         val center = currentLocation?.let { it.latitude to it.longitude }
+            ?: (vectorMap?.cameraPosition?.target)?.let { it.latitude to it.longitude }
             ?: (mapView?.mapCenter as? GeoPoint)?.let { it.latitude to it.longitude }
         if (center == null) {
             onQuickSpotLoadingChange(false)
@@ -139,7 +143,7 @@ internal fun MapSearchEffects(
         )
     }
 
-    // クイックスポットやPOI選択時のハイライトピン描画
+    // クイックスポットやPOI選択時のハイライトピン描画 (osmdroid ラスタレイヤ用)
     LaunchedEffect(selectedPoiSpot, mapView) {
         val view = mapView ?: return@LaunchedEffect
         view.overlays.removeAll { it is Marker && it.title == "SELECTED_POI_HIGHLIGHT" }

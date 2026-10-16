@@ -50,6 +50,7 @@ internal fun MapScreen(
         MapOrientationAnimator(
             getMapView = { state.mapViewState.value },
             getVectorMap = { state.vectorMapState.value },
+            isVectorActive = { state.selectedLayerState.value == com.gorite.cyclemap.utils.MapLayer.VECTOR_LIBERTY },
             onOrientationUpdated = { state.updateNavArrow() },
         )
     }
@@ -176,15 +177,19 @@ internal fun MapScreen(
         },
     )
 
-    LaunchedEffect(state.navigationRouteState.value, state.mapViewState.value, state.isNavigationActiveState.value) {
+    LaunchedEffect(state.navigationRouteState.value, state.mapViewState.value, state.vectorMapState.value, state.isNavigationActiveState.value) {
         val navRoute = state.navigationRouteState.value
-        if (navRoute.isEmpty()) return@LaunchedEffect
-        val view = state.mapViewState.value ?: return@LaunchedEffect
-        if (state.isNavigationActiveState.value) return@LaunchedEffect
+        if (navRoute.isEmpty() || state.isNavigationActiveState.value) return@LaunchedEffect
         withFrameNanos { }
         val points = navRoute.map { GeoPoint(it.latitude, it.longitude) }
         val bounds = BoundingBox.fromGeoPoints(points)
-        view.zoomToBoundingBox(bounds, true, 64)
+        state.mapViewState.value?.zoomToBoundingBox(bounds, true, 64)
+        state.vectorMapState.value?.let { vMap ->
+            val builder = org.maplibre.android.geometry.LatLngBounds.Builder()
+            points.forEach { builder.include(org.maplibre.android.geometry.LatLng(it.latitude, it.longitude)) }
+            val latLngBounds = builder.build()
+            vMap.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(latLngBounds, 64))
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -315,6 +320,12 @@ internal fun MapScreen(
                 state.mapViewState.value?.let { view ->
                     view.controller.animateTo(GeoPoint(location.latitude, location.longitude))
                 }
+                state.vectorMapState.value?.animateCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(location.latitude, location.longitude),
+                        NAVIGATION_ZOOM,
+                    ),
+                )
                 state.navigationProgressState.value = calculateRouteProgress(
                     RoutePoint(location.latitude, location.longitude),
                     navRoute,

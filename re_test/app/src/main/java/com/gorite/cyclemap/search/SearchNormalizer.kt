@@ -13,7 +13,7 @@ object SearchNormalizer {
             when {
                 // 全角英数 -> 半角英数 (小文字化)
                 ch in 'Ａ'..'Ｚ' -> sb.append((ch - 'Ａ' + 'a'.code).toChar())
-                ch in 'ａ'..'ｚ' -> sb.append(ch)
+                ch in 'ａ'..'ｚ' -> sb.append((ch - 'ａ' + 'a'.code).toChar())
                 ch in 'A'..'Z' -> sb.append(ch.lowercaseChar())
                 ch in '０'..'９' -> sb.append((ch - '０' + '0'.code).toChar())
                 // カタカナ -> ひらがな

@@ -36,9 +36,18 @@ class AdaptiveRerouteManager(
     private var lastRerouteStartNodeId: Long? = null
 
     fun setInitialRoute(nodeIds: List<Long>) {
+        reset()
+        _state.value = _state.value.copy(currentRouteNodeIds = nodeIds)
+    }
+
+    fun reset() {
+        activeRerouteJob?.cancel()
         detector.reset()
         lastRerouteStartNodeId = null
-        _state.value = RerouteState(currentRouteNodeIds = nodeIds)
+        _state.value = _state.value.copy(
+            isOffRoute = false,
+            isRerouting = false
+        )
     }
 
     fun onLocationUpdate(
@@ -55,8 +64,13 @@ class AdaptiveRerouteManager(
         }
 
         val wasOffRoute = detector.isOffRoute
-        // If threshold needs update, detector is queried with dynamic scaling
-        val isOff = detector.update(distanceToRouteMeters * (rerouteDistanceThreshold / dynamicThreshold))
+        // 既に逸脱中の復帰判定は固定復帰閾値 (15m) で行い、逸脱判定時のみ速度適応動的閾値 (30m~60m) を適用
+        val effectiveDist = if (wasOffRoute) {
+            distanceToRouteMeters
+        } else {
+            distanceToRouteMeters * (rerouteDistanceThreshold / dynamicThreshold)
+        }
+        val isOff = detector.update(effectiveDist)
 
         if (isOff) {
             _state.value = _state.value.copy(isOffRoute = true)

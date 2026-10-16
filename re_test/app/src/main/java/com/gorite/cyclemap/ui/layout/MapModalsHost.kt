@@ -84,6 +84,7 @@ internal fun MapModalsHost(
     onRouteToSpot: (GeoPoint) -> Unit,
     showFavoritesOnlyInSheet: Boolean,
     calculatedRoutes: List<com.gorite.cyclemap.contract.RouteOption> = emptyList(),
+    onStartNavigation: () -> Unit = {},
     // Settings dialogs props
     showRecordPanel: Boolean,
     isRecording: Boolean,
@@ -172,6 +173,7 @@ internal fun MapModalsHost(
         showSpotPanel = showSpotPanel,
         currentLocation = currentLocation,
         mapView = mapView,
+        vectorMap = vectorMap,
         context = context,
         onSpotLoadingChange = onSpotLoadingChange,
         onSpotMessageChange = onSpotMessageChange,
@@ -211,6 +213,8 @@ internal fun MapModalsHost(
         quickSpotResults = quickSpotResults,
         onSelectPoiSpot = onSelectPoiSpot,
         mapView = mapView,
+        vectorMap = vectorMap,
+        onStartNavigation = onStartNavigation,
         calculatedRoutes = calculatedRoutes,
         selectedPoiSpot = selectedPoiSpot,
     )

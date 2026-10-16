@@ -22,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.gorite.cyclemap.data.TileSourceSelection
 import com.gorite.cyclemap.data.TileSourceSelector
 import com.gorite.cyclemap.routing.RoutePoint
 import com.gorite.cyclemap.tracking.GpsSignalStatus
@@ -136,10 +137,7 @@ internal fun MapViewsContainer(
                         MapEventsOverlay(
                             object : MapEventsReceiver {
                                 override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
-                                    if (selectedPoiSpot != null) {
-                                        onPoiSpotDeselect()
-                                        return true
-                                    }
+                                    onPoiSpotDeselect()
                                     return false
                                 }
 
@@ -164,10 +162,17 @@ internal fun MapViewsContainer(
 
         // VectorMapView (MapLibre Native Android + PMTiles 完全オフライン Liberty)
         if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-            val vectorTileSelection = currentLocation?.let {
-                TileSourceSelector.select(it.latitude, it.longitude)
-            } ?: "initial"
-            key(vectorTileSelection) {
+            val (tileLat, tileLon) = if (currentLocation != null) {
+                currentLocation.latitude to currentLocation.longitude
+            } else {
+                FALLBACK_LATITUDE to FALLBACK_LONGITUDE
+            }
+            val vectorTileSelection = TileSourceSelector.select(tileLat, tileLon)
+            val tileKey = when (vectorTileSelection) {
+                is TileSourceSelection.Available -> vectorTileSelection.fileName
+                is TileSourceSelection.Unavailable -> "unavailable"
+            }
+            key(tileKey) {
                 VectorMapView(
                     modifier = Modifier.fillMaxSize(),
                     routePoints = navigationRoute.map { GeoPoint(it.latitude, it.longitude) },

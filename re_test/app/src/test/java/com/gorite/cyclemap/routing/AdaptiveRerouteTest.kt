@@ -86,4 +86,29 @@ class AdaptiveRerouteTest {
         assertTrue(firstJob?.isCancelled == true)
         assertEquals(listOf(50L, 99L), manager.state.value.currentRouteNodeIds)
     }
+
+    @Test
+    fun doesNotRecoverPrematurelyAtHighSpeeds() = runBlocking {
+        val manager = AdaptiveRerouteManager(
+            scope = CoroutineScope(Dispatchers.Default),
+            rerouteDistanceThreshold = 30.0,
+            consecutiveSamples = 1,
+            routerAction = { _, _ -> null } // リルート失敗・空を模擬
+        )
+
+        manager.setInitialRoute(listOf(1L, 2L, 3L))
+
+        // 高速走行 (30m/s: dynamicThreshold = 60m) で 65m 離れて逸脱確定
+        manager.onLocationUpdate(distanceToRouteMeters = 65.0, currentSpeedMps = 30.0f, currentNodeId = 1L, goalNodeId = 3L)
+        assertTrue(manager.state.value.isOffRoute)
+
+        // 20m地点: 以前のスケーリング計算では 20 * (30/60) = 10m <= 15m で誤って復帰していた
+        // 新実装では固定 15m 基準のため、20m は依然として逸脱中 (isOffRoute = true)
+        manager.onLocationUpdate(distanceToRouteMeters = 20.0, currentSpeedMps = 30.0f, currentNodeId = 1L, goalNodeId = 3L)
+        assertTrue("At 20m, should still be off-route because recover threshold is 15m", manager.state.value.isOffRoute)
+
+        // 14m地点: 15m 以下になったので復帰
+        manager.onLocationUpdate(distanceToRouteMeters = 14.0, currentSpeedMps = 30.0f, currentNodeId = 1L, goalNodeId = 3L)
+        assertFalse("At 14m, should recover to on-route", manager.state.value.isOffRoute)
+    }
 }

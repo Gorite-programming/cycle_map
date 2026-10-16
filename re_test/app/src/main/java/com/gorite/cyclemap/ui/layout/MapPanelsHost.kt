@@ -51,10 +51,16 @@ internal fun MapPanelsHost(
     quickSpotLoading: Boolean,
     quickSpotMessage: String?,
     quickSpotResults: List<NearbySpot>,
-    onSelectPoiSpot: (NearbySpot) -> Unit,
+    onSelectPoiSpot: (NearbySpot?) -> Unit,
     mapView: MapView?,
+    vectorMap: org.maplibre.android.maps.MapLibreMap? = null,
     calculatedRoutes: List<com.gorite.cyclemap.contract.RouteOption> = emptyList(),
     selectedPoiSpot: NearbySpot? = null,
+    selectedRouteIndex: Int = 0,
+    onSelectRouteIndex: (Int) -> Unit = {},
+    selectedTravelMode: com.gorite.cyclemap.contract.TravelModeType = com.gorite.cyclemap.contract.TravelModeType.Bicycle,
+    onSelectTravelMode: (com.gorite.cyclemap.contract.TravelModeType) -> Unit = {},
+    onStartNavigation: () -> Unit = {},
 ) {
     if (showRoutePanel) {
         val routeProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(routeSummary, navigationRoute) {
@@ -143,6 +149,11 @@ internal fun MapPanelsHost(
             onSpotClick = { spot ->
                 onCloseQuickSpotSheet()
                 mapView?.controller?.animateTo(GeoPoint(spot.latitude, spot.longitude))
+                vectorMap?.animateCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLng(
+                        org.maplibre.android.geometry.LatLng(spot.latitude, spot.longitude)
+                    )
+                )
                 onSelectPoiSpot(spot)
             },
             onRouteClick = { spot ->
@@ -165,11 +176,13 @@ internal fun MapPanelsHost(
                 onToggleFavorite = {},
                 onStartRoute = {
                     placeDetail = null
+                    onSelectPoiSpot(null)
                     onCloseSpotPanel()
                     onRouteToSpot(GeoPoint(currentDetail.lat, currentDetail.lon))
                 },
                 onClose = {
                     placeDetail = null
+                    onSelectPoiSpot(null)
                     onCloseSpotPanel()
                 }
             )
@@ -194,18 +207,17 @@ internal fun MapPanelsHost(
             }
         )
     }
-    var selectedRouteIdx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    var selectedTravelMode by remember { androidx.compose.runtime.mutableStateOf(com.gorite.cyclemap.contract.TravelModeType.Bicycle) }
 
     if (showRoutePanel && routes.isNotEmpty()) {
         com.gorite.cyclemap.ui.map.RouteSelectionSheet(
             routes = routes,
-            selectedRouteIndex = selectedRouteIdx.coerceIn(0, routes.lastIndex),
+            selectedRouteIndex = selectedRouteIndex.coerceIn(0, routes.lastIndex),
             selectedMode = selectedTravelMode,
-            onSelectMode = { selectedTravelMode = it },
-            onSelectRoute = { selectedRouteIdx = it },
+            onSelectMode = onSelectTravelMode,
+            onSelectRoute = onSelectRouteIndex,
             onStartNavigation = {
                 onCloseRoutePanel()
+                onStartNavigation()
             },
             onClose = onCloseRoutePanel
         )

@@ -94,6 +94,8 @@ internal fun BoxScope.MapBottomOverlays(
     onSavedClick: () -> Unit,
     onRecordHistoryClick: () -> Unit,
     context: Context,
+    isVoiceMuted: Boolean = false,
+    onToggleMute: () -> Unit = {},
 ) {
     if (isNavigationActive && routeSummary != null) {
         // アクティブナビ案内フッター (GoogleNavFooterView)
@@ -109,8 +111,8 @@ internal fun BoxScope.MapBottomOverlays(
             },
             remainingDistanceMeters = routeSummary.distanceMeters,
             remainingSeconds = routeSummary.distanceMeters / 4.2,
-            isMuted = false,
-            onToggleMute = {},
+            isMuted = isVoiceMuted,
+            onToggleMute = onToggleMute,
             onStopNavigation = onStopNavigation,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

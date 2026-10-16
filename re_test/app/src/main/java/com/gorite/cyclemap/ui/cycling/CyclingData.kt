@@ -352,4 +352,20 @@ enum class SpotQuickCategory(
     TOURISM("観光・休憩", PoiCategory.TOURISM),
     BICYCLE("自転車店", PoiCategory.BICYCLE),
     BATH("温泉", PoiCategory.BATH),
+    HOSPITAL("病院", PoiCategory.HOSPITAL),
+    PARKING("駐輪場", PoiCategory.PARKING),
+}
+
+/** カテゴリチップID文字列から SpotQuickCategory へのマッピング */
+fun mapCategoryChipIdToQuickCategory(id: String): SpotQuickCategory = when (id) {
+    "convenience" -> SpotQuickCategory.CONVENIENCE
+    "toilet" -> SpotQuickCategory.TOILET
+    "restaurant", "food" -> SpotQuickCategory.FOOD
+    "rest_area", "sightseeing", "hotel" -> SpotQuickCategory.TOURISM
+    "bicycle_parking" -> SpotQuickCategory.PARKING
+    "hospital" -> SpotQuickCategory.HOSPITAL
+    "onsen" -> SpotQuickCategory.BATH
+    "station" -> SpotQuickCategory.STATION
+    "bicycle" -> SpotQuickCategory.BICYCLE
+    else -> SpotQuickCategory.FOOD
 }

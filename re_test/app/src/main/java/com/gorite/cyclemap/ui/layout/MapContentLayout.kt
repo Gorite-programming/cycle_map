@@ -142,6 +142,8 @@ internal fun MapContentLayout(
     onSavedClick: () -> Unit,
     onRecordHistoryClick: () -> Unit,
     context: Context,
+    isVoiceMuted: Boolean = false,
+    onToggleMute: () -> Unit = {},
 ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -276,6 +278,7 @@ internal fun MapContentLayout(
                     offRouteDetector = offRouteDetector,
                     autoRerouteEnabled = autoRerouteEnabled,
                     networkLink = networkLink,
+                    onStopNavigation = onStopNavigation,
                 )
 
                 // Right-Side Controls: Google Maps Style
@@ -339,6 +342,8 @@ internal fun MapContentLayout(
                     onSavedClick = onSavedClick,
                     onRecordHistoryClick = onRecordHistoryClick,
                     context = context,
+                    isVoiceMuted = isVoiceMuted,
+                    onToggleMute = onToggleMute,
                 )
             }
         }

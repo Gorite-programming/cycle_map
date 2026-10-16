@@ -119,6 +119,14 @@ internal fun MapTrackingEffects(
     LaunchedEffect(navigationRoute) {
         if (navigationRoute.isNotEmpty()) {
             adaptiveRerouteManager.setInitialRoute(emptyList())
+        } else {
+            adaptiveRerouteManager.reset()
+        }
+    }
+
+    LaunchedEffect(isNavigationActive) {
+        if (!isNavigationActive) {
+            adaptiveRerouteManager.reset()
         }
     }
 

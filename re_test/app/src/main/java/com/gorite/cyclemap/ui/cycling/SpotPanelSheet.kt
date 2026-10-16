@@ -128,21 +128,16 @@ fun SpotPanelSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SpotQuickCategory.entries.take(3).forEach { cat ->
-                        SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+                SpotQuickCategory.entries.chunked(3).forEach { rowCats ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        rowCats.forEach { cat ->
+                            SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
+                        }
                     }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SpotQuickCategory.entries.drop(3).forEach { cat ->
-                        SpotChip(cat, selectedCategory == cat, { onCategorySelect(cat) }, Modifier.weight(1f))
-                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
             HorizontalDivider()

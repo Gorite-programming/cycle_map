@@ -12,6 +12,8 @@ class SearchRankingAndLatencyTest {
     fun normalizerHandlesHiraganaKatakanaRomaji() {
         // 全角英数 -> 半角小文字
         assertEquals("abc", SearchNormalizer.normalize("ＡＢＣ"))
+        assertEquals("cafe", SearchNormalizer.normalize("ｃａｆｅ"))
+        assertEquals("lawson 123", SearchNormalizer.normalize("Ｌａｗｓｏｎ　１２３"))
         // カタカナ -> ひらがな
         assertEquals("こんびに", SearchNormalizer.normalize("コンビニ"))
         // 長音、スペース正規化

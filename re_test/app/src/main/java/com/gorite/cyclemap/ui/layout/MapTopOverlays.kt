@@ -46,6 +46,7 @@ internal fun BoxScope.MapTopOverlays(
     offRouteDetector: OffRouteDetector,
     autoRerouteEnabled: Boolean,
     networkLink: com.gorite.cyclemap.net.Link = com.gorite.cyclemap.net.Link.Offline,
+    onStopNavigation: () -> Unit = {},
 ) {
     // Normal Top Bar
     AnimatedVisibility(
@@ -119,26 +120,11 @@ internal fun BoxScope.MapTopOverlays(
         var activeLaneHints by androidx.compose.runtime.remember {
             androidx.compose.runtime.mutableStateOf<List<com.gorite.cyclemap.contract.LaneInfo>>(emptyList())
         }
+        val currentTurnType = nextInstruction?.type.toTurnType()
+        val nextTurnType = nextAfterThis?.type.toTurnType()
+
         androidx.compose.runtime.LaunchedEffect(nextInstruction, progress) {
-            val turnType = when (nextInstruction?.type) {
-                com.gorite.cyclemap.routing.InstructionType.LEFT_TURN -> com.gorite.cyclemap.contract.TurnType.Left
-                com.gorite.cyclemap.routing.InstructionType.RIGHT_TURN -> com.gorite.cyclemap.contract.TurnType.Right
-                com.gorite.cyclemap.routing.InstructionType.SHARP_LEFT -> com.gorite.cyclemap.contract.TurnType.SharpLeft
-                com.gorite.cyclemap.routing.InstructionType.SHARP_RIGHT -> com.gorite.cyclemap.contract.TurnType.SharpRight
-                com.gorite.cyclemap.routing.InstructionType.FORK_LEFT,
-                com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_LEFT,
-                com.gorite.cyclemap.routing.InstructionType.FORK_UP_LEFT,
-                com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_LEFT -> com.gorite.cyclemap.contract.TurnType.SlightLeft
-                com.gorite.cyclemap.routing.InstructionType.FORK_RIGHT,
-                com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_RIGHT,
-                com.gorite.cyclemap.routing.InstructionType.FORK_UP_RIGHT,
-                com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_RIGHT -> com.gorite.cyclemap.contract.TurnType.SlightRight
-                com.gorite.cyclemap.routing.InstructionType.ROUNDABOUT -> com.gorite.cyclemap.contract.TurnType.Roundabout
-                com.gorite.cyclemap.routing.InstructionType.U_TURN_LEFT,
-                com.gorite.cyclemap.routing.InstructionType.U_TURN_RIGHT -> com.gorite.cyclemap.contract.TurnType.Uturn
-                else -> com.gorite.cyclemap.contract.TurnType.Straight
-            }
-            val hints = laneProvider.getLaneHints(nextInstruction?.nodeId ?: 0L, turnType)
+            val hints = laneProvider.getLaneHints(nextInstruction?.nodeId ?: 0L, currentTurnType)
             val hintsFromLaneHint: List<com.gorite.cyclemap.routing.LaneHint> = hints.map {
                 com.gorite.cyclemap.routing.LaneHint(
                     direction = it.direction.name.lowercase(),
@@ -166,26 +152,26 @@ internal fun BoxScope.MapTopOverlays(
         if (isLandscape) {
             com.gorite.cyclemap.ui.map.LandscapeNavHudBar(
                 currentStep = com.gorite.cyclemap.contract.GuidanceStep(
-                    turnType = com.gorite.cyclemap.contract.TurnType.Straight,
+                    turnType = currentTurnType,
                     instructionText = guide?.text ?: "直進",
                     streetName = null,
                     distanceToTurnMeters = distanceMeters ?: 0.0
                 ),
                 eta = null,
                 remainingSeconds = (remaining ?: 0.0) / 4.2,
-                onStopNavigation = {}
+                onStopNavigation = onStopNavigation
             )
         } else {
             com.gorite.cyclemap.ui.map.GoogleNavHeaderView(
                 currentStep = com.gorite.cyclemap.contract.GuidanceStep(
-                    turnType = com.gorite.cyclemap.contract.TurnType.Straight,
+                    turnType = currentTurnType,
                     instructionText = guide?.text ?: "直進",
                     streetName = null,
                     distanceToTurnMeters = distanceMeters ?: 0.0
                 ),
                 nextStep = nextAfterThis?.let {
                     com.gorite.cyclemap.contract.GuidanceStep(
-                        turnType = com.gorite.cyclemap.contract.TurnType.Left,
+                        turnType = nextTurnType,
                         instructionText = it.reason,
                         streetName = null,
                         distanceToTurnMeters = distNextAfterThis ?: 0.0
@@ -196,4 +182,23 @@ internal fun BoxScope.MapTopOverlays(
             )
         }
     }
+}
+
+private fun com.gorite.cyclemap.routing.InstructionType?.toTurnType(): com.gorite.cyclemap.contract.TurnType = when (this) {
+    com.gorite.cyclemap.routing.InstructionType.LEFT_TURN -> com.gorite.cyclemap.contract.TurnType.Left
+    com.gorite.cyclemap.routing.InstructionType.RIGHT_TURN -> com.gorite.cyclemap.contract.TurnType.Right
+    com.gorite.cyclemap.routing.InstructionType.SHARP_LEFT -> com.gorite.cyclemap.contract.TurnType.SharpLeft
+    com.gorite.cyclemap.routing.InstructionType.SHARP_RIGHT -> com.gorite.cyclemap.contract.TurnType.SharpRight
+    com.gorite.cyclemap.routing.InstructionType.FORK_LEFT,
+    com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_LEFT,
+    com.gorite.cyclemap.routing.InstructionType.FORK_UP_LEFT,
+    com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_LEFT -> com.gorite.cyclemap.contract.TurnType.SlightLeft
+    com.gorite.cyclemap.routing.InstructionType.FORK_RIGHT,
+    com.gorite.cyclemap.routing.InstructionType.DIAGONAL_FORK_RIGHT,
+    com.gorite.cyclemap.routing.InstructionType.FORK_UP_RIGHT,
+    com.gorite.cyclemap.routing.InstructionType.FORK_DOWN_RIGHT -> com.gorite.cyclemap.contract.TurnType.SlightRight
+    com.gorite.cyclemap.routing.InstructionType.ROUNDABOUT -> com.gorite.cyclemap.contract.TurnType.Roundabout
+    com.gorite.cyclemap.routing.InstructionType.U_TURN_LEFT,
+    com.gorite.cyclemap.routing.InstructionType.U_TURN_RIGHT -> com.gorite.cyclemap.contract.TurnType.Uturn
+    else -> com.gorite.cyclemap.contract.TurnType.Straight
 }

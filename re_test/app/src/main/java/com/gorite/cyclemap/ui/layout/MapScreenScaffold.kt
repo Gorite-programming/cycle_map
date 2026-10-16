@@ -87,7 +87,12 @@ internal fun MapScreenScaffold(
             isDarkTheme = isDarkTheme,
             isLowPowerMode = isLowPowerMode,
             selectedPoiSpot = state.selectedPoiSpotState.value,
-            onSelectPoiSpot = { state.selectedPoiSpotState.value = it },
+            onSelectPoiSpot = { spot ->
+                state.selectedPoiSpotState.value = spot
+                if (spot != null) {
+                    state.showSpotPanelState.value = true
+                }
+            },
             followLocation = state.followLocationState.value,
             onFollowLocationChange = { state.followLocationState.value = it },
             isNavigationActive = state.isNavigationActiveState.value,
@@ -129,8 +134,9 @@ internal fun MapScreenScaffold(
                 state.activeQuickSpotTypeState.value = type
                 state.showQuickSpotSheetState.value = true
             },
-            onSelectCategory = { _ ->
-                state.spotCategoryState.value = SpotQuickCategory.FOOD
+            onSelectCategory = { categoryId ->
+                state.selectedPoiSpotState.value = null
+                state.spotCategoryState.value = com.gorite.cyclemap.ui.cycling.mapCategoryChipIdToQuickCategory(categoryId)
                 state.showSpotPanelState.value = true
             },
             navigationProgress = state.navigationProgressState.value,
@@ -207,6 +213,13 @@ internal fun MapScreenScaffold(
                 }
             },
             context = context,
+            isVoiceMuted = state.voiceGuidanceModeState.value == com.gorite.cyclemap.speech.VoiceGuidanceMode.OFF,
+            onToggleMute = {
+                val isCurrentlyMuted = state.voiceGuidanceModeState.value == com.gorite.cyclemap.speech.VoiceGuidanceMode.OFF
+                val nextMode = if (isCurrentlyMuted) com.gorite.cyclemap.speech.VoiceGuidanceMode.VOICEVOX else com.gorite.cyclemap.speech.VoiceGuidanceMode.OFF
+                state.voiceGuidanceModeState.value = nextMode
+                state.viewModel.onIntent(com.gorite.cyclemap.ui.map.MapUiIntent.ToggleMute)
+            },
         )
     }
 
@@ -241,7 +254,13 @@ internal fun MapScreenScaffold(
         quickSpotResults = state.quickSpotResultsState.value,
         onQuickSpotResultsChange = { state.quickSpotResultsState.value = it },
         selectedPoiSpot = state.selectedPoiSpotState.value,
-        onSelectPoiSpot = { state.selectedPoiSpotState.value = it },
+        onSelectPoiSpot = { spot ->
+            state.selectedPoiSpotState.value = spot
+            if (spot != null) {
+                state.showSpotPanelState.value = true
+            }
+        },
+        onStartNavigation = startNavigation,
         calculatedRoutes = state.calculatedRouteOptionsState.value,
         showRoutePanel = state.showRoutePanelState.value,
         onCloseRoutePanel = {
