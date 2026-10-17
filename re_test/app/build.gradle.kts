@@ -104,3 +104,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
+
+// Probe compilation is handled by the Kotlin test source set; see test.kt header.
+

@@ -96,6 +96,8 @@ internal fun BoxScope.MapBottomOverlays(
     context: Context,
     isVoiceMuted: Boolean = false,
     onToggleMute: () -> Unit = {},
+    weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
+    onRefreshWeather: () -> Unit = {},
 ) {
     if (isNavigationActive && routeSummary != null) {
         // アクティブナビ案内フッター (GoogleNavFooterView)
@@ -374,6 +376,8 @@ internal fun BoxScope.MapBottomOverlays(
                     // 5. 地名・天候サマリーシート (SCR-01, SCR-02)
                     LocationSummarySheet(
                         locationName = locationLabel.ifEmpty { "井口明神" },
+                        weatherUiState = weatherUiState,
+                        onRefreshWeather = onRefreshWeather,
                         onClick = onExploreClick,
                     )
 

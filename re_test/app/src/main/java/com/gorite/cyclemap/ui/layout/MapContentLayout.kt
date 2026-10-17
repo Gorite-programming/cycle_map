@@ -144,6 +144,8 @@ internal fun MapContentLayout(
     context: Context,
     isVoiceMuted: Boolean = false,
     onToggleMute: () -> Unit = {},
+    weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
+    onRefreshWeather: () -> Unit = {},
 ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -344,6 +346,8 @@ internal fun MapContentLayout(
                     context = context,
                     isVoiceMuted = isVoiceMuted,
                     onToggleMute = onToggleMute,
+                    weatherUiState = weatherUiState,
+                    onRefreshWeather = onRefreshWeather,
                 )
             }
         }

@@ -23,6 +23,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,9 +68,12 @@ fun LocationSummarySheet(
     modifier: Modifier = Modifier,
     temperatureText: String = "23°C",
     aqiText: String = "AQI",
+    weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
+    onRefreshWeather: () -> Unit = {},
     onClick: () -> Unit = {},
 ) {
     val shortName = extractShortLocalityName(locationName)
+    var showWeatherDialog by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -109,34 +117,100 @@ fun LocationSummarySheet(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // 右側: 天気・気温バッジ (オレンジ太陽丸 + 気温)
+                // 右側: 天気・気温バッジ (気象庁データ連動)
+                val weatherData = when (weatherUiState) {
+                    is com.gorite.cyclemap.weather.WeatherUiState.Fresh -> weatherUiState.data
+                    is com.gorite.cyclemap.weather.WeatherUiState.Stale -> weatherUiState.data
+                    is com.gorite.cyclemap.weather.WeatherUiState.Error -> weatherUiState.cached
+                    else -> null
+                }
+                val isOffline = (weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Stale && weatherUiState.isOffline) ||
+                        weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Error
+
+                val displayTemp = if (weatherData != null) {
+                    if (weatherData.currentTemp != null) "${weatherData.currentTemp.roundToInt()}℃" else "—℃"
+                } else {
+                    temperatureText
+                }
+
+                val category = if (weatherData != null) {
+                    com.gorite.cyclemap.weather.WeatherCategory.fromCode(weatherData.weatherCode)
+                } else {
+                    com.gorite.cyclemap.weather.WeatherCategory.SUNNY
+                }
+
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     tonalElevation = 0.dp,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable {
+                        if (weatherData != null) {
+                            showWeatherDialog = true
+                        }
+                    },
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        // 太陽アイコン (オレンジ)
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFF9AB00)),
+                        val iconRes = when (category) {
+                            com.gorite.cyclemap.weather.WeatherCategory.SUNNY -> R.drawable.ic_lucide_sun
+                            com.gorite.cyclemap.weather.WeatherCategory.CLOUDY -> R.drawable.ic_lucide_cloud
+                            com.gorite.cyclemap.weather.WeatherCategory.RAINY -> R.drawable.ic_lucide_droplets
+                            com.gorite.cyclemap.weather.WeatherCategory.SNOWY -> R.drawable.ic_lucide_snowflake
+                            com.gorite.cyclemap.weather.WeatherCategory.UNKNOWN -> R.drawable.ic_lucide_cloud
+                        }
+                        val iconTint = when (category) {
+                            com.gorite.cyclemap.weather.WeatherCategory.SUNNY -> Color(0xFFF9AB00)
+                            com.gorite.cyclemap.weather.WeatherCategory.CLOUDY -> Color(0xFF78909C)
+                            com.gorite.cyclemap.weather.WeatherCategory.RAINY -> Color(0xFF1976D2)
+                            com.gorite.cyclemap.weather.WeatherCategory.SNOWY -> Color(0xFF00ACC1)
+                            com.gorite.cyclemap.weather.WeatherCategory.UNKNOWN -> MaterialTheme.colorScheme.onSurface
+                        }
+
+                        Icon(
+                            painter = painterResource(iconRes),
+                            contentDescription = weatherData?.weatherText ?: "天気",
+                            tint = if (isOffline) iconTint.copy(alpha = 0.6f) else iconTint,
+                            modifier = Modifier.size(16.dp),
                         )
                         Text(
-                            text = temperatureText,
+                            text = displayTemp,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = if (isOffline) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                         )
+                        if (weatherData?.currentPop != null) {
+                            Text(
+                                text = "${weatherData.currentPop}%",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isOffline) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+
+    if (showWeatherDialog) {
+        val dialogData = when (weatherUiState) {
+            is com.gorite.cyclemap.weather.WeatherUiState.Fresh -> weatherUiState.data
+            is com.gorite.cyclemap.weather.WeatherUiState.Stale -> weatherUiState.data
+            is com.gorite.cyclemap.weather.WeatherUiState.Error -> weatherUiState.cached
+            else -> null
+        }
+        if (dialogData != null) {
+            com.gorite.cyclemap.weather.WeatherDetailDialog(
+                data = dialogData,
+                isOffline = (weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Stale && weatherUiState.isOffline) ||
+                        weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Error,
+                onDismiss = { showWeatherDialog = false },
+                onRefresh = onRefreshWeather,
+            )
         }
     }
 }

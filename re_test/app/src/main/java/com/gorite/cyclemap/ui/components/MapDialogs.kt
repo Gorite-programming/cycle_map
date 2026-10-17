@@ -271,6 +271,12 @@ internal fun LicenseDialog(onDismiss: () -> Unit) {
                 )
 
                 Text(
+                    "■ 気象データ・天気予報\n" +
+                        "出典：気象庁ホームページ (https://www.jma.go.jp/)\n" +
+                        "気象庁利用規約 (https://www.jma.go.jp/jma/kishou/info/coment.html) に基づき利用",
+                )
+
+                Text(
                     "■ 地図ラベル用フォント\n" +
                         "Noto Sans (SIL Open Font License 1.1)\n" +
                         "https://github.com/protomaps/basemaps-assets\n" +

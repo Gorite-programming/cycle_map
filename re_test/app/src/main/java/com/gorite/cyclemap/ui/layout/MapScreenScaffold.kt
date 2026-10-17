@@ -44,6 +44,8 @@ internal fun MapScreenScaffold(
     toggleNextLayer: () -> Unit,
     startNavigation: () -> Unit,
     clearRoute: () -> Unit,
+    weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
+    onRefreshWeather: () -> Unit = {},
 ) {
     val context = state.context
     val scope = state.scope
@@ -220,6 +222,8 @@ internal fun MapScreenScaffold(
                 state.voiceGuidanceModeState.value = nextMode
                 state.viewModel.onIntent(com.gorite.cyclemap.ui.map.MapUiIntent.ToggleMute)
             },
+            weatherUiState = weatherUiState,
+            onRefreshWeather = onRefreshWeather,
         )
     }
 
