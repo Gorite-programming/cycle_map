@@ -1,23 +1,23 @@
 # AGENTS.md — CycleMap
 
-完全オフラインの自転車ナビ。3層構成: ルート直下の Python データパイプライン + `re_test/` Android Gradle プロジェクト(正系統) + `sandbox/data-tool/` 検索DB生成ツール(Python/Streamlit)。git リポジトリは `cycle_map/` ルート直下に統合済み(GitHub: Gorite-programming/cycle_map, Public)。旧コード(`application/` および `test/`)は `Archives/` 配下に完全退避・アーカイブ済み(`Archives/application/.git.bak` に旧・独立リポジトリ時代の全履歴を保存、削除禁止)。ルートの `build_search_db.py`・`osm-importer`・`japan-latest.osm.pbf` はシンボリックリンク(実体は `re_test/osm-importer/`・`data/`) — **macOS/Linux専用の機能。Windows環境ではこれらのリンクは機能しない**(下記「クロスプラットフォーム対応」参照)。
+完全オフラインの自転車ナビ。3層構成: ルート直下の Python データパイプライン + `application/` Android Gradle プロジェクト(正系統) + `sandbox/data-tool/` 検索DB生成ツール(Python/Streamlit)。git リポジトリは `cycle_map/` ルート直下に統合済み(GitHub: Gorite-programming/cycle_map, Public)。旧コード(`Archives/application/` および `Archives/test/`)は `Archives/` 配下に完全退避・アーカイブ済み(`Archives/application/.git.bak` に旧・独立リポジトリ時代の全履歴を保存、削除禁止)。ルートの `japan-latest.osm.pbf` はシンボリックリンク(実体は `data/japan-latest.osm.pbf`)。
 
 ## 構成
 
-- `re_test/` — 正系統 Gradle プロジェクト(`:app`、`:routing-core`、`:osm-importer`)。`gradlew` はすべて `re_test/` から実行する。
+- `application/` — 正系統 Gradle プロジェクト(`:app`、`:routing-core`、`:osm-importer`)。`gradlew` はすべて `application/` から実行する。
   - `app/` — Android UI(MVI/UDF設計、Compose、MapLibre 3Dベクター+osmdroid 6.1.20ハイブリッド、play-services-location)。エントリーポイントは `MainActivity.kt`。
   - `routing-core/` — 純粋 JVM ライブラリ:`RoadGraph`、`AStarRouter`、`CyclingCostModel`、mmap リーダー(`LazyMappedRouting.kt`、`MappedRouting.kt`)。**本番ルーティングは A\* のみ。`HsaRouting.kt` / `AltRouting.kt` は実験用** (詳細は `HSA_STAR_EXTERNAL_REVIEW_REQUEST.md`)。
   - `osm-importer/` — JVM CLI(`OsmImporterKt`):OSM `.pbf` → 独自バイナリ `.graph` + サイドカー `.graph.idx`。
 - `Archives/` — 過去系統アーカイブ(`Archives/application/`, `Archives/test/`)。
-- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` + `manifest.json` + `LICENSE.txt` → `packages/<name>.zip`。`sandbox/data-tool/out/` にあるOverture+国交省+OSM統合検索DBをスキーマ検証（PRAGMA integrity_check、必須列、インデックス、件数）の上で自動取り込み。`build_search_db.py` はフォールバック用（`--legacy-osm-search-db`）。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
+- ルートパイプライン:`build_prefectures.py`(中国5県:鳥取・島根・岡山・広島・山口)→県ごとに `<name>.osm.pbf` + `<name>.search.db` + `<name>.graph` / `.idx` + `manifest.json` + `LICENSE.txt` → `packages/<name>.zip`。`sandbox/data-tool/out/` にあるOverture+国交省+OSM統合検索DBをスキーマ検証（PRAGMA integrity_check、必須列、インデックス、件数）の上で自動取り込み。`build_search_db.py` はフォールバック用（`application/osm-importer/build_search_db.py`）。`boundaries/` は行政界ポリゴン(SHA-256 検証付きで自動ダウンロード)。
 - `scripts/push_data.sh` — 実機（Galaxy S21等）へのオフラインデータ一括転送・SHA-256整合性検証スクリプト（`--dry-run` 対応）。
-- `sandbox/data-tool/` — 検索DB生成ツール(Python + Streamlit)。以前は独立Gitだったが現在は `cycle_map` リポジトリに統合済み。OSM PBFを道路基盤とし、POI（コンビニ・飲食店・病院・観光施設等）は Overture Maps Foundation (Placesテーマ、CDLA-Permissive-2.0) および 国土数値情報（医療機関第3.0版・学校第2.0版、PDL1.0）を統合・重複排除（同一敷地・同一住所マージ）して高精度化するパイプライン。表記ゆれ対応（ひらがな・カタカナ・ローマ字）も実装済み。ライセンス表記・出典規定の詳細は `re_test/DISTRIBUTION_NOTES.md` およびアプリ内「地図情報・ライセンス」ダイアログを参照。**重要**: Android 標準 SQLite は多くの実機で FTS5 非対応(`no such module: fts5`)のため、検索DBは `places.search_text` 列(LIKE検索用、表示名の `name` 列とは別)も保持して互換性を確保している(アプリ側の対応は `Fts5SupportDetector.kt`)。
+- `sandbox/data-tool/` — 検索DB生成ツール(Python + Streamlit)。以前は独立Gitだったが現在は `cycle_map` リポジトリに統合済み。OSM PBFを道路基盤とし、POI（コンビニ・飲食店・病院・観光施設等）は Overture Maps Foundation (Placesテーマ、CDLA-Permissive-2.0) および 国土数値情報（医療機関第3.0版・学校第2.0版、PDL1.0）を統合・重複排除（同一敷地・同一住所マージ）して高精度化するパイプライン。表記ゆれ対応（ひらがな・カタカナ・ローマ字）も実装済み。ライセンス表記・出典規定の詳細は `application/DISTRIBUTION_NOTES.md` およびアプリ内「地図情報・ライセンス」ダイアログを参照。**重要**: Android 標準 SQLite は多くの実機で FTS5 非対応(`no such module: fts5`)のため、検索DBは `places.search_text` 列(LIKE検索用、表示名の `name` 列とは別)も保持して互換性を確保している(アプリ側の対応は `Fts5SupportDetector.kt`)。
 - 大容量データ(コミット・移動禁止):`data/japan-latest.osm.pbf`(約2.5 GB。ルート直下の `japan-latest.osm.pbf` はシンボリックリンク)、`work/` 中間生成物、`venv/`。
 
 ## コマンド
 
 ```bash
-cd re_test
+cd application
 ./gradlew :routing-core:test :osm-importer:test   # JVM ユニットテスト
 ./gradlew :app:assembleDebug                       # APK
 ./gradlew :osm-importer:installDist                # osm-importer CLI をビルド
@@ -26,7 +26,7 @@ JAVA_OPTS="-Xmx6g" osm-importer/build/install/osm-importer/bin/osm-importer --bb
 
 ```bash
 # ルートパイプライン — venv の python を必ず使うこと(system python には osmium がない):
-venv/bin/python build_search_db.py --bbox none <in.osm.pbf> <out.search.db>   # --bbox: japan|yamaguchi|none
+venv/bin/python application/osm-importer/build_search_db.py --bbox none <in.osm.pbf> <out.search.db>   # --bbox: japan|yamaguchi|none
 venv/bin/python build_prefectures.py --only Yamaguchi --keep-work             # 再ビルドは --force を追加。PATH に `osmium` CLI が必要
 ./scripts/push_data.sh --dry-run                                              # 実機データ配置計画の確認
 ./scripts/push_data.sh                                                        # 実機へデータ転送＋SHA-256検証

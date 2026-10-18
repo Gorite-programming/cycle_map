@@ -30,10 +30,10 @@ _data_pbf = Path("data/japan-latest.osm.pbf")
 SOURCE_PBF = _root_pbf if _root_pbf.is_file() else _data_pbf
 
 # OSM_IMPORTER: macOS/Linux はシェルスクリプト、Windows は .bat を選択する。
-# スクリプト直下の osm-importer/ (シンボリックリンク) と application/ 配下の実体の両方を探索する。
+# 正系統 application/osm-importer/ 配下の実体を直接探索する。
 _importer_unix_candidates = [
-    Path("osm-importer/build/install/osm-importer/bin/osm-importer"),
     Path("application/osm-importer/build/install/osm-importer/bin/osm-importer"),
+    Path("Archives/application/osm-importer/build/install/osm-importer/bin/osm-importer"),
 ]
 if os.name == "nt":
     _importer_candidates = [p.with_suffix(".bat") for p in _importer_unix_candidates]
@@ -41,10 +41,10 @@ else:
     _importer_candidates = _importer_unix_candidates
 OSM_IMPORTER = next((p for p in _importer_candidates if p.exists()), _importer_candidates[0])
 
-# BUILD_SEARCH_DB: ルート直下のシンボリックリンクではなく実体を優先（Windows対応）。
+# BUILD_SEARCH_DB: 正系統 application/osm-importer/build_search_db.py の実体を直接参照。
 _search_db_candidates = [
     Path("application/osm-importer/build_search_db.py"),
-    Path("build_search_db.py"),
+    Path("Archives/application/osm-importer/build_search_db.py"),
 ]
 BUILD_SEARCH_DB = next((p for p in _search_db_candidates if p.is_file() and p.stat().st_size > 0), _search_db_candidates[0])
 SEARCH_DB_CALLABLE = "build_search_db:build_search_db"  # module:function
