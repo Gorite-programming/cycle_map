@@ -6,12 +6,12 @@
 
 ---
 
-## 📥 最新デバッグ APK ダウンロード
-実機検証用の最新ビルド APK（3D動的POI対応版）は以下より直接ダウンロード可能です：
+## 📥 最新デバッグ APK・リリース情報
+実機検証用のビルド履歴、対応 Git ハッシュおよび SHA-256 検証ハッシュは [VERSIONS.md](VERSIONS.md) で管理されています。
 
-* 📱 **最新版 (Latest)**: [cyclemap-debug-latest.apk をダウンロード](https://github.com/Gorite-programming/cycle_map/raw/main/application/apks/cyclemap-debug-latest.apk) （[GitHub ファイル詳細画面](https://github.com/Gorite-programming/cycle_map/blob/main/application/apks/cyclemap-debug-latest.apk)）
-* 🏷️ **リリース・タグ**: [v0.5-test (α0.5-test)](https://github.com/Gorite-programming/cycle_map/releases/tag/v0.5-test)
+* 🏷️ **最新版 (Latest)**: **α0.9-unified** (Git: `8b75d0e`, APK SHA-256: `b5f455573f0d`)
 * 📋 **ビルド履歴・SHA-256検証台帳**: [VERSIONS.md](VERSIONS.md)
+* 📦 **GitHub Releases**: [Releases 一覧](https://github.com/Gorite-programming/cycle_map/releases)
 
 ---
 
@@ -22,20 +22,26 @@
 * **無制限自動リルート**: コースアウト時も 6 秒間隔で自動再探索（電波のない峠道でも安心）。
 * **超高速バイナリグラフ**: OSM 道路ネットワークを独自バイナリ（`.graph`）化し、メモリマップド I/O（mmap）によりメモリ制約の厳しい端末でも瞬時にロード。
 
-### 2. ⛰️ 実標高プロファイル & 獲得標高の可視化
-* **国土地理院 DEM10B 連携**: 標高タイルキャッシュを解析し、ルート全線のリアルな標高グラフおよび獲得標高（登坂高度）をリアルタイム表示。
+### 2. 🗺️ MapLibre 3Dベクター地図 & 日夜自動切替
+* **MapLibre Native 3D + PMTiles**: ベクタータイルによる滑らかな描画、3D建築物表示、カテゴリ別POIピン。
+* **日夜自動切替**: 日の出・日の入り時刻およびシステム設定に連動し、昼間・夜間スタイルを自動切替。
+* **省電力ポリシー**: 画面停止時や待機時の描画フレームレート制御、2D/3D動的フォールバック。
 
-### 3. 🔍 高精度オフライン POI（施設）検索
+### 3. 🌤️ 気象庁（JMA）リアルタイム天気連携
+* **アメダス観測連動**: ルート周辺の降水量、風速・風向、気温をリアルタイムに取得し、ナビHUDおよび地図上に直感表示。
+
+### 4. 🔍 高精度オフライン POI（施設）検索
 * **複数ソースの統合 & 重複排除**: Overture Maps Foundation、国土交通省（国土数値情報: 病院・学校）、OpenStreetMap を統合。
 * **表記ゆれ吸収**: ひらがな・カタカナ・ローマ字（例:「ローソン」「ろーそん」「rooson」）のあいまい検索に対応。
-* **現在地連動**: 近い順ソート、主要施設（コンビニ・駅・サイクルショップ・給水スポット・医療）の優先表示。
+* **検索ランキング**: カテゴリ重み＋距離スコアによる高精度ソート。
 
-### 4. 🧭 サイクリスト向け UI & 追従モード
+### 5. 🧭 Google Maps 準拠の洗練された UI/UX
+* **MVI / UDF アーキテクチャ**: Jetpack Compose による堅牢な単方向データフロー。
+* **0pxズレ解消検索カプセル**: 検索バータップ時の枠位置・サイズ完全一致アニメーション、全画面検索オーバーレイ、推薦サジェスト。
 * **5km/h 速度連動ヘディングアップ**: 走行中（時速 5km/h 以上）は地磁気コンパスの揺れを無視し、GPS の進行方向ベクトルに滑らかに追従。
 * **フルスクリーン HUD**: 走行中に画面を広く使える大画面ナビゲーション表示。
-* **Google Maps 風スポットカード**: アイコンの衝突回避（間引き表示）と、下部シートによるスポット詳細・お気に入り（星マーク）登録。
 
-### 5. 🔋 徹底した省電力設計 & 動的県切替
+### 6. 🔋 徹底した省電力設計 & 動的県切替
 * **バッテリー最適化**: 待機時・バックグラウンド時の描画ループ停止と GPS サンプリング抑制により長時間ライドに対応。
 * **動的エリア切替**: GPS 位置情報から現在県を自動判定し、対応するルーティンググラフと検索 DB をシームレスに自動切替。
 
@@ -51,7 +57,7 @@ cycle_map/
 │   └── scripts/push_data.sh       # 実機(Android)へのADB一括転送・SHA-256検証
 │
 ├── 2. Android アプリ & コアルーティングエンジン (Gradle: application/)
-│   ├── :app                       # Android UI (Jetpack Compose + osmdroid 6.1.20)
+│   ├── :app                       # Android UI (MVI/UDF設計、MapLibre 3Dベクター + PMTiles、osmdroidフォールバック)
 │   ├── :routing-core              # 純粋JVM: A* アルゴリズム、自転車専用コストモデル、mmap読み込み
 │   └── :osm-importer              # JVM CLI: OSM PBF → 独自バイナリ(.graph, .graph.idx)変換
 │
@@ -126,4 +132,5 @@ cd application
 
 * [VERSIONS.md](VERSIONS.md) — リリース履歴および APK ビルド台帳
 * [AGENTS.md](AGENTS.md) — AI エージェント開発体制・SBC ビルド環境・Git 運用ポリシー
-* [application/README_DATA.md](application/README_DATA.md) — 外部データセットの詳細仕様・ダウンロード手順
+* [application/DISTRIBUTION_NOTES.md](application/DISTRIBUTION_NOTES.md) — ライセンス・出典規定および外部データセット仕様
+* [Archives/application/README_DATA.md](Archives/application/README_DATA.md) — （参考・旧系統）データセット詳細仕様
