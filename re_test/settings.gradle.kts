@@ -25,6 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "CycleMap"
 include(":app")
 include(":routing-core")
-project(":routing-core").projectDir = file("../application/routing-core")
 include(":osm-importer")
-project(":osm-importer").projectDir = file("../application/osm-importer")

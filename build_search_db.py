@@ -1,1 +1,1 @@
-application/osm-importer/build_search_db.py
+re_test/osm-importer/build_search_db.py

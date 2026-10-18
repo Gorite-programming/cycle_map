@@ -24,6 +24,7 @@ scratch/
 *.iml
 .vscode/
 .agents/
+bin/
 
 # Android / Gradle
 application/.git.bak
@@ -34,8 +35,23 @@ application/local.properties
 application/.externalNativeBuild/
 application/.cxx/
 application/captures/
+Archives/**/.git.bak
+Archives/**/.gradle/
+Archives/**/build/
+Archives/**/local.properties
+Archives/**/vector_test/
+Archives/**/apks/
+Archives/**/*.apk
 *.git.bak
 sandbox/data-tool/*.dmg
+
+# re_test (Active Main Project)
+re_test/**/build/
+re_test/.gradle/
+re_test/local.properties
+re_test/.cxx/
+re_test/.externalNativeBuild/
+re_test/captures/
 
 # APKs (only application/apks/ is tracked)
 *.apk
