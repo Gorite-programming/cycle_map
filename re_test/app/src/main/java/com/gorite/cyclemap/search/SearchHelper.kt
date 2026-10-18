@@ -366,9 +366,10 @@ internal fun searchPlaces(
                 val remaining = if (ftsSucceeded) limit - results.size else limit
                 val hasSearchText = hasSearchTextColumn(db)
                 val targetColumn = if (hasSearchText) "search_text" else "name"
+                val likeQuery = if (hasSearchText) SearchNormalizer.normalize(trimmed) else trimmed
 
                 // FTS5非対応時は複数単語をANDで繋ぎ、各単語の中間一致 (%word%) で検索する。
-                val (textWhereClause, textArgs) = buildLikeTextConditions(trimmed, targetColumn)
+                val (textWhereClause, textArgs) = buildLikeTextConditions(likeQuery, targetColumn)
 
                 db.rawQuery(
                     """
@@ -418,7 +419,8 @@ internal fun searchPlaces(
                 }
                 val hasSearchText = hasSearchTextColumn(db)
                 val targetColumn = if (hasSearchText) "search_text" else "name"
-                val (stTextWhereClause, stTextArgs) = buildLikeTextConditions(stationBase, targetColumn)
+                val stLikeQuery = if (hasSearchText) SearchNormalizer.normalize(stationBase) else stationBase
+                val (stTextWhereClause, stTextArgs) = buildLikeTextConditions(stLikeQuery, targetColumn)
                 db.rawQuery(
                     """
                     SELECT name, category, lat, lon

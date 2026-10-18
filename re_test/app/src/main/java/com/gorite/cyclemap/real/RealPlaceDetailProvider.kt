@@ -62,15 +62,21 @@ class RealPlaceDetailProvider(
                 db.rawQuery(query, arrayOf(placeId)).use { cursor ->
                     if (!cursor.moveToNext()) return@withContext null
 
-                    val id = cursor.getString(cursor.getColumnIndexOrThrow("id"))
-                    val name = cursor.getString(cursor.getColumnIndexOrThrow("name"))
-                    val category = cursor.getString(cursor.getColumnIndexOrThrow("category"))
+                    fun colString(colName: String): String? {
+                        val idx = cursor.getColumnIndex(colName)
+                        if (idx < 0 || cursor.isNull(idx)) return null
+                        return cursor.getString(idx)
+                    }
+
+                    val id = colString("id") ?: placeId
+                    val name = colString("name") ?: placeId
+                    val category = colString("category") ?: "spot"
                     val lat = cursor.getDouble(cursor.getColumnIndexOrThrow("lat"))
                     val lon = cursor.getDouble(cursor.getColumnIndexOrThrow("lon"))
-                    val address = cursor.getString(cursor.getColumnIndexOrThrow("address")).ifBlank { "周辺エリア" }
-                    val openingHoursText = cursor.getString(cursor.getColumnIndexOrThrow("opening_hours"))
-                    val phone = cursor.getString(cursor.getColumnIndexOrThrow("phone"))
-                    val website = cursor.getString(cursor.getColumnIndexOrThrow("website"))
+                    val address = colString("address")?.takeIf { it.isNotBlank() } ?: "周辺エリア"
+                    val openingHoursText = colString("opening_hours")?.takeIf { it.isNotBlank() }
+                    val phone = colString("phone")?.takeIf { it.isNotBlank() }
+                    val website = colString("website")?.takeIf { it.isNotBlank() }
 
                     val businessStatus = evaluateBusinessStatus(openingHoursText)
 
@@ -89,7 +95,7 @@ class RealPlaceDetailProvider(
                     )
                 }
             }
-        } catch (_: SQLiteException) {
+        } catch (_: Exception) {
             null
         }
     }

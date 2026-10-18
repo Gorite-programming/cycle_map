@@ -149,11 +149,17 @@ internal fun MapSearchEffects(
         view.overlays.removeAll { it is Marker && it.title == "SELECTED_POI_HIGHLIGHT" }
         val spot = selectedPoiSpot
         if (spot != null) {
+            val cat = com.gorite.cyclemap.ui.cycling.PoiCategory.forCategory(spot.category)
             val marker = Marker(view).apply {
                 title = "SELECTED_POI_HIGHLIGHT"
                 position = GeoPoint(spot.latitude, spot.longitude)
-                icon = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_lucide_map_pin)?.mutate()?.apply {
-                    setTint(android.graphics.Color.parseColor("#E91E63"))
+                icon = if (cat != null) {
+                    com.gorite.cyclemap.utils.googlePoiMarker(context, cat, "", showLabel = false).drawable
+                } else {
+                    android.graphics.drawable.BitmapDrawable(
+                        context.resources,
+                        com.gorite.cyclemap.ui.mapview.createGoogleSolidPinBitmap(context),
+                    )
                 }
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 infoWindow = null

@@ -70,3 +70,4 @@ sandbox/vector_test/pipeline/data/
 sandbox/vector_test/pipeline/node_modules/
 sandbox/vector_test/data/
 
+.mcp.json

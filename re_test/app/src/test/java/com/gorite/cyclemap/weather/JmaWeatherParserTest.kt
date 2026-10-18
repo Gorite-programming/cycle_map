@@ -135,4 +135,12 @@ class JmaWeatherParserTest {
         val result = JmaWeatherParser.parse("invalid json string", sampleResolvedArea)
         assertNull(result)
     }
+
+    @Test
+    fun parse_emptyFirstTemperatureSlot_picksSecondValidSlot() {
+        val jsonAfternoon = sampleJson.replace("\"temps\": [\"14\", \"23\"]", "\"temps\": [\"\", \"23\"]")
+        val result = JmaWeatherParser.parse(jsonAfternoon, sampleResolvedArea)
+        assertNotNull(result)
+        assertEquals(23.0, result?.currentTemp)
+    }
 }

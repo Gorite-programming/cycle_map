@@ -9,7 +9,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * 天気データの取得、ローカルキャッシュ、UI状態管理を統括するリポジトリ。
@@ -22,12 +28,25 @@ class WeatherRepository(
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val gson = Gson()
+    private val fetchMutex = Mutex()
 
     private val _uiState = MutableStateFlow<WeatherUiState>(WeatherUiState.Loading)
     val uiState: StateFlow<WeatherUiState> = _uiState.asStateFlow()
 
     @Volatile
     private var currentArea: ResolvedArea? = null
+
+    @Volatile
+    private var lastLat: Double = Double.NaN
+
+    @Volatile
+    private var lastLon: Double = Double.NaN
+
+    @Volatile
+    private var lastCityHint: String? = null
+
+    @Volatile
+    private var lastOnline: Boolean? = null
 
     init {
         // 保存済みの最新キャッシュがあれば初期状態として即時復元
@@ -52,9 +71,34 @@ class WeatherRepository(
      * 座標が更新された際に呼び出し、地域コードを特定して天気情報を取得・更新する。
      */
     fun updateLocation(latitude: Double, longitude: Double, cityHint: String? = null, isOnline: Boolean) {
+        val normalizedHint = cityHint?.trim()?.takeIf { it.isNotEmpty() }
+        val prevLat = lastLat
+        val prevLon = lastLon
+        if (currentArea != null &&
+            !prevLat.isNaN() &&
+            !prevLon.isNaN() &&
+            normalizedHint == lastCityHint &&
+            isOnline == lastOnline &&
+            distanceMeters(prevLat, prevLon, latitude, longitude) < LOCATION_DEBOUNCE_METERS
+        ) {
+            val state = _uiState.value
+            if (state is WeatherUiState.Fresh && state.data.isFresh()) {
+                return
+            }
+            if (!isOnline && state is WeatherUiState.Stale) {
+                return
+            }
+        }
+
+        lastLat = latitude
+        lastLon = longitude
+        lastCityHint = normalizedHint
+        lastOnline = isOnline
+
         coroutineScope.launch {
             val resolved = withContext(Dispatchers.IO) {
-                JmaAreaResolver.resolveLocation(context, latitude, longitude, cityHint)
+                val prefecture = com.gorite.cyclemap.data.findPrefectureName(latitude, longitude)
+                if (prefecture != null) areaResolver.resolve(prefecture, normalizedHint) else null
             }
             if (resolved == null) {
                 if (_uiState.value is WeatherUiState.Loading) {
@@ -71,7 +115,7 @@ class WeatherRepository(
             if (areaChanged) {
                 // 新しい地域のキャッシュを確認
                 val localCached = loadCachedForOffice(resolved.officeCode)
-                if (localCached != null) {
+                if (localCached != null && localCached.class10Code == resolved.class10Code) {
                     if (localCached.isFresh()) {
                         _uiState.value = WeatherUiState.Fresh(localCached)
                         if (!isOnline) return@launch
@@ -125,7 +169,15 @@ class WeatherRepository(
         }
     }
 
-    private suspend fun fetchForecast(area: ResolvedArea) {
+    private suspend fun fetchForecast(area: ResolvedArea) = fetchMutex.withLock {
+        val existing = _uiState.value
+        if (existing is WeatherUiState.Fresh &&
+            existing.data.officeCode == area.officeCode &&
+            existing.data.class10Code == area.class10Code &&
+            existing.data.isFresh()
+        ) {
+            return@withLock
+        }
         val result = client.fetchForecastJson(area.officeCode)
         result.onSuccess { jsonStr ->
             val parsed = JmaWeatherParser.parse(jsonStr, area)
@@ -171,6 +223,17 @@ class WeatherRepository(
         private const val PREFS_NAME = "jma_weather_cache"
         private const val KEY_LAST_DATA = "last_forecast_data"
         private const val KEY_OFFICE_PREFIX = "office_"
+        private const val LOCATION_DEBOUNCE_METERS = 1000.0
+
+        internal fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+            val r = 6371000.0
+            val dLat = Math.toRadians(lat2 - lat1)
+            val dLon = Math.toRadians(lon2 - lon1)
+            val a = sin(dLat / 2) * sin(dLat / 2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2) * sin(dLon / 2)
+            return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+        }
 
         @Volatile
         private var instance: WeatherRepository? = null

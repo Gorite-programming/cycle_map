@@ -43,6 +43,10 @@ class LazyMappedRoadGraph private constructor(
     var lastExpandedNodes: Int = 0
         private set
 
+    private val spatialGrid: SpatialGridIndex? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        if (nodeCount >= 64) SpatialGridIndex(latitudes, longitudes) else null
+    }
+
     fun nodeAt(index: Int): GraphNode {
         require(index in nodeIds.indices) { "Unknown node index: $index" }
         return GraphNode(nodeIds[index], latitudes[index], longitudes[index])
@@ -55,6 +59,16 @@ class LazyMappedRoadGraph private constructor(
     }
 
     fun nearestNodeIndex(latitude: Double, longitude: Double): Int {
+        if (nodeCount == 0) return -1
+        val grid = spatialGrid
+        if (grid != null) {
+            val found = grid.findNearest(latitude, longitude, latitudes, longitudes)
+            if (found >= 0) return found
+        }
+        return nearestNodeIndexLinear(latitude, longitude)
+    }
+
+    internal fun nearestNodeIndexLinear(latitude: Double, longitude: Double): Int {
         if (nodeCount == 0) return -1
         // 2パス探索: haversineは三角関数4回で重いため、1パス目で安価な
         // 等距円筒近似の最良点を求め、2パス目では近似距離が暫定最良を
@@ -97,7 +111,12 @@ class LazyMappedRoadGraph private constructor(
      * 案内生成用の読み取り専用ビュー (①基本経路指示)。
      * ルーティング探索には一切影響しない。呼び出し側で graphLock.read 保持下で使うこと。
      */
-    data class JunctionBranch(val targetIndex: Int, val roadTypeName: String, val distanceMeters: Double)
+    data class JunctionBranch(
+        val targetIndex: Int,
+        val roadTypeName: String,
+        val distanceMeters: Double,
+        val gradePercent: Float = Float.NaN,
+    )
 
     fun outgoingBranchCount(index: Int): Int {
         require(index in nodeIds.indices) { "Unknown node index: $index" }
@@ -114,7 +133,7 @@ class LazyMappedRoadGraph private constructor(
             position = record.nextOffset
             val target = edgeTargets[ordinal]
             if (target >= 0) {
-                result += JunctionBranch(target, record.typeName, record.distance)
+                result += JunctionBranch(target, record.typeName, record.distance, record.grade)
             }
             ordinal++
         }
@@ -131,6 +150,7 @@ class LazyMappedRoadGraph private constructor(
         isCancelled: (() -> Boolean)? = null,
         maxExpandedNodes: Int = Int.MAX_VALUE,
         preference: RoutePreference = RoutePreference.RECOMMENDED,
+        costMode: RouteCostMode = RouteCostMode.BICYCLE,
     ): MappedRouteResult {
         require(start in nodeIds.indices && goal in nodeIds.indices) { "Unknown node index" }
         require(heuristicMultiplier >= 1.0) { "heuristicMultiplier must be at least 1.0" }
@@ -188,13 +208,14 @@ class LazyMappedRoadGraph private constructor(
             repeat(edgeCounts[current]) {
                 val record = readEdge(position)
                 position = record.nextOffset
-                val multiplier = multiplier(record.type)
+                val multiplier = multiplier(record.type, costMode)
                 val target = edgeTargets[ordinal]
                 if (multiplier != null && (!arterialOnly || isArterial(record.type) || current == start || target == goal)) {
                     if (target >= 0 && (target == goal || bounds == null ||
                         bounds.contains(latitudes[target], longitudes[target]))) {
                         val arterialBias = if (isArterial(record.type)) arterialPenaltyMultiplier else 1.0
-                        val combinedMultiplier = (multiplier * gradePenalty(record.grade, preference) * arterialBias).coerceAtLeast(0.90)
+                        val gradePen = if (costMode == RouteCostMode.CAR) 1.0 else gradePenalty(record.grade, preference)
+                        val combinedMultiplier = (multiplier * gradePen * arterialBias).coerceAtLeast(0.90)
                         val stepCost = record.distance * combinedMultiplier
                         val newCost = cost.getValue(current) + stepCost
                         if (newCost < cost.getOrDefault(target, Double.POSITIVE_INFINITY)) {
@@ -278,11 +299,26 @@ class LazyMappedRoadGraph private constructor(
         }
     }
 
-    private fun multiplier(type: Int): Double? = when (type) {
-        TYPE_MOTORWAY, TYPE_MOTORWAY_LINK -> null
-        TYPE_PRIMARY -> 0.90; TYPE_SECONDARY -> 0.95; TYPE_TERTIARY -> 1.00
-        TYPE_RESIDENTIAL -> 1.20; TYPE_UNCLASSIFIED -> 1.25; TYPE_SERVICE -> 1.35
-        TYPE_TRACK -> 1.60; TYPE_PATH -> 1.80; else -> 1.15
+    private fun multiplier(type: Int, costMode: RouteCostMode = RouteCostMode.BICYCLE): Double? = when (costMode) {
+        RouteCostMode.BICYCLE -> when (type) {
+            TYPE_MOTORWAY, TYPE_MOTORWAY_LINK -> null
+            TYPE_PRIMARY -> 0.90; TYPE_SECONDARY -> 0.95; TYPE_TERTIARY -> 1.00
+            TYPE_RESIDENTIAL -> 1.20; TYPE_UNCLASSIFIED -> 1.25; TYPE_SERVICE -> 1.35
+            TYPE_TRACK -> 1.60; TYPE_PATH -> 1.80; else -> 1.15
+        }
+        RouteCostMode.WALK -> when (type) {
+            TYPE_MOTORWAY, TYPE_MOTORWAY_LINK -> null
+            TYPE_PATH -> 0.90; TYPE_RESIDENTIAL -> 0.95; TYPE_SERVICE -> 1.00
+            TYPE_UNCLASSIFIED -> 1.05; TYPE_TERTIARY -> 1.10; TYPE_SECONDARY -> 1.20
+            TYPE_PRIMARY -> 1.30; TYPE_TRACK -> 1.10; else -> 1.00
+        }
+        RouteCostMode.CAR -> when (type) {
+            TYPE_PATH, TYPE_TRACK -> null
+            TYPE_MOTORWAY, TYPE_MOTORWAY_LINK, TYPE_PRIMARY -> 0.90
+            TYPE_SECONDARY -> 0.95; TYPE_TERTIARY -> 1.05
+            TYPE_UNCLASSIFIED -> 1.25; TYPE_RESIDENTIAL -> 1.35; TYPE_SERVICE -> 1.50
+            else -> 1.20
+        }
     }
 
     private fun isArterial(type: Int): Boolean =
@@ -353,9 +389,143 @@ class LazyMappedRoadGraph private constructor(
     }
 }
 
+/** ルート探索の移動手段モード (A* ヒューリスティック下限 0.90 を維持)。 */
+enum class RouteCostMode {
+    BICYCLE,
+    WALK,
+    CAR,
+}
+
 /** ルート探索の優先方針 (平坦優先・坂道優先など)。 */
 enum class RoutePreference(val label: String) {
     RECOMMENDED("おすすめ"),
     FLAT("平坦優先"),
     HILL_CLIMB("坂道優先"),
 }
+
+/**
+ * プリミティブ配列ベースの軽量2次元空間グリッドインデックス。
+ * 全走査と100%同一の最近傍ノード結果を保証しつつ、探索対象セルを絞り込む。
+ */
+internal class SpatialGridIndex(
+    latitudes: DoubleArray,
+    longitudes: DoubleArray,
+) {
+    private val minLat: Double
+    private val maxLat: Double
+    private val minLon: Double
+    private val maxLon: Double
+    private val latSpan: Double
+    private val lonSpan: Double
+    private val cellHead = IntArray(GRID_DIM * GRID_DIM) { -1 }
+    private val nextNode = IntArray(latitudes.size) { -1 }
+
+    init {
+        var mnLat = Double.POSITIVE_INFINITY
+        var mxLat = Double.NEGATIVE_INFINITY
+        var mnLon = Double.POSITIVE_INFINITY
+        var mxLon = Double.NEGATIVE_INFINITY
+        for (i in latitudes.indices) {
+            val lat = latitudes[i]
+            val lon = longitudes[i]
+            if (lat < mnLat) mnLat = lat
+            if (lat > mxLat) mxLat = lat
+            if (lon < mnLon) mnLon = lon
+            if (lon > mxLon) mxLon = lon
+        }
+        minLat = mnLat
+        maxLat = mxLat
+        minLon = mnLon
+        maxLon = mxLon
+        latSpan = (maxLat - minLat).coerceAtLeast(1e-6)
+        lonSpan = (maxLon - minLon).coerceAtLeast(1e-6)
+
+        for (i in latitudes.indices) {
+            val gy = toGridY(latitudes[i])
+            val gx = toGridX(longitudes[i])
+            val cell = gy * GRID_DIM + gx
+            nextNode[i] = cellHead[cell]
+            cellHead[cell] = i
+        }
+    }
+
+    private fun toGridY(lat: Double): Int =
+        (((lat - minLat) / latSpan) * (GRID_DIM - 1)).toInt().coerceIn(0, GRID_DIM - 1)
+
+    private fun toGridX(lon: Double): Int =
+        (((lon - minLon) / lonSpan) * (GRID_DIM - 1)).toInt().coerceIn(0, GRID_DIM - 1)
+
+    fun findNearest(
+        latitude: Double,
+        longitude: Double,
+        latitudes: DoubleArray,
+        longitudes: DoubleArray,
+    ): Int {
+        val centerGy = toGridY(latitude)
+        val centerGx = toGridX(longitude)
+        var bestNode = -1
+        var bestDist = Double.POSITIVE_INFINITY
+
+        // 1. 中心セルから同心リング状に広げて初期候補点 (seed) を取得
+        for (radius in 0..16) {
+            val rMinY = (centerGy - radius).coerceAtLeast(0)
+            val rMaxY = (centerGy + radius).coerceAtMost(GRID_DIM - 1)
+            val rMinX = (centerGx - radius).coerceAtLeast(0)
+            val rMaxX = (centerGx + radius).coerceAtMost(GRID_DIM - 1)
+            for (gy in rMinY..rMaxY) {
+                for (gx in rMinX..rMaxX) {
+                    if (radius > 0 && gy > centerGy - radius && gy < centerGy + radius &&
+                        gx > centerGx - radius && gx < centerGx + radius
+                    ) {
+                        continue
+                    }
+                    var idx = cellHead[gy * GRID_DIM + gx]
+                    while (idx >= 0) {
+                        val d = haversineMeters(latitude, longitude, latitudes[idx], longitudes[idx])
+                        if (d < bestDist) {
+                            bestDist = d
+                            bestNode = idx
+                        }
+                        idx = nextNode[idx]
+                    }
+                }
+            }
+            if (bestNode >= 0) break
+        }
+        if (bestNode < 0) return -1
+
+        // 2. 暫定最短距離 bestDist (m) を包含する厳密な緯度経度バウンディングボックスを算出
+        val latDelta = (bestDist * 1.02) / 110_000.0
+        val maxAbsLat = maxOf(abs(latitude - latDelta), abs(latitude + latDelta)).coerceAtMost(89.0)
+        val lonDelta = (bestDist * 1.02) / (110_000.0 * cos(Math.toRadians(maxAbsLat)).coerceAtLeast(0.05))
+
+        val minGy = (toGridY(latitude - latDelta) - 1).coerceAtLeast(0)
+        val maxGy = (toGridY(latitude + latDelta) + 1).coerceAtMost(GRID_DIM - 1)
+        val minGx = (toGridX(longitude - lonDelta) - 1).coerceAtLeast(0)
+        val maxGx = (toGridX(longitude + lonDelta) + 1).coerceAtMost(GRID_DIM - 1)
+
+        if ((maxGy - minGy + 1) * (maxGx - minGx + 1) > 4096) {
+            return -1
+        }
+
+        for (gy in minGy..maxGy) {
+            for (gx in minGx..maxGx) {
+                var idx = cellHead[gy * GRID_DIM + gx]
+                while (idx >= 0) {
+                    val d = haversineMeters(latitude, longitude, latitudes[idx], longitudes[idx])
+                    if (d < bestDist) {
+                        bestDist = d
+                        bestNode = idx
+                    }
+                    idx = nextNode[idx]
+                }
+            }
+        }
+        return bestNode
+    }
+
+    companion object {
+        private const val GRID_DIM = 128
+    }
+}
+

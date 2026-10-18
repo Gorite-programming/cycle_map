@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -67,25 +70,66 @@ fun ThreeStageBottomSheet(
         animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
         label = "sheetHeight"
     )
+    var dragAccumulated by remember { mutableFloatStateOf(0f) }
+
+    val sizeModifier = when (anchor) {
+        BottomSheetAnchor.Half -> Modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .heightIn(max = animatedHeight)
+        else -> Modifier
+            .fillMaxWidth()
+            .height(animatedHeight)
+    }
 
     Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .height(animatedHeight),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+            .then(sizeModifier)
+            .draggable(
+                orientation = Orientation.Vertical,
+                state = rememberDraggableState { delta ->
+                    dragAccumulated += delta
+                },
+                onDragStopped = {
+                    when {
+                        dragAccumulated < -60f -> {
+                            when (anchor) {
+                                BottomSheetAnchor.Peek -> onAnchorChange(BottomSheetAnchor.Half)
+                                BottomSheetAnchor.Half -> onAnchorChange(BottomSheetAnchor.Full)
+                                BottomSheetAnchor.Full -> Unit
+                            }
+                        }
+                        dragAccumulated > 60f -> {
+                            when (anchor) {
+                                BottomSheetAnchor.Full -> onAnchorChange(BottomSheetAnchor.Half)
+                                BottomSheetAnchor.Half -> onAnchorChange(BottomSheetAnchor.Peek)
+                                BottomSheetAnchor.Peek -> Unit
+                            }
+                        }
+                    }
+                    dragAccumulated = 0f
+                },
+            ),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 12.dp
+        tonalElevation = 3.dp,
+        shadowElevation = 16.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+        ),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             // ドラッグハンドル
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                    .padding(top = 4.dp, bottom = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Box(

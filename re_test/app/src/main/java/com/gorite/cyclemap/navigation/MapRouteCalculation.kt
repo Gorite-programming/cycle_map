@@ -55,7 +55,7 @@ internal class RouteExecutionContext(
     val onReroutingChanged: (Boolean) -> Unit,
     val onWarningMessageChanged: (String?) -> Unit,
     val onRouteCalculated: (
-        overlay: Polyline,
+        overlay: Polyline?,
         route: List<RoutePoint>,
         maneuvers: List<Maneuver>,
         instructions: List<RouteInstruction>,
@@ -177,16 +177,6 @@ internal fun executeRouteCalculation(
         try {
             if (routeJob.isCancelled()) return@launch
 
-            // RealRoutePlanner により推奨ルートおよび裏道ルート (RouteOption) を算出
-            val planner = com.gorite.cyclemap.real.RealRoutePlanner(graphProvider = { jobGraph })
-            val routeOptions = planner.planRoutes(
-                startLat = start.latitude,
-                startLon = start.longitude,
-                destLat = goal.latitude,
-                destLon = goal.longitude,
-                travelMode = com.gorite.cyclemap.contract.TravelModeType.Bicycle
-            )
-
             val stops = ArrayList<GeoPoint>().apply {
                 add(start)
                 addAll(currentWaypoints)
@@ -198,6 +188,8 @@ internal fun executeRouteCalculation(
             var totalCostVal = 0.0
             var isAllReachable = true
             var isAnyTruncated = false
+            var firstStartIndex = -1
+            var lastGoalIndex = -1
 
             val pref = preferenceOverride ?: env.getRoutePreference()
             for (i in 0 until stops.size - 1) {
@@ -209,6 +201,8 @@ internal fun executeRouteCalculation(
                     val startIndex = graph.nearestNodeIndex(legStart.latitude, legStart.longitude)
                     if (routeJob.isCancelled()) return@launch
                     val goalIndex = graph.nearestNodeIndex(legGoal.latitude, legGoal.longitude)
+                    if (i == 0) firstStartIndex = startIndex
+                    if (i == stops.size - 2) lastGoalIndex = goalIndex
                     Log.i(
                         "CycleMapRoute",
                         "ROUTE_SNAP leg=$i startNode=$startIndex goalNode=$goalIndex pref=$pref",
@@ -245,15 +239,36 @@ internal fun executeRouteCalculation(
             }
 
             val result = com.gorite.cyclemap.routing.MappedRouteResult(
-                nodeIds = allNodeIds,
+                nodeIds = if (isAllReachable) allNodeIds else emptyList(),
                 totalDistanceMeters = totalDist,
                 totalCost = totalCostVal,
-                coordinates = allCoordinates,
+                coordinates = if (isAllReachable) allCoordinates else emptyList(),
                 wasCancelled = false,
                 wasTruncated = isAnyTruncated,
             )
             if (routeJob.isCancelled()) return@launch
             if (result.wasCancelled) return@launch
+
+            val routeOptions = if (!isReroute && result.isReachable) {
+                env.graphLock.read {
+                    if (routeJob.isCancelled()) emptyList()
+                    else {
+                        val planner = com.gorite.cyclemap.real.RealRoutePlanner(graphProvider = { jobGraph })
+                        planner.buildOptionsFromPrimary(
+                            lazyGraph = jobGraph,
+                            startIndex = if (currentWaypoints.isEmpty()) firstStartIndex else -1,
+                            goalIndex = if (currentWaypoints.isEmpty()) lastGoalIndex else -1,
+                            primaryResult = result,
+                            travelMode = com.gorite.cyclemap.contract.TravelModeType.Bicycle,
+                            isCancelled = { routeJob.isCancelled() },
+                            maxExpandedNodes = ROUTE_MAX_EXPANDED_NODES,
+                        )
+                    }
+                }
+            } else {
+                emptyList()
+            }
+
             Log.i(
                 "CycleMapRoute",
                 "ROUTE_RESULT success=${result.isReachable} truncated=${result.wasTruncated} " +
@@ -301,15 +316,10 @@ internal fun executeRouteCalculation(
                     return@runOnUiThread
                 }
                 val activity = env.context as? ComponentActivity
-                val view = env.getMapView()
-                if (activity?.isFinishing == true || activity?.isDestroyed == true ||
-                    view == null || !view.isAttachedToWindow
-                ) {
+                if (activity?.isFinishing == true || activity?.isDestroyed == true) {
                     Log.e(
                         "CycleMapRoute",
-                        "ROUTE_FAILURE reason=view-not-ready finishing=${activity?.isFinishing} " +
-                            "destroyed=${activity?.isDestroyed} viewNull=${view == null} " +
-                            "attached=${view?.isAttachedToWindow}",
+                        "ROUTE_FAILURE reason=activity-not-ready finishing=${activity?.isFinishing} destroyed=${activity?.isDestroyed}",
                     )
                     env.onCalculatingRouteChanged(false)
                     env.onReroutingChanged(false)
@@ -320,17 +330,24 @@ internal fun executeRouteCalculation(
                 env.onReroutingChanged(false)
                 env.onWarningMessageChanged(null)
                 env.routeJobRef.compareAndSet(routeJob, null)
-                env.getRouteOverlay()?.let { view.overlays?.remove(it) }
-                val polyline = Polyline(view).apply {
-                    setPoints(result.coordinates.map { (lat, lon) -> GeoPoint(lat, lon) })
-                    outlinePaint.color = android.graphics.Color.parseColor("#EC407A")
-                    outlinePaint.strokeWidth = 24f
-                    outlinePaint.strokeJoin = Paint.Join.ROUND
-                    outlinePaint.strokeCap = Paint.Cap.ROUND
-                    outlinePaint.isAntiAlias = true
+
+                val view = env.getMapView()
+                val polyline: Polyline? = if (view != null && view.isAttachedToWindow) {
+                    env.getRouteOverlay()?.let { view.overlays?.remove(it) }
+                    Polyline(view).apply {
+                        setPoints(result.coordinates.map { (lat, lon) -> GeoPoint(lat, lon) })
+                        outlinePaint.color = android.graphics.Color.parseColor("#EC407A")
+                        outlinePaint.strokeWidth = 24f
+                        outlinePaint.strokeJoin = Paint.Join.ROUND
+                        outlinePaint.strokeCap = Paint.Cap.ROUND
+                        outlinePaint.isAntiAlias = true
+                    }.also {
+                        view.overlays.add(it)
+                        view.invalidate()
+                    }
+                } else {
+                    null
                 }
-                view.overlays.add(polyline)
-                view.invalidate()
 
                 val navigationRoute = result.coordinates.map { (lat, lon) -> RoutePoint(lat, lon) }
                 val navigationManeuvers = extractManeuvers(navigationRoute)
@@ -353,9 +370,6 @@ internal fun executeRouteCalculation(
                         "instructionCount=${richInstructions.size} maneuverCount=${navigationManeuvers.size} " +
                         "routeDisplayed=true",
                 )
-                env.onCalculatingRouteChanged(false)
-                env.onReroutingChanged(false)
-                env.routeJobRef.compareAndSet(routeJob, null)
             }
         } catch (t: Throwable) {
             if (routeJob.isCancelled()) return@launch

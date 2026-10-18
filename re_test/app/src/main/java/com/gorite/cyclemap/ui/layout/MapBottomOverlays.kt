@@ -122,7 +122,7 @@ internal fun BoxScope.MapBottomOverlays(
                 .zIndex(2f),
         )
     } else if (routeSummary != null) {
-        // ルート案内前プレビューモード (白背景・Google スタイル SCR-10)
+        // ルート案内前プレビューモード (テーマ追従 SCR-10)
         Card(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -130,7 +130,7 @@ internal fun BoxScope.MapBottomOverlays(
                 .padding(top = 12.dp, bottom = systemInsets.calculateBottomPadding())
                 .zIndex(2f),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         ) {
             Column(
@@ -144,7 +144,7 @@ internal fun BoxScope.MapBottomOverlays(
                         .align(Alignment.CenterHorizontally)
                         .width(36.dp)
                         .height(4.dp)
-                        .background(Color(0xFFDADCE0), RoundedCornerShape(2.dp)),
+                        .background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)),
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -235,7 +235,7 @@ internal fun BoxScope.MapBottomOverlays(
                             onPreferenceChange = onRoutePreferenceChange,
                         )
                         HorizontalDivider(
-                            color = Color(0xFFE8EAED),
+                            color = MaterialTheme.colorScheme.outlineVariant,
                             modifier = Modifier.padding(bottom = 12.dp),
                         )
                     }

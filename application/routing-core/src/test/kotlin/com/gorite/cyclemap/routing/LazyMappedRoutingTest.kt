@@ -132,4 +132,39 @@ class LazyMappedRoutingTest {
             assertTrue(flatUp <= 5.0)
         }
     }
+
+    @Test
+    fun nearestNodeIndexLargeGridMatchesBruteForce() {
+        val random = Random(2026)
+        val n = 5_000
+        val lats = DoubleArray(n) { 33.8 + random.nextDouble() * 1.0 }
+        val lons = DoubleArray(n) { 130.8 + random.nextDouble() * 1.4 }
+        graphWith(lats, lons).use { graph ->
+            repeat(150) {
+                val qLat = 33.7 + random.nextDouble() * 1.2
+                val qLon = 130.7 + random.nextDouble() * 1.6
+                assertEquals(bruteForce(lats, lons, qLat, qLon), graph.nearestNodeIndex(qLat, qLon))
+            }
+        }
+    }
+
+    @Test
+    fun costModeMultipliersPreserveAdmissibility() {
+        val method = LazyMappedRoadGraph::class.java.getDeclaredMethod(
+            "multiplier",
+            Int::class.javaPrimitiveType,
+            RouteCostMode::class.java,
+        )
+        method.isAccessible = true
+        graphWith(doubleArrayOf(34.0), doubleArrayOf(131.0)).use { graph ->
+            for (mode in RouteCostMode.entries) {
+                for (typeCode in 0..10) {
+                    val m = method.invoke(graph, typeCode, mode) as Double?
+                    if (m != null) {
+                        assertTrue(m >= 0.90, "Mode $mode type $typeCode multiplier $m must be >= 0.90")
+                    }
+                }
+            }
+        }
+    }
 }

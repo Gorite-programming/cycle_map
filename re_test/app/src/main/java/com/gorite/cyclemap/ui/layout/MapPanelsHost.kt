@@ -3,10 +3,18 @@ package com.gorite.cyclemap.ui.layout
 import com.gorite.cyclemap.*
 import com.gorite.cyclemap.utils.*
 import com.gorite.cyclemap.navigation.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import com.gorite.cyclemap.data.FavoriteSpot
+import com.gorite.cyclemap.data.FavoritesManager
 import com.gorite.cyclemap.ui.mapview.resolveSearchDbFile
 import com.gorite.cyclemap.routing.NavigationStats
 import com.gorite.cyclemap.routing.RoutePoint
@@ -89,36 +97,54 @@ internal fun MapPanelsHost(
     }
 
     // 契約 PlaceDetail 3段階アンカーボトムシート (Peek120 / Half320 / Full560)
-    var sheetAnchor by androidx.compose.runtime.remember {
+    var sheetAnchor by androidx.compose.runtime.remember(selectedPoiSpot) {
         androidx.compose.runtime.mutableStateOf(com.gorite.cyclemap.ui.map.BottomSheetAnchor.Half)
     }
 
     var placeDetail by androidx.compose.runtime.remember(selectedPoiSpot) {
-        androidx.compose.runtime.mutableStateOf<com.gorite.cyclemap.contract.PlaceDetail?>(null)
+        val initial = selectedPoiSpot?.let { spot ->
+            val catLabel = com.gorite.cyclemap.ui.cycling.PoiCategory.forCategory(spot.category)?.label ?: spot.category
+            com.gorite.cyclemap.contract.PlaceDetail(
+                id = "${spot.name}_${spot.latitude}_${spot.longitude}",
+                name = spot.name,
+                category = catLabel,
+                address = "",
+                distanceMeters = spot.distanceM,
+                lat = spot.latitude,
+                lon = spot.longitude,
+                businessStatus = com.gorite.cyclemap.contract.BusinessStatus.Unknown
+            )
+        }
+        androidx.compose.runtime.mutableStateOf(initial)
     }
+
+    val localContext = androidx.compose.ui.platform.LocalContext.current
+    val favoritesManager = remember {
+        FavoritesManager.getInstance(localContext)
+    }
+    val favoritesList by favoritesManager.favorites.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(selectedPoiSpot) {
         val spot = selectedPoiSpot ?: return@LaunchedEffect
-        val context = mapView?.context
         val provider = com.gorite.cyclemap.real.RealPlaceDetailProvider(
             searchDbFileProvider = {
-                context?.let { resolveSearchDbFile(it, spot.latitude, spot.longitude) }
+                resolveSearchDbFile(localContext, spot.latitude, spot.longitude)
             }
         )
         val loaded = provider.getPlaceDetail(spot.name)
-        placeDetail = loaded ?: com.gorite.cyclemap.contract.PlaceDetail(
-            id = "${spot.name}_${spot.latitude}_${spot.longitude}",
-            name = spot.name,
-            category = spot.category,
-            address = "周辺エリア",
-            distanceMeters = spot.distanceM,
-            lat = spot.latitude,
-            lon = spot.longitude,
-            businessStatus = com.gorite.cyclemap.contract.BusinessStatus.Unknown
-        )
+        val catLabel = com.gorite.cyclemap.ui.cycling.PoiCategory.forCategory(spot.category)?.label ?: spot.category
+        val loadedDist = loaded?.distanceMeters
+        if (loaded != null) {
+            placeDetail = loaded.copy(
+                category = com.gorite.cyclemap.ui.cycling.PoiCategory.forCategory(loaded.category)?.label ?: catLabel,
+                distanceMeters = if (loadedDist != null && loadedDist > 0.0) loadedDist else spot.distanceM,
+                lat = spot.latitude,
+                lon = spot.longitude,
+            )
+        }
     }
 
-    if (showSpotPanel && placeDetail == null) {
+    if (showSpotPanel && selectedPoiSpot == null && placeDetail == null) {
         SpotPanelSheet(
             selectedCategory = spotCategory,
             onCategorySelect = onSpotCategoryChange,
@@ -166,26 +192,56 @@ internal fun MapPanelsHost(
 
     if (showSpotPanel && placeDetail != null) {
         val currentDetail = placeDetail!!
-        com.gorite.cyclemap.ui.map.ThreeStageBottomSheet(
-            anchor = sheetAnchor,
-            onAnchorChange = { sheetAnchor = it }
+        val isFav = favoritesList.any {
+            kotlin.math.abs(it.latitude - currentDetail.lat) < 0.0001 &&
+                kotlin.math.abs(it.longitude - currentDetail.lon) < 0.0001
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(12f),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            com.gorite.cyclemap.ui.map.PlaceDetailContent(
-                detail = currentDetail,
-                isFavorite = false,
-                onToggleFavorite = {},
-                onStartRoute = {
-                    placeDetail = null
-                    onSelectPoiSpot(null)
-                    onCloseSpotPanel()
-                    onRouteToSpot(GeoPoint(currentDetail.lat, currentDetail.lon))
-                },
-                onClose = {
-                    placeDetail = null
-                    onSelectPoiSpot(null)
-                    onCloseSpotPanel()
-                }
-            )
+            com.gorite.cyclemap.ui.map.ThreeStageBottomSheet(
+                anchor = sheetAnchor,
+                onAnchorChange = { sheetAnchor = it }
+            ) {
+                com.gorite.cyclemap.ui.map.PlaceDetailContent(
+                    detail = currentDetail,
+                    isFavorite = isFav,
+                    onToggleFavorite = {
+                        val existing = favoritesList.firstOrNull {
+                            kotlin.math.abs(it.latitude - currentDetail.lat) < 0.0001 &&
+                                kotlin.math.abs(it.longitude - currentDetail.lon) < 0.0001
+                        }
+                        if (existing != null) {
+                            favoritesManager.removeFavorite(existing.id)
+                        } else {
+                            favoritesManager.addFavorite(
+                                FavoriteSpot(
+                                    id = currentDetail.id,
+                                    name = currentDetail.name,
+                                    category = selectedPoiSpot?.category ?: currentDetail.category,
+                                    latitude = currentDetail.lat,
+                                    longitude = currentDetail.lon,
+                                    address = currentDetail.address.takeIf { it.isNotBlank() },
+                                )
+                            )
+                        }
+                    },
+                    onStartRoute = {
+                        placeDetail = null
+                        onSelectPoiSpot(null)
+                        onCloseSpotPanel()
+                        onRouteToSpot(GeoPoint(currentDetail.lat, currentDetail.lon))
+                    },
+                    onClose = {
+                        placeDetail = null
+                        onSelectPoiSpot(null)
+                        onCloseSpotPanel()
+                    }
+                )
+            }
         }
     }
 
@@ -209,17 +265,24 @@ internal fun MapPanelsHost(
     }
 
     if (showRoutePanel && routes.isNotEmpty()) {
-        com.gorite.cyclemap.ui.map.RouteSelectionSheet(
-            routes = routes,
-            selectedRouteIndex = selectedRouteIndex.coerceIn(0, routes.lastIndex),
-            selectedMode = selectedTravelMode,
-            onSelectMode = onSelectTravelMode,
-            onSelectRoute = onSelectRouteIndex,
-            onStartNavigation = {
-                onCloseRoutePanel()
-                onStartNavigation()
-            },
-            onClose = onCloseRoutePanel
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(12f),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            com.gorite.cyclemap.ui.map.RouteSelectionSheet(
+                routes = routes,
+                selectedRouteIndex = selectedRouteIndex.coerceIn(0, routes.lastIndex),
+                selectedMode = selectedTravelMode,
+                onSelectMode = onSelectTravelMode,
+                onSelectRoute = onSelectRouteIndex,
+                onStartNavigation = {
+                    onCloseRoutePanel()
+                    onStartNavigation()
+                },
+                onClose = onCloseRoutePanel
+            )
+        }
     }
 }

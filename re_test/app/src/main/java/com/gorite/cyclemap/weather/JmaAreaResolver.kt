@@ -39,17 +39,22 @@ class JmaAreaResolver(
     }
 
     /**
-     * 市区町村名の一致から class20 -> class15 -> class10 -> office を辿る。
+     * 市区町村名または逆ジオコーディング文字列から class20 -> class15 -> class10 -> office を辿る。
      */
     private fun resolveByCity(prefecture: String, city: String): ResolvedArea? {
+        val normalizedHint = city
+            .removePrefix(prefecture)
+            .replace(" ", "")
+            .replace("　", "")
+            .trim()
+        if (normalizedHint.isEmpty()) return null
+
+        var prefixFallback: ResolvedArea? = null
+
         // class20s を走査
         for ((_, cityElement) in class20s.entrySet()) {
             val cityObj = cityElement.asJsonObject
             val cityName = cityObj.get("name")?.asString ?: continue
-            val matches = cityName == city ||
-                    (cityName.startsWith(city) && city.endsWith("市")) ||
-                    (city.endsWith("区") && cityName.endsWith(city))
-            if (!matches) continue
 
             val c15Code = cityObj.get("parent")?.asString ?: continue
             val c15Obj = class15s.getAsJsonObject(c15Code) ?: continue
@@ -61,21 +66,36 @@ class JmaAreaResolver(
             val officeObj = offices.getAsJsonObject(officeCode) ?: continue
 
             val officeName = officeObj.get("name")?.asString ?: continue
-            if (officeName == prefecture || officeName.startsWith(prefecture)) {
-                val class10Name = c10Obj.get("name")?.asString ?: ""
-                val amedasCode = findAmedasCode(officeCode, c10Code)
-                val displayName = "$prefecture ($class10Name)"
-                return ResolvedArea(
-                    officeCode = officeCode,
-                    class10Code = c10Code,
-                    amedasCode = amedasCode,
-                    areaName = displayName,
-                    prefectureName = prefecture,
-                    isFallback = false
-                )
+            if (officeName != prefecture && !officeName.startsWith(prefecture)) continue
+
+            val exactOrAddressMatch = cityName == city ||
+                cityName == normalizedHint ||
+                (cityName.length >= 2 && normalizedHint.startsWith(cityName)) ||
+                (cityName.length >= 2 && normalizedHint.contains(cityName))
+
+            val partialCityMatch = (cityName.startsWith(normalizedHint) && normalizedHint.endsWith("市")) ||
+                (normalizedHint.endsWith("区") && cityName.endsWith(normalizedHint))
+
+            if (!exactOrAddressMatch && !partialCityMatch) continue
+
+            val class10Name = c10Obj.get("name")?.asString ?: ""
+            val amedasCode = findAmedasCode(officeCode, c10Code)
+            val displayName = "$prefecture ($class10Name)"
+            val candidate = ResolvedArea(
+                officeCode = officeCode,
+                class10Code = c10Code,
+                amedasCode = amedasCode,
+                areaName = displayName,
+                prefectureName = prefecture,
+                isFallback = false
+            )
+            if (exactOrAddressMatch) {
+                return candidate
+            } else if (prefixFallback == null) {
+                prefixFallback = candidate
             }
         }
-        return null
+        return prefixFallback
     }
 
     /**

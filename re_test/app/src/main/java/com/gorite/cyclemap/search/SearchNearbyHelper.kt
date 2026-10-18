@@ -141,9 +141,13 @@ internal fun searchPoisInBounds(
     maxLat: Double,
     maxLon: Double,
     categoryPrefixes: List<String>? = null,
-    limit: Int = 300,
+    limit: Int = 250,
+    zoom: Double = 15.0,
 ): List<NearbySpot> {
     if (!dbFile.isFile || minLat >= maxLat || minLon >= maxLon || limit <= 0) return emptyList()
+
+    val centerLat = (minLat + maxLat) * 0.5
+    val centerLon = (minLon + maxLon) * 0.5
 
     val catWhere = if (!categoryPrefixes.isNullOrEmpty()) {
         val clauses = categoryPrefixes.joinToString(" OR ") { "category LIKE ?" }
@@ -173,16 +177,31 @@ internal fun searchPoisInBounds(
         """.trimIndent()
     }
 
-    val sql = """
-        SELECT name, category, lat, lon
-        FROM places
-        WHERE lat BETWEEN ? AND ?
-          AND lon BETWEEN ? AND ?
-          $catWhere
-          AND category NOT LIKE 'amenity:place_of_worship%'
-          AND name IS NOT NULL AND trim(name) != ''
-        LIMIT ?
+    val zoomFilterSql = if (zoom < 16.0) {
+        """
+        AND category NOT LIKE 'highway:bus_stop%'
+        AND category NOT LIKE 'tourism:information%'
+        AND category NOT LIKE 'tourism:artwork%'
+        """.trimIndent()
+    } else {
+        ""
+    }
+
+    val nearbyOrderExpr = NEARBY_ORDER_BY.trim().removePrefix("ORDER BY").trim()
+    // Google マップ式の階層優先度で SQL 候補プールを抽出し、駅・観光拠点・自転車店・病院・コンビニが確実に含まれるようにする
+    val sqlPriorityCase = """
+        CASE
+            WHEN category LIKE 'railway:station%' OR category LIKE 'public_transport:station%' OR category LIKE 'amenity:bus_station%' THEN 1
+            WHEN category LIKE 'tourism:attraction%' OR category LIKE 'tourism:museum%' OR category LIKE 'tourism:theme_park%' OR category LIKE 'tourism:viewpoint%' THEN 2
+            WHEN category LIKE 'shop:bicycle%' OR category LIKE 'amenity:hospital%' OR category LIKE 'shop:convenience%' THEN 3
+            WHEN category LIKE 'amenity:public_bath%' OR category LIKE 'leisure:park%' OR category LIKE 'amenity:toilets%' OR category LIKE 'amenity:drinking_water%' THEN 4
+            WHEN category LIKE 'tourism:hotel%' OR category LIKE 'amenity:fuel%' OR category LIKE 'amenity:fast_food%' OR category LIKE 'amenity:cafe%' OR category LIKE 'amenity:restaurant%' THEN 5
+            ELSE 6
+        END ASC,
+        $nearbyOrderExpr
     """.trimIndent()
+
+    val candidatePoolLimit = (limit * 6).coerceIn(500, 1800)
 
     val args = ArrayList<String>()
     args.add(minLat.toString())
@@ -192,19 +211,62 @@ internal fun searchPoisInBounds(
     if (!categoryPrefixes.isNullOrEmpty()) {
         categoryPrefixes.forEach { args.add(if (it.endsWith("%")) it else "$it%") }
     }
-    args.add(limit.toString())
+    args.addAll(nearbyOrderArgs(centerLat, centerLon))
+    args.add(candidatePoolLimit.toString())
 
-    val found = ArrayList<NearbySpot>(limit)
+    val rawCandidates = ArrayList<SearchRanking.RawPoiCandidate>(candidatePoolLimit)
     try {
         SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-            db.rawQuery(sql, args.toTypedArray()).use { cursor ->
-                while (cursor.moveToNext()) {
-                    found += NearbySpot(
-                        name = cursor.getString(0),
-                        category = cursor.getString(1),
-                        latitude = cursor.getDouble(2),
-                        longitude = cursor.getDouble(3),
-                        distanceM = 0.0,
+            val sqlWithMeta = """
+                SELECT name, category, lat, lon, osm_type, address
+                FROM places
+                WHERE lat BETWEEN ? AND ?
+                  AND lon BETWEEN ? AND ?
+                  $catWhere
+                  AND category NOT LIKE 'amenity:place_of_worship%'
+                  AND category NOT LIKE 'public_transport:stop_position%'
+                  AND category NOT LIKE 'public_transport:platform%'
+                  $zoomFilterSql
+                  AND name IS NOT NULL AND trim(name) != ''
+                ORDER BY $sqlPriorityCase
+                LIMIT ?
+            """.trimIndent()
+
+            val cursor = try {
+                db.rawQuery(sqlWithMeta, args.toTypedArray())
+            } catch (_: Exception) {
+                val fallbackSql = """
+                    SELECT name, category, lat, lon
+                    FROM places
+                    WHERE lat BETWEEN ? AND ?
+                      AND lon BETWEEN ? AND ?
+                      $catWhere
+                      AND category NOT LIKE 'amenity:place_of_worship%'
+                      AND category NOT LIKE 'public_transport:stop_position%'
+                      AND category NOT LIKE 'public_transport:platform%'
+                      $zoomFilterSql
+                      AND name IS NOT NULL AND trim(name) != ''
+                    ORDER BY $sqlPriorityCase
+                    LIMIT ?
+                """.trimIndent()
+                db.rawQuery(fallbackSql, args.toTypedArray())
+            }
+
+            cursor.use { c ->
+                val hasMeta = c.columnCount >= 6
+                while (c.moveToNext()) {
+                    val name = if (c.isNull(0)) "" else (c.getString(0) ?: "")
+                    val cat = if (c.isNull(1)) "" else (c.getString(1) ?: "")
+                    if (name.isBlank() || cat.isBlank()) continue
+                    val osmType = if (hasMeta && !c.isNull(4)) c.getString(4) else null
+                    val addr = if (hasMeta && !c.isNull(5)) c.getString(5) else null
+                    rawCandidates += SearchRanking.RawPoiCandidate(
+                        name = name,
+                        category = cat,
+                        latitude = c.getDouble(2),
+                        longitude = c.getDouble(3),
+                        osmType = osmType,
+                        hasAddress = !addr.isNullOrBlank(),
                     )
                 }
             }
@@ -213,5 +275,14 @@ internal fun searchPoisInBounds(
         Log.w("CycleMap", "searchPoisInBounds failed: ${e.message}")
         return emptyList()
     }
-    return found
+
+    return SearchRanking.rankAndDistributeViewportPois(
+        candidates = rawCandidates,
+        minLat = minLat,
+        minLon = minLon,
+        maxLat = maxLat,
+        maxLon = maxLon,
+        zoom = zoom,
+        limit = limit,
+    )
 }

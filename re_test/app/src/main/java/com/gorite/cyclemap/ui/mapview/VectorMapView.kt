@@ -65,6 +65,8 @@ import org.osmdroid.util.GeoPoint
 internal fun VectorMapView(
     modifier: Modifier = Modifier,
     routePoints: List<GeoPoint> = emptyList(),
+    alternativeRoutes: List<List<GeoPoint>> = emptyList(),
+    destination: GeoPoint? = null,
     currentLocation: GeoPoint? = null,
     bearing: Float? = null,
     speedMps: Float? = null,
@@ -79,6 +81,8 @@ internal fun VectorMapView(
     cameraPadding: PaddingValues = PaddingValues(0.dp),
     onTiltChanged: (Double) -> Unit = {},
     onPoiClick: (NearbySpot) -> Unit = {},
+    onPoiSpotDeselect: () -> Unit = {},
+    onLongPress: (GeoPoint) -> Unit = {},
     onUserPan: () -> Unit = {},
     onMapReady: (MapLibreMap) -> Unit = {},
 ) {
@@ -87,6 +91,7 @@ internal fun VectorMapView(
     val coroutineScope = rememberCoroutineScope()
 
     // AndroidView factory 内の長期生存コールバックから最新値を参照するための状態ホルダー
+    val currentLocUpdated by rememberUpdatedState(currentLocation)
     val currentPowerSaveActive by rememberUpdatedState(isPowerSaveActive)
     val currentNightMode by rememberUpdatedState(isNightMode)
     val currentPoiVisible by rememberUpdatedState(poiVisible)
@@ -94,6 +99,8 @@ internal fun VectorMapView(
     val currentPoiSelected by rememberUpdatedState(poiSelected)
     val currentOnTiltChanged by rememberUpdatedState(onTiltChanged)
     val currentOnPoiClick by rememberUpdatedState(onPoiClick)
+    val currentOnPoiSpotDeselect by rememberUpdatedState(onPoiSpotDeselect)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     val currentOnUserPan by rememberUpdatedState(onUserPan)
 
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -149,37 +156,12 @@ internal fun VectorMapView(
                     getMapAsync { map ->
                         mapLibreMap = map
                         onMapReady(map)
-
-                        // 過剰なタイル事前読み込みを抑制（メモリ逼迫・OOM防止）
-                        map.prefetchZoomDelta = 2
-
-                        // 2本指上下移動によるチルト（表示角度）変更ジェスチャーを有効化
-                        map.uiSettings.isCompassEnabled = false
-                        map.uiSettings.isTiltGesturesEnabled = true
-                        map.uiSettings.isRotateGesturesEnabled = true
-                        map.uiSettings.isScrollGesturesEnabled = true
-                        map.uiSettings.isZoomGesturesEnabled = true
-                        map.setMinPitchPreference(0.0)
-                        map.setMaxPitchPreference(60.0)
-
-                        // DEF-02: ロゴおよびアトリビューション表示が最下部HUDに隠れないよう下部マージンを設定
-                        val density = context.resources.displayMetrics.density
-                        val bottomMarginPx = (96 * density).toInt()
-                        val sideMarginPx = (16 * density).toInt()
-                        map.uiSettings.setLogoMargins(sideMarginPx, 0, 0, bottomMarginPx)
-                        map.uiSettings.setAttributionMargins(sideMarginPx + (80 * density).toInt(), 0, 0, bottomMarginPx)
-
-                        // 2本指上下移動（Shoveジェスチャー）の感度・許容角度を最適化
-                        map.gesturesManager?.let { gm ->
-                            gm.shoveGestureDetector?.let { detector ->
-                                detector.isEnabled = true
-                                detector.maxShoveAngle = 45f
-                            }
-                        }
+                        configureVectorMapUiSettings(context, map)
 
                         // 現在地の県を優先し、未導入なら別県のタイルへ切り替えない。
-                        val initialTarget = if (currentLocation != null) {
-                            LatLng(currentLocation.latitude, currentLocation.longitude)
+                        val locInit = currentLocUpdated ?: currentLocation
+                        val initialTarget = if (locInit != null) {
+                            LatLng(locInit.latitude, locInit.longitude)
                         } else {
                             LatLng(34.3965, 132.4596)
                         }
@@ -203,7 +185,7 @@ internal fun VectorMapView(
                             return@getMapAsync
                         }
 
-                        // 表示中領域のPOIをオフラインDBから動的フェッチして描画するヘルパー
+                        // 表示中領域のPOIをオフラインDBから動的フェッチして描画するヘルパー (ズームアウト時も最大250件表示)
                         fun triggerFetchPois(targetMap: MapLibreMap) {
                             if (!currentPoiVisible || currentNavigationActive) {
                                 fetchPoisJob?.cancel()
@@ -214,29 +196,24 @@ internal fun VectorMapView(
                                 return
                             }
 
-                            val zoom = targetMap.cameraPosition.zoom
-                            if (zoom < 14.0) {
-                                fetchPoisJob?.cancel()
-                                targetMap.getStyle { style ->
-                                    style.getSourceAs<GeoJsonSource>("cyclemap-dynamic-pois")
-                                        ?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-                                }
-                                return
-                            }
-
-                            val bounds = targetMap.projection.visibleRegion.latLngBounds
-                            val latSpan = (bounds.latitudeNorth - bounds.latitudeSouth).coerceAtLeast(0.001)
-                            val lonSpan = (bounds.longitudeEast - bounds.longitudeWest).coerceAtLeast(0.001)
-
-                            // 画面外 20% のバッファを含めてパン時のチラつきを解消
-                            val minLat = bounds.latitudeSouth - latSpan * 0.20
-                            val maxLat = bounds.latitudeNorth + latSpan * 0.20
-                            val minLon = bounds.longitudeWest - lonSpan * 0.20
-                            val maxLon = bounds.longitudeEast + lonSpan * 0.20
-
                             val center = targetMap.cameraPosition.target ?: return
-                            val dbFile = resolveSearchDbFile(context, center.latitude, center.longitude) ?: return
+                            val zoom = targetMap.cameraPosition.zoom
+                            val minZoomSpan = (360.0 / Math.pow(2.0, zoom.coerceIn(5.0, 20.0))).coerceIn(0.008, 2.0)
+                            val bounds = targetMap.projection.visibleRegion.latLngBounds
+                            val rawLatSpan = bounds.latitudeNorth - bounds.latitudeSouth
+                            val rawLonSpan = bounds.longitudeEast - bounds.longitudeWest
+                            val latSpan = rawLatSpan.coerceAtLeast(minZoomSpan)
+                            val lonSpan = rawLonSpan.coerceAtLeast(minZoomSpan)
 
+                            // 初回レイアウト前等で visibleRegion が未確定な場合でも center 基準で確実に範囲を確保
+                            val halfLat = latSpan * 0.60
+                            val halfLon = lonSpan * 0.60
+                            val minLat = if (rawLatSpan >= 0.002) bounds.latitudeSouth - rawLatSpan * 0.20 else center.latitude - halfLat
+                            val maxLat = if (rawLatSpan >= 0.002) bounds.latitudeNorth + rawLatSpan * 0.20 else center.latitude + halfLat
+                            val minLon = if (rawLonSpan >= 0.002) bounds.longitudeWest - rawLonSpan * 0.20 else center.longitude - halfLon
+                            val maxLon = if (rawLonSpan >= 0.002) bounds.longitudeEast + rawLonSpan * 0.20 else center.longitude + halfLon
+
+                            val dbFile = resolveSearchDbFile(context, center.latitude, center.longitude) ?: return
                             val categoryPrefixes = currentPoiSelected.flatMap { it.prefixes }
 
                             fetchPoisJob?.cancel()
@@ -248,35 +225,39 @@ internal fun VectorMapView(
                                     maxLat = maxLat,
                                     maxLon = maxLon,
                                     categoryPrefixes = categoryPrefixes,
-                                    limit = 300,
+                                    limit = 250,
+                                    zoom = zoom,
                                 )
                                 val features = createPoiFeatures(spots, zoom, currentNightMode)
                                 withContext(Dispatchers.Main) {
                                     targetMap.getStyle { style ->
                                         style.getSourceAs<GeoJsonSource>("cyclemap-dynamic-pois")
                                             ?.setGeoJson(FeatureCollection.fromFeatures(features))
+                                        lastPoiFetchCenter = center
+                                        lastPoiFetchZoom = zoom
                                     }
                                 }
                             }
                         }
-                        triggerPoisRef = { triggerFetchPois(map) }
                         activePmtilesPath = pmtilesPath
+                        lastLoadedNightMode = currentNightMode
 
                         // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
                         coroutineScope.launch {
+                            val night = currentNightMode
                             val finalStyleJson = withContext(Dispatchers.IO) {
-                                buildVectorStyleJson(context, isNightMode, pmtilesPath)
+                                buildVectorStyleJson(context, night, pmtilesPath)
                             }
 
                             withContext(Dispatchers.Main) {
                                 map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
-                                    lastLoadedNightMode = isNightMode
+                                    lastLoadedNightMode = night
                                     map.uiSettings.isCompassEnabled = false
-                                    // ルート表示用 GeoJson レイヤーおよび現在地・案内矢印マーカーを登録
                                     setupRouteLayers(context, style)
-                                    // Googleマップ風動的POIレイヤーを登録
-                                    setupDynamicPoiLayers(context, style, isNightMode)
-                                    // 初期表示時のPOIを描画
+                                    setupDynamicPoiLayers(context, style, night)
+                                    updateRouteLine(style, routePoints, alternativeRoutes, destination)
+                                    updateLocationPoint(style, currentLocUpdated ?: currentLocation, bearing, currentNavigationActive, gpsStatus)
+                                    triggerPoisRef = { triggerFetchPois(map) }
                                     triggerFetchPois(map)
                                 }
                             }
@@ -284,6 +265,7 @@ internal fun VectorMapView(
 
                         // カメラ停止時リスナー (R3): 現在画面内のPOIをオフラインDBから動的フェッチ (デバウンス制御)
                         map.addOnCameraIdleListener {
+                            if (map.style?.isFullyLoaded != true) return@addOnCameraIdleListener
                             val target = map.cameraPosition.target
                             val zoom = map.cameraPosition.zoom
                             val last = lastPoiFetchCenter
@@ -291,23 +273,19 @@ internal fun VectorMapView(
                                 CameraMotionPolicy.distanceMeters(last.latitude, last.longitude, target.latitude, target.longitude) < 20.0 &&
                                 kotlin.math.abs(zoom - lastPoiFetchZoom) < 0.2
                             ) {
-                                return@addOnCameraIdleListener // 停止中・微小移動時の無駄なDBクエリ・GPU再描画を抑止
+                                return@addOnCameraIdleListener
                             }
-                            lastPoiFetchCenter = target
-                            lastPoiFetchZoom = zoom
                             triggerFetchPois(map)
                         }
 
                         // カメラ変更リスナー: 傾斜角に応じて 2D/3D をヒステリシス制御で切り替え
-                        // 省電力モード時は強制的に2D平面表示を維持 (Snapdragon 888の発熱・電力消費を抑制)
-                        // 通常時は 17°超で 3D 押し出し、13°未満で 2D 平面図形に切替。13°〜17°は現在の状態を維持
                         map.addOnCameraMoveListener {
                             val pos = map.cameraPosition
                             currentTilt = pos.tilt
-                            onTiltChanged(pos.tilt)
+                            currentOnTiltChanged(pos.tilt)
 
                             val currentExtruded = lastExtruded
-                            val shouldExtrude = if (isPowerSaveActive) {
+                            val shouldExtrude = if (currentPowerSaveActive) {
                                 false
                             } else {
                                 when {
@@ -319,7 +297,7 @@ internal fun VectorMapView(
                             if (shouldExtrude != lastExtruded) {
                                 lastExtruded = shouldExtrude
                                 map.getStyle { style ->
-                                    updateBuildingExtrusion(style, shouldExtrude, isNightMode)
+                                    updateBuildingExtrusion(style, shouldExtrude, currentNightMode)
                                 }
                             }
                         }
@@ -342,16 +320,26 @@ internal fun VectorMapView(
                                 val category = feat.getStringProperty("category") ?: ""
                                 val geom = feat.geometry() as? Point
                                 if (geom != null) {
-                                    onPoiClick(NearbySpot(name, category, geom.latitude(), geom.longitude(), 0.0))
+                                    val distM = currentLocUpdated?.let { loc ->
+                                        CameraMotionPolicy.distanceMeters(loc.latitude, loc.longitude, geom.latitude(), geom.longitude())
+                                    } ?: 0.0
+                                    currentOnPoiClick(NearbySpot(name, category, geom.latitude(), geom.longitude(), distM))
                                     return@addOnMapClickListener true
                                 }
                             }
+                            currentOnPoiSpotDeselect()
                             false
+                        }
+
+                        // 長押しによる目的地設定リスナー (osmdroid との機能パリティ確保)
+                        map.addOnMapLongClickListener { latLng ->
+                            currentOnLongPress(GeoPoint(latLng.latitude, latLng.longitude))
+                            true
                         }
 
                         // ユーザーのドラッグ操作検知 (追従解除用)
                         map.addOnMoveListener(object : MapLibreMap.OnMoveListener {
-                            override fun onMoveBegin(detector: org.maplibre.android.gestures.MoveGestureDetector) { onUserPan() }
+                            override fun onMoveBegin(detector: org.maplibre.android.gestures.MoveGestureDetector) { currentOnUserPan() }
                             override fun onMove(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
                             override fun onMoveEnd(detector: org.maplibre.android.gestures.MoveGestureDetector) {}
                         })
@@ -368,11 +356,11 @@ internal fun VectorMapView(
             )
         }
 
-        // ルート更新の反映
-        LaunchedEffect(routePoints, mapLibreMap) {
+        // ルート・代替候補・目的地更新の反映
+        LaunchedEffect(routePoints, alternativeRoutes, destination, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
             map.getStyle { style ->
-                updateRouteLine(style, routePoints)
+                updateRouteLine(style, routePoints, alternativeRoutes, destination)
             }
         }
 
@@ -397,7 +385,7 @@ internal fun VectorMapView(
                 map.uiSettings.isCompassEnabled = false
                 setupRouteLayers(context, style)
                 setupDynamicPoiLayers(context, style, isNightMode)
-                updateRouteLine(style, routePoints)
+                updateRouteLine(style, routePoints, alternativeRoutes, destination)
                 updateLocationPoint(style, currentLocation, bearing, isNavigationActive, gpsStatus)
                 triggerPoisRef?.invoke()
             }
@@ -464,9 +452,14 @@ internal fun VectorMapView(
                 800,
             )
             map.getStyle { style ->
+                val cat = PoiCategory.forCategory(spot.category)
+                val iconKey = if (cat != null) "poi-pin-${cat.name}" else "cyclemap-poi-pin-icon"
+                val iconScale = if (cat != null) 1.38f else 1.0f
                 val point = Point.fromLngLat(spot.longitude, spot.latitude)
                 val feature = Feature.fromGeometry(point).apply {
                     addStringProperty("title", spot.name)
+                    addStringProperty("iconKey", iconKey)
+                    addNumberProperty("iconScale", iconScale)
                 }
                 style.getSourceAs<GeoJsonSource>("cyclemap-poi-source")
                     ?.setGeoJson(FeatureCollection.fromFeature(feature))

@@ -161,6 +161,35 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         style.addImage("cyclemap-nav-arrow-icon", arrowBitmap)
     }
 
+    if (style.getSource("cyclemap-alt-route-source") == null) {
+        style.addSource(GeoJsonSource("cyclemap-alt-route-source"))
+        val altCasing = LineLayer("cyclemap-alt-route-casing", "cyclemap-alt-route-source").apply {
+            setProperties(
+                PropertyFactory.lineColor(Color.parseColor("#546E7A")),
+                PropertyFactory.lineWidth(7f),
+                PropertyFactory.lineOpacity(0.65f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        }
+        val altLine = LineLayer("cyclemap-alt-route-line", "cyclemap-alt-route-source").apply {
+            setProperties(
+                PropertyFactory.lineColor(Color.parseColor("#90A4AE")),
+                PropertyFactory.lineWidth(4.5f),
+                PropertyFactory.lineOpacity(0.80f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        }
+        if (style.getLayer("buildings-3d") != null) {
+            style.addLayerBelow(altCasing, "buildings-3d")
+            style.addLayerBelow(altLine, "buildings-3d")
+        } else {
+            style.addLayer(altCasing)
+            style.addLayer(altLine)
+        }
+    }
+
     if (style.getSource("cyclemap-route-source") == null) {
         val routeSource = GeoJsonSource("cyclemap-route-source")
         style.addSource(routeSource)
@@ -239,18 +268,35 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         })
     }
 
-    // DEF-07: POIハイライトピン用アイコン・ソース・レイヤーの登録
+    // DEF-07: POIハイライトピンおよび目的地ピン用アイコン・ソース・レイヤーの登録 (透過ワイヤーフレームを使わず塗りつぶしピンを使用)
     if (style.getImage("cyclemap-poi-pin-icon") == null) {
-        val pinBitmap = drawableToBitmap(context, R.drawable.ic_lucide_map_pin, 96, Color.parseColor("#E91E63"))
-        style.addImage("cyclemap-poi-pin-icon", pinBitmap)
+        style.addImage("cyclemap-poi-pin-icon", createGoogleSolidPinBitmap(context, "#EA4335", "#A50E0E"))
+    }
+    if (style.getImage("cyclemap-dest-pin-icon") == null) {
+        style.addImage("cyclemap-dest-pin-icon", createGoogleSolidPinBitmap(context, "#EA4335", "#A50E0E"))
     }
     if (style.getSource("cyclemap-poi-source") == null) {
         style.addSource(GeoJsonSource("cyclemap-poi-source"))
         style.addLayer(SymbolLayer("cyclemap-poi-pin", "cyclemap-poi-source").apply {
             setProperties(
-                PropertyFactory.iconImage("cyclemap-poi-pin-icon"),
+                PropertyFactory.iconImage(Expression.get("iconKey")),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                 PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconSize(Expression.get("iconScale")),
+            )
+        })
+    }
+    if (style.getSource("cyclemap-dest-source") == null) {
+        style.addSource(GeoJsonSource("cyclemap-dest-source"))
+        style.addLayer(SymbolLayer("cyclemap-dest-pin", "cyclemap-dest-source").apply {
+            setProperties(
+                PropertyFactory.iconImage("cyclemap-dest-pin-icon"),
+                PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+                PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconAllowOverlap(true),
                 PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.iconSize(1.0f),
@@ -297,21 +343,45 @@ internal fun updateLocationPoint(
 }
 
 /**
- * ルート座標リストを GeoJSON Feature に変換してスタイルへ更新
+ * ルート座標リスト・代替ルート候補・目的地ピンを GeoJSON Feature に変換してスタイルへ更新
  */
-internal fun updateRouteLine(style: Style, points: List<GeoPoint>) {
+internal fun updateRouteLine(
+    style: Style,
+    points: List<GeoPoint>,
+    alternativeRoutes: List<List<GeoPoint>> = emptyList(),
+    destination: GeoPoint? = null,
+) {
     val source = style.getSourceAs<GeoJsonSource>("cyclemap-route-source") ?: return
     if (points.size < 2) {
         source.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-        return
+    } else {
+        val coordinates = points.map { pt -> Point.fromLngLat(pt.longitude, pt.latitude) }
+        val lineString = LineString.fromLngLats(coordinates)
+        source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
     }
 
-    val coordinates = points.map { pt ->
-        Point.fromLngLat(pt.longitude, pt.latitude)
+    val altSource = style.getSourceAs<GeoJsonSource>("cyclemap-alt-route-source")
+    if (altSource != null) {
+        val altFeatures = alternativeRoutes.mapNotNull { route ->
+            if (route.size < 2) null
+            else Feature.fromGeometry(LineString.fromLngLats(route.map { Point.fromLngLat(it.longitude, it.latitude) }))
+        }
+        altSource.setGeoJson(FeatureCollection.fromFeatures(altFeatures))
     }
-    val lineString = LineString.fromLngLats(coordinates)
-    val feature = Feature.fromGeometry(lineString)
-    source.setGeoJson(FeatureCollection.fromFeature(feature))
+
+    val destSource = style.getSourceAs<GeoJsonSource>("cyclemap-dest-source")
+    if (destSource != null) {
+        val targetDest = destination ?: points.lastOrNull()
+        if (targetDest != null) {
+            destSource.setGeoJson(
+                FeatureCollection.fromFeature(
+                    Feature.fromGeometry(Point.fromLngLat(targetDest.longitude, targetDest.latitude)),
+                ),
+            )
+        } else {
+            destSource.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+        }
+    }
 }
 
 /**
@@ -346,12 +416,24 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: 
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                 PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
-                PropertyFactory.iconAllowOverlap(false), PropertyFactory.iconIgnorePlacement(false), PropertyFactory.iconOptional(false),
+                PropertyFactory.iconSize(
+                    Expression.interpolate(
+                        Expression.linear(),
+                        Expression.zoom(),
+                        Expression.stop(8, 0.65f),
+                        Expression.stop(12, 0.80f),
+                        Expression.stop(15, 1.0f),
+                    ),
+                ),
+                PropertyFactory.symbolSortKey(Expression.get("sortKey")),
+                PropertyFactory.symbolZOrder(Property.SYMBOL_Z_ORDER_AUTO),
+                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true), PropertyFactory.iconOptional(false),
+                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                 PropertyFactory.textField(Expression.get("name")), PropertyFactory.textSize(10.5f), PropertyFactory.textColor(Expression.get("textColor")),
                 PropertyFactory.textHaloColor(haloColor), PropertyFactory.textHaloWidth(2.2f), PropertyFactory.textHaloBlur(0.3f),
                 PropertyFactory.textAnchor(Property.TEXT_ANCHOR_LEFT), PropertyFactory.textOffset(arrayOf(1.0f, -0.9f)),
-                PropertyFactory.textPitchAlignment(Property.TEXT_PITCH_ALIGNMENT_VIEWPORT),
-                PropertyFactory.textRotationAlignment(Property.TEXT_ROTATION_ALIGNMENT_VIEWPORT),
+                PropertyFactory.textPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
+                PropertyFactory.textRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                 PropertyFactory.textAllowOverlap(false), PropertyFactory.textIgnorePlacement(false), PropertyFactory.textOptional(true),
                 PropertyFactory.textMaxWidth(7.5f),
             )
@@ -366,133 +448,3 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: 
     }
 }
 
-/**
- * 昼夜モード切替時に MapLibre の主要レイヤーの描画色を動的に上書きするヘルパー
- */
-internal fun applyNightModeColors(style: Style, isNight: Boolean) {
-    val bgColor = if (isNight) "#1F1F1F" else "#F5F6F8"
-    val waterColor = if (isNight) "#17263C" else "#D7E6EC"
-    val b2dOutline = if (isNight) "#3C4043" else "#DBDAE0"
-    val b3dColor = if (isNight) "#2E3035" else "#F0F1F5"
-    val roadMinorColor = if (isNight) "#2C313A" else "#FFFFFF"
-    val roadMajorColor = if (isNight) "#3C4452" else "#FFFFFF"
-    val roadCasingColor = if (isNight) "#181B20" else "#D6DDE5"
-
-    style.getLayer("background")?.setProperties(PropertyFactory.backgroundColor(bgColor))
-    style.getLayer("earth")?.setProperties(PropertyFactory.fillColor(bgColor))
-    vectorMapAreaFillColors(isNight).forEach { (layerId, color) ->
-        style.getLayer(layerId)?.setProperties(PropertyFactory.fillColor(color))
-    }
-    style.getLayer("water_stream")?.setProperties(PropertyFactory.lineColor(waterColor))
-    style.getLayer("water_river")?.setProperties(PropertyFactory.lineColor(waterColor))
-
-    style.getLayer("buildings-2d")?.setProperties(
-        PropertyFactory.fillOutlineColor(b2dOutline),
-    )
-    style.getLayer("buildings-3d")?.setProperties(
-        PropertyFactory.fillExtrusionColor(b3dColor),
-    )
-
-    // 市民道路・細街路・トンネル・橋梁
-    listOf(
-        "roads_other", "roads_minor", "roads_minor_service", "roads_link",
-        "roads_tunnels_other", "roads_tunnels_minor", "roads_tunnels_link",
-        "roads_bridges_other", "roads_bridges_minor", "roads_bridges_link"
-    ).forEach { layerId ->
-        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadMinorColor))
-    }
-
-    // 主要道路
-    listOf("roads_major", "roads_tunnels_major", "roads_bridges_major").forEach { layerId ->
-        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadMajorColor))
-    }
-
-    // 道路縁取り (ケーシング)
-    listOf(
-        "roads_other_casing", "roads_minor_casing", "roads_minor_service_casing",
-        "roads_tunnels_other_casing", "roads_tunnels_minor_casing",
-        "roads_bridges_other_casing", "roads_bridges_minor_casing"
-    ).forEach { layerId ->
-        style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadCasingColor))
-    }
-}
-
-internal fun vectorMapAreaFillColors(isNight: Boolean): Map<String, String> = listOf(
-    "water" to if (isNight) "#17263C" else "#D7E6EC",
-    "landuse_park" to if (isNight) "#1B2A22" else "#C2F0D6",
-    "landuse_urban_green" to if (isNight) "#1B2A22" else "#C2F0D6",
-    "landuse_hospital" to if (isNight) "#252628" else "#FDF9EE",
-    "landuse_industrial" to if (isNight) "#252628" else "#eceae6",
-    "landuse_school" to if (isNight) "#252628" else "#FDF9EE",
-    "landuse_beach" to if (isNight) "#262523" else "#f5f0e6",
-    "landuse_zoo" to if (isNight) "#1E2828" else "#c6dcdc",
-    "landuse_aerodrome" to if (isNight) "#28292C" else "#dadbdf",
-    "landuse_runway" to if (isNight) "#25272B" else "#e9e9ed",
-    "landuse_pedestrian" to if (isNight) "#242528" else "#f3f0ec",
-    "landuse_pier" to if (isNight) "#242528" else "#e0e0e0",
-    "landuse_platform" to if (isNight) "#332E28" else "#FFE8D6",
-    "buildings-2d" to if (isNight) "#28292A" else "#E9EAEF",
-    "buildings_station" to if (isNight) "#332E28" else "#FFE8D6",
-).toMap()
-
-internal fun buildVectorStyleJson(context: Context, isNightMode: Boolean, pmtilesPath: String): String {
-    val styleAssetPath = if (isNightMode) "styles/protomaps_dark.json" else "styles/protomaps_light.json"
-    val baseJson = context.assets.open(styleAssetPath).bufferedReader().use { it.readText() }
-
-    val localAssetsDir = java.io.File(cycleMapDataDir(context), "assets")
-    val localFontsDir = java.io.File(localAssetsDir, "fonts")
-    val localSpritesDir = java.io.File(localAssetsDir, "sprites")
-
-    val glyphsUri = if (localFontsDir.isDirectory && (localFontsDir.listFiles()?.isNotEmpty() == true)) {
-        "file://${localFontsDir.absolutePath}/{fontstack}/{range}.pbf"
-    } else {
-        "asset://fonts/{fontstack}/{range}.pbf"
-    }
-
-    val spritesUri = if (localSpritesDir.isDirectory && (localSpritesDir.listFiles()?.isNotEmpty() == true)) {
-        "file://${localSpritesDir.absolutePath}/" + (if (isNightMode) "dark" else "light")
-    } else {
-        "asset://sprites/" + (if (isNightMode) "dark" else "light")
-    }
-
-    return baseJson
-        .replace("__LOCAL_PMTILES__", "pmtiles://file://$pmtilesPath")
-        .replace("__LOCAL_GLYPHS__", glyphsUri)
-        .replace("__LOCAL_SPRITES__", spritesUri)
-}
-internal fun createPoiFeatures(spots: List<com.gorite.cyclemap.ui.cycling.NearbySpot>, zoom: Double, isNightMode: Boolean): List<Feature> {
-    return spots.mapNotNull { spot ->
-        val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
-        if (zoom < 15.0 && !cat.important) return@mapNotNull null
-        val feature = Feature.fromGeometry(Point.fromLngLat(spot.longitude, spot.latitude))
-        val displayName = if (zoom >= 13.8) spot.name else ""
-        feature.addStringProperty("name", displayName)
-        feature.addStringProperty("rawName", spot.name)
-        feature.addStringProperty("category", spot.category)
-        feature.addStringProperty("iconKey", "poi-pin-${cat.name}")
-        val colorInt = poiTextColor(cat, isNightMode)
-        val hexColor = String.format(java.util.Locale.US, "#%06X", 0xFFFFFF and colorInt)
-        feature.addStringProperty("textColor", hexColor)
-        feature
-    }
-}
-
-internal fun updateBuildingExtrusion(style: Style, shouldExtrude: Boolean, isNightMode: Boolean) {
-    val b2d = style.getLayer("buildings-2d")
-    val b3d = style.getLayer("buildings-3d")
-    if (b2d != null && b3d != null) {
-        b2d.setProperties(
-            PropertyFactory.visibility(
-                if (shouldExtrude) Property.NONE else Property.VISIBLE
-            )
-        )
-        b3d.setProperties(
-            PropertyFactory.visibility(
-                if (shouldExtrude) Property.VISIBLE else Property.NONE
-            ),
-            PropertyFactory.fillExtrusionColor(if (isNightMode) "#2E3035" else "#F0F1F5"),
-            PropertyFactory.fillExtrusionOpacity(0.95f),
-            PropertyFactory.fillExtrusionVerticalGradient(true),
-        )
-    }
-}

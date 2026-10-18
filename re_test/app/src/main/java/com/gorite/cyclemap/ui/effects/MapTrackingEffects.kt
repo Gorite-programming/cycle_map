@@ -118,7 +118,7 @@ internal fun MapTrackingEffects(
 
     LaunchedEffect(navigationRoute) {
         if (navigationRoute.isNotEmpty()) {
-            adaptiveRerouteManager.setInitialRoute(emptyList())
+            adaptiveRerouteManager.setInitialRoute(navigationRoute.indices.map { it.toLong() })
         } else {
             adaptiveRerouteManager.reset()
         }
@@ -204,8 +204,8 @@ internal fun MapTrackingEffects(
                         adaptiveRerouteManager.onLocationUpdate(
                             distanceToRouteMeters = progress.distanceToRouteMeters,
                             currentSpeedMps = location.speed,
-                            currentNodeId = 0L,
-                            goalNodeId = 0L,
+                            currentNodeId = progress.distanceFromStartMeters.toLong(),
+                            goalNodeId = navigationRoute.lastIndex.toLong(),
                         )
                         val offRoute = adaptiveRerouteManager.state.value.isOffRoute
                         val remaining = (progress.routeDistanceMeters - progress.distanceFromStartMeters).coerceAtLeast(0.0)

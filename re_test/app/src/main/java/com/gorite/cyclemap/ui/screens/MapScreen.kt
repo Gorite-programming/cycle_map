@@ -295,11 +295,12 @@ internal fun MapScreen(
     val weatherRepo = remember(state.context) { com.gorite.cyclemap.weather.WeatherRepository.getInstance(state.context) }
     val weatherUiState by weatherRepo.uiState.collectAsState()
     val isOnline = currentNetworkLink !is com.gorite.cyclemap.net.Link.Offline
-    LaunchedEffect(state.currentLocationState.value, isOnline) {
+    val currentCityHint = state.locationLabelState.value
+    LaunchedEffect(state.currentLocationState.value, currentCityHint, isOnline) {
         val loc = state.currentLocationState.value
         val lat = loc?.latitude ?: FALLBACK_LATITUDE
         val lon = loc?.longitude ?: FALLBACK_LONGITUDE
-        weatherRepo.updateLocation(lat, lon, isOnline = isOnline)
+        weatherRepo.updateLocation(lat, lon, cityHint = currentCityHint, isOnline = isOnline)
     }
 
     val startNavigation: () -> Unit = {

@@ -82,7 +82,7 @@ internal fun MapScreenScaffold(
                 state.selectedAreaBoundsState.value = bounds
                 state.showAreaDownloadConfirmDialogState.value = true
             },
-            navigationRoute = state.navigationRouteState.value,
+            navigationRoute = state.navigationRouteState.value, alternativeRoutes = state.calculatedRouteOptionsState.value.filter { !it.isPrimary }.map { opt -> opt.points.map { GeoPoint(it.first, it.second) } },
             currentLocation = state.currentLocationState.value,
             hasHeadingSensorFix = state.hasHeadingSensorFixState.value,
             headingDegrees = state.headingDegreesState.floatValue,

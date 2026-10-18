@@ -70,7 +70,7 @@ PACKAGE_LICENSE_TEXT = """\
 CycleMap Data Package License & Attribution
 ===========================================
 
-This package contains routing graphs and search database files for offline navigation.
+This package contains routing graphs, search database files, and (optionally) offline vector map tiles for offline navigation.
 The data is compiled and derived from the following open data sources:
 
 1. OpenStreetMap (OSM)
@@ -88,6 +88,11 @@ The data is compiled and derived from the following open data sources:
    - 国土交通省 (https://nlftp.mlit.go.jp/ksj/) をもとに加工して作成
    - License: 国土数値情報利用規約 (PDL1.0準拠)
    - URL: https://nlftp.mlit.go.jp/ksj/other/agreement.html
+
+4. Protomaps Basemaps & PMTiles (Vector Tiles, when included)
+   - License: CC-BY 4.0 (Cartography) / BSD-3-Clause (Code) / ODbL 1.0 (OSM Data)
+   - Attribution: (c) Protomaps (https://protomaps.com) / (c) OpenStreetMap contributors
+   - Rendered with MapLibre Native (BSD-2-Clause, https://maplibre.org/)
 """
 
 PREFECTURES = [
@@ -156,38 +161,52 @@ def verify_search_db(db_path: Path) -> Dict[str, Any]:
         con.close()
 
 
-def generate_manifest(name: str, db_stats: Dict[str, Any]) -> str:
+def generate_manifest(name: str, db_stats: Dict[str, Any], has_pmtiles: bool = False) -> str:
     """Generate manifest.json content for prefecture package."""
+    files_map: Dict[str, str] = {
+        "search_db": f"{name}.search.db",
+        "graph": f"{name}.graph",
+        "graph_idx": f"{name}.graph.idx",
+    }
+    if has_pmtiles:
+        files_map["pmtiles"] = f"{name}.pmtiles"
+
+    sources = [
+        {
+            "name": "OpenStreetMap",
+            "license": "ODbL 1.0",
+            "url": "https://www.openstreetmap.org/copyright",
+        },
+        {
+            "name": "Overture Maps Places",
+            "license": "CDLA-Permissive-2.0",
+            "url": "https://overturemaps.org/",
+        },
+        {
+            "name": "MLIT Kokudo Suuchi Jouhou (Medical/School)",
+            "license": "PDL1.0",
+            "url": "https://nlftp.mlit.go.jp/ksj/",
+        },
+    ]
+    if has_pmtiles:
+        sources.append(
+            {
+                "name": "Protomaps Basemaps (PMTiles)",
+                "license": "CC-BY 4.0 / BSD-3-Clause / ODbL 1.0",
+                "url": "https://protomaps.com/",
+            }
+        )
+
     manifest = {
         "format_version": 1,
         "prefecture": name,
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "files": {
-            "search_db": f"{name}.search.db",
-            "graph": f"{name}.graph",
-            "graph_idx": f"{name}.graph.idx",
-        },
+        "files": files_map,
         "search_db": {
             "places_count": db_stats.get("row_count", 0),
             "meta": db_stats.get("meta", {}),
         },
-        "sources": [
-            {
-                "name": "OpenStreetMap",
-                "license": "ODbL 1.0",
-                "url": "https://www.openstreetmap.org/copyright",
-            },
-            {
-                "name": "Overture Maps Places",
-                "license": "CDLA-Permissive-2.0",
-                "url": "https://overturemaps.org/",
-            },
-            {
-                "name": "MLIT Kokudo Suuchi Jouhou (Medical/School)",
-                "license": "PDL1.0",
-                "url": "https://nlftp.mlit.go.jp/ksj/",
-            },
-        ],
+        "sources": sources,
     }
     return json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
 
@@ -393,7 +412,15 @@ def valid_zip(path: Path, name: str) -> bool:
         return False
 
 
-def make_zip(name: str, db: Path, graph: Path, idx: Path, out: Path, manifest_content: str) -> None:
+def make_zip(
+    name: str,
+    db: Path,
+    graph: Path,
+    idx: Path,
+    out: Path,
+    manifest_content: str,
+    pmtiles: Optional[Path] = None,
+) -> None:
     for p in (db, graph, idx):
         if not p.is_file() or p.stat().st_size == 0:
             raise FileNotFoundError(f"Missing/empty package input: {p}")
@@ -404,6 +431,8 @@ def make_zip(name: str, db: Path, graph: Path, idx: Path, out: Path, manifest_co
         z.write(db, db.name)
         z.write(graph, graph.name)
         z.write(idx, idx.name)
+        if pmtiles is not None and pmtiles.is_file() and pmtiles.stat().st_size > 0:
+            z.write(pmtiles, f"{name}.pmtiles")
         z.writestr("manifest.json", manifest_content)
         z.writestr("LICENSE.txt", PACKAGE_LICENSE_TEXT)
     os.replace(partial, out)
@@ -493,9 +522,19 @@ def process(pref: Dict[str, str], force: bool, keep_work: bool, legacy_search_db
         else:
             LOG.info("[%s] importer counts: not parseable from stdout/stderr", name)
 
-        # 4) Atomic ZIP package with manifest & license.
-        manifest_text = generate_manifest(name, db_stats)
-        make_zip(name, db, graph, idx, final_zip, manifest_text)
+        # 4) Optional PMTiles lookup (data-tool/out or work dir)
+        pmtiles_candidates = [
+            DATA_TOOL_OUT_DIR / f"{name.lower()}.pmtiles",
+            DATA_TOOL_OUT_DIR / f"{name}.pmtiles",
+            work / f"{name}.pmtiles",
+        ]
+        pmtiles_path = next((p for p in pmtiles_candidates if p.is_file() and p.stat().st_size > 0), None)
+        if pmtiles_path is not None:
+            LOG.info("[%s] Including offline vector tiles: %s (%s)", name, pmtiles_path, psize(pmtiles_path))
+
+        # 5) Atomic ZIP package with manifest & license.
+        manifest_text = generate_manifest(name, db_stats, has_pmtiles=(pmtiles_path is not None))
+        make_zip(name, db, graph, idx, final_zip, manifest_text, pmtiles=pmtiles_path)
         LOG.info("[%s] package: %s (%s)", name, final_zip, psize(final_zip))
 
         if not keep_work:

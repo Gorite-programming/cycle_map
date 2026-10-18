@@ -52,25 +52,55 @@ class RealRoutePlanner(
         val goalIndex = lazyGraph.nearestNodeIndex(destLat, destLon)
         if (startIndex < 0 || goalIndex < 0) return@withContext emptyList()
 
+        val costMode = when (travelMode) {
+            TravelModeType.Bicycle -> com.gorite.cyclemap.routing.RouteCostMode.BICYCLE
+            TravelModeType.Walk -> com.gorite.cyclemap.routing.RouteCostMode.WALK
+            TravelModeType.Car -> com.gorite.cyclemap.routing.RouteCostMode.CAR
+        }
+
+        // LazyMappedRoadGraph での推奨経路計算
+        val primaryResult = lazyGraph.route(startIndex, goalIndex, costMode = costMode)
+        if (!primaryResult.isReachable || primaryResult.nodeIds.isEmpty()) {
+            return@withContext emptyList()
+        }
+
+        buildOptionsFromPrimary(
+            lazyGraph = lazyGraph,
+            startIndex = startIndex,
+            goalIndex = goalIndex,
+            primaryResult = primaryResult,
+            travelMode = travelMode,
+        )
+    }
+
+    fun buildOptionsFromPrimary(
+        lazyGraph: LazyMappedRoadGraph,
+        startIndex: Int,
+        goalIndex: Int,
+        primaryResult: com.gorite.cyclemap.routing.MappedRouteResult,
+        travelMode: TravelModeType = TravelModeType.Bicycle,
+        isCancelled: (() -> Boolean)? = null,
+        maxExpandedNodes: Int = Int.MAX_VALUE,
+    ): List<RouteOption> {
+        if (!primaryResult.isReachable || primaryResult.nodeIds.isEmpty()) return emptyList()
         val mode = when (travelMode) {
             TravelModeType.Bicycle -> TravelMode.Bicycle
             TravelModeType.Walk -> TravelMode.Walk
             TravelModeType.Car -> TravelMode.Car
         }
-
-        // LazyMappedRoadGraph での推奨経路計算
-        val primaryResult = lazyGraph.route(startIndex, goalIndex)
-        if (!primaryResult.isReachable || primaryResult.nodeIds.isEmpty()) {
-            return@withContext emptyList()
+        val costMode = when (travelMode) {
+            TravelModeType.Bicycle -> com.gorite.cyclemap.routing.RouteCostMode.BICYCLE
+            TravelModeType.Walk -> com.gorite.cyclemap.routing.RouteCostMode.WALK
+            TravelModeType.Car -> com.gorite.cyclemap.routing.RouteCostMode.CAR
         }
-
+        val now = LocalDateTime.now()
         val primaryDistance = primaryResult.totalDistanceMeters
         val primaryDuration = travelTimeEstimator.estimateSegmentSeconds(
             distanceMeters = primaryDistance,
             roadType = "secondary",
             gradePercent = null,
             mode = mode,
-            dateTime = LocalDateTime.now()
+            dateTime = now
         )
 
         val primaryOption = RouteOption(
@@ -88,17 +118,23 @@ class RealRoutePlanner(
             isPrimary = true
         )
 
+        val options = mutableListOf(primaryOption)
+        if (isCancelled?.invoke() == true || startIndex < 0 || goalIndex < 0) {
+            return options
+        }
+
         // 迂回/代替候補 (平坦・緩やかまたは別ルート)
         val altResult = lazyGraph.route(
             startIndex,
             goalIndex,
             heuristicMultiplier = 1.15,
-            arterialPenaltyMultiplier = 1.30
+            arterialPenaltyMultiplier = 1.30,
+            isCancelled = isCancelled,
+            maxExpandedNodes = maxExpandedNodes,
+            costMode = costMode,
         )
 
-        val options = mutableListOf(primaryOption)
         if (altResult.isReachable && altResult.nodeIds.isNotEmpty()) {
-            // 類似度判定 (70% 超の重なりは排除)
             val primaryNodes = primaryResult.nodeIds.toSet()
             val altNodes = altResult.nodeIds.toSet()
             val intersection = primaryNodes.intersect(altNodes).size
@@ -111,7 +147,7 @@ class RealRoutePlanner(
                     roadType = "tertiary",
                     gradePercent = null,
                     mode = mode,
-                    dateTime = LocalDateTime.now()
+                    dateTime = now
                 )
                 options.add(
                     RouteOption(
@@ -132,7 +168,7 @@ class RealRoutePlanner(
             }
         }
 
-        options
+        return options
     }
 
     private fun planWithMemoryGraph(
@@ -156,24 +192,48 @@ class RealRoutePlanner(
 
         val finder = PenaltyMultiRouteFinder(graph)
         val candidateRoutes = finder.findRoutes(startNode.id, destNode.id, mode, maxRoutes = 3)
+        val now = LocalDateTime.now()
 
         return candidateRoutes.mapIndexed { idx, candidate ->
             val points = candidate.nodeIds.mapNotNull { nid ->
                 graph.nodes[nid]?.let { it.latitude to it.longitude }
             }
-            val duration = travelTimeEstimator.estimateSegmentSeconds(
-                distanceMeters = candidate.distanceMeters,
-                roadType = "secondary",
-                gradePercent = null,
-                mode = mode
-            )
+            var totalDuration = 0.0
+            var totalElevGain = 0.0
+            for (i in 0 until candidate.nodeIds.size - 1) {
+                val u = candidate.nodeIds[i]
+                val v = candidate.nodeIds[i + 1]
+                val edge = graph.outgoing[u]?.firstOrNull { it.to == v }
+                if (edge != null) {
+                    totalDuration += travelTimeEstimator.estimateSegmentSeconds(
+                        distanceMeters = edge.distanceMeters,
+                        roadType = edge.roadType,
+                        gradePercent = edge.gradePercent,
+                        mode = mode,
+                        dateTime = now,
+                    )
+                    val g = edge.gradePercent
+                    if (g != null && g > 0.0) {
+                        totalElevGain += edge.distanceMeters * (g / 100.0)
+                    }
+                }
+            }
+            if (totalDuration <= 0.0) {
+                totalDuration = travelTimeEstimator.estimateSegmentSeconds(
+                    distanceMeters = candidate.distanceMeters,
+                    roadType = "secondary",
+                    gradePercent = null,
+                    mode = mode,
+                    dateTime = now,
+                )
+            }
             RouteOption(
                 id = "route_$idx",
                 title = if (idx == 0) "推奨ルート" else "候補ルート $idx",
                 travelMode = travelMode,
                 distanceMeters = candidate.distanceMeters,
-                durationSeconds = duration,
-                elevationGainMeters = 0.0,
+                durationSeconds = totalDuration,
+                elevationGainMeters = totalElevGain,
                 points = points,
                 isPrimary = idx == 0
             )

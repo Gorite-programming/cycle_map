@@ -49,6 +49,8 @@ internal fun MapViewsContainer(
     onAreaDragStateChange: (AreaDragState) -> Unit,
     onAreaSelected: (BoundingBox) -> Unit,
     navigationRoute: List<RoutePoint>,
+    alternativeRoutes: List<List<GeoPoint>> = emptyList(),
+    destination: GeoPoint? = null,
     currentLocation: Location?,
     hasHeadingSensorFix: Boolean,
     headingDegrees: Float,
@@ -74,91 +76,87 @@ internal fun MapViewsContainer(
     onVectorMapReady: (MapLibreMap) -> Unit,
 ) {
     Box(modifier = modifier) {
-        // MapView
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { mapContext ->
-                Configuration.getInstance().userAgentValue = mapContext.packageName
-                configureOsmdroid(mapContext, cycleMapDataDir(mapContext))
-                CycleMapView(mapContext).apply {
-                    isClickable = true
-                    isFocusable = true
-                    isNestedScrollingEnabled = false
-                    // HARDWARE: GPU合成でポリゴン描画を最小化
-                    setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-                    setMultiTouchControls(true)
-                    @Suppress("DEPRECATION")
-                    setBuiltInZoomControls(false)
-                    setTilesScaledToDpi(true) // 高DPI画面(S21等)で背景道路・文字を太く拡大描画
-                    minZoomLevel = 2.0
-                    maxZoomLevel = 21.0
-                    isHorizontalMapRepetitionEnabled = false
-                    isVerticalMapRepetitionEnabled = false
-                    isFlingEnabled = true
-                    overlayManager.tilesOverlay.apply {
-                        loadingBackgroundColor = android.graphics.Color.parseColor("#F4F1EA")
-                        loadingLineColor = android.graphics.Color.parseColor("#C5CBD3")
-                        // 読み込み中タイルを薄く表示（ポリゴン化を抑制）
-                        setLoadingDrawable(null)
-                    }
-                    setTileSource(gsiTileSource())
-                    // メモリキャッシュ容量をConfigurationと合わせて拡張
-                    tileProvider.ensureCapacity(512)
-                    controller.setZoom(13.0)
-                    controller.setCenter(GeoPoint(34.18, 131.47))
-                    val locationMarker = Marker(this).apply {
-                        title = "現在地"
-                        // 初期はドットのみ。矢印への切替は updateNavArrow が行う。
-                        icon = navDotDrawable
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        isFlat = true
-                    }
-                    // Googleマップ風の精度円 (薄青フィルタ+青枠)。現在地ドットの下に重ねる。
-                    val accuracyCircle = AccuracyCircleOverlay()
-                    this.onUserPan = onUserPan
-                    // POIオーバーレイ更新用: ズーム・スクロール確定でリフレッシュ要求
-                    addMapListener(
-                        object : MapListener {
-                            override fun onScroll(event: ScrollEvent?): Boolean {
-                                onPoiRefresh()
-                                return true
-                            }
-
-                            override fun onZoom(event: ZoomEvent?): Boolean {
-                                onPoiRefresh()
-                                event?.zoomLevel?.let { onZoomLevelChanged(it) }
-                                return true
-                            }
-                        },
-                    )
-                    overlays.add(accuracyCircle)
-                    overlays.add(locationMarker)
-                    overlays.add(
-                        MapEventsOverlay(
-                            object : MapEventsReceiver {
-                                override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
-                                    onPoiSpotDeselect()
-                                    return false
+        // Raster MapView (osmdroid): ベクター単体表示時は裏で常駐させず、ラスター選択時または範囲指定DL時のみマウント
+        if (selectedLayer != MapLayer.VECTOR_LIBERTY || isAreaSelectMode) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { mapContext ->
+                    Configuration.getInstance().userAgentValue = mapContext.packageName
+                    configureOsmdroid(mapContext, cycleMapDataDir(mapContext))
+                    CycleMapView(mapContext).apply {
+                        isClickable = true
+                        isFocusable = true
+                        isNestedScrollingEnabled = false
+                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                        setMultiTouchControls(true)
+                        @Suppress("DEPRECATION")
+                        setBuiltInZoomControls(false)
+                        setTilesScaledToDpi(true)
+                        minZoomLevel = 2.0
+                        maxZoomLevel = 21.0
+                        isHorizontalMapRepetitionEnabled = false
+                        isVerticalMapRepetitionEnabled = false
+                        isFlingEnabled = true
+                        overlayManager.tilesOverlay.apply {
+                            loadingBackgroundColor = android.graphics.Color.parseColor("#F4F1EA")
+                            loadingLineColor = android.graphics.Color.parseColor("#C5CBD3")
+                            setLoadingDrawable(null)
+                        }
+                        setTileSource(gsiTileSource())
+                        tileProvider.ensureCapacity(512)
+                        controller.setZoom(13.0)
+                        controller.setCenter(GeoPoint(34.18, 131.47))
+                        val locationMarker = Marker(this).apply {
+                            title = "現在地"
+                            icon = navDotDrawable
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            isFlat = true
+                        }
+                        val accuracyCircle = AccuracyCircleOverlay()
+                        this.onUserPan = onUserPan
+                        addMapListener(
+                            object : MapListener {
+                                override fun onScroll(event: ScrollEvent?): Boolean {
+                                    onPoiRefresh()
+                                    return true
                                 }
 
-                                override fun longPressHelper(p: GeoPoint): Boolean {
-                                    if (areaSelectMode) return false
-                                    onLongPress(p)
+                                override fun onZoom(event: ZoomEvent?): Boolean {
+                                    onPoiRefresh()
+                                    event?.zoomLevel?.let { onZoomLevelChanged(it) }
                                     return true
                                 }
                             },
-                        ),
-                    )
-                    onMapCreated(this, locationMarker, accuracyCircle)
-                }
-            },
-            update = { view ->
-                (view as? CycleMapView)?.areaSelectMode = isAreaSelectMode
-            },
-            onRelease = { view ->
-                view.onPause()
-            },
-        )
+                        )
+                        overlays.add(accuracyCircle)
+                        overlays.add(locationMarker)
+                        overlays.add(
+                            MapEventsOverlay(
+                                object : MapEventsReceiver {
+                                    override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                                        onPoiSpotDeselect()
+                                        return false
+                                    }
+
+                                    override fun longPressHelper(p: GeoPoint): Boolean {
+                                        if (areaSelectMode) return false
+                                        onLongPress(p)
+                                        return true
+                                    }
+                                },
+                            ),
+                        )
+                        onMapCreated(this, locationMarker, accuracyCircle)
+                    }
+                },
+                update = { view ->
+                    (view as? CycleMapView)?.areaSelectMode = isAreaSelectMode
+                },
+                onRelease = { view ->
+                    view.onPause()
+                },
+            )
+        }
 
         // VectorMapView (MapLibre Native Android + PMTiles 完全オフライン Liberty)
         if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
@@ -176,6 +174,8 @@ internal fun MapViewsContainer(
                 VectorMapView(
                     modifier = Modifier.fillMaxSize(),
                     routePoints = navigationRoute.map { GeoPoint(it.latitude, it.longitude) },
+                    alternativeRoutes = alternativeRoutes,
+                    destination = destination,
                     currentLocation = currentLocation?.let { GeoPoint(it.latitude, it.longitude) },
                     bearing = if (currentLocation != null && currentLocation.hasBearing() && currentLocation.speed >= 1.0f) {
                         currentLocation.bearing
@@ -201,6 +201,8 @@ internal fun MapViewsContainer(
                     ),
                     onTiltChanged = onTiltChanged,
                     onPoiClick = onPoiClick,
+                    onPoiSpotDeselect = onPoiSpotDeselect,
+                    onLongPress = onLongPress,
                     onUserPan = onUserPan,
                     onMapReady = onVectorMapReady,
                 )

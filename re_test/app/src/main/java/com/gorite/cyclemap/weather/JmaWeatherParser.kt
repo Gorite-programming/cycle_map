@@ -66,7 +66,7 @@ object JmaWeatherParser {
                             popList.add(PopEntry(timeStr, popVal))
                         }
                         if (currentPop == null && popList.isNotEmpty()) {
-                            currentPop = popList.first().popPercent
+                            currentPop = popList.firstOrNull { it.popPercent != null }?.popPercent
                         }
                     }
                 }
@@ -82,7 +82,7 @@ object JmaWeatherParser {
                             tempList.add(TempEntry(label, tempVal))
                         }
                         if (currentTemp == null && tempList.isNotEmpty()) {
-                            currentTemp = tempList.first().tempCelsius
+                            currentTemp = tempList.firstOrNull { it.tempCelsius != null }?.tempCelsius
                         }
                     }
                 }

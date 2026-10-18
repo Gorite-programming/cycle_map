@@ -51,31 +51,26 @@ fun PlaceDetailContent(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
+    val poiCat = com.gorite.cyclemap.ui.cycling.PoiCategory.forCategory(detail.category)
+        ?: com.gorite.cyclemap.ui.cycling.PoiCategory.entries.firstOrNull { it.label == detail.category }
+    val catColor = poiCat?.let { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.colorHex)) }
+        ?: MaterialTheme.colorScheme.primary
+    val catLabel = poiCat?.label ?: detail.category
+
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(40.dp)
-                ) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(14.dp), color = catColor, shadowElevation = 2.dp, modifier = Modifier.size(46.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_lucide_map_pin),
+                            painter = painterResource(poiCat?.iconRes ?: R.drawable.ic_lucide_map_pin),
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp)
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -83,76 +78,105 @@ fun PlaceDetailContent(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = detail.name,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = detail.category,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = catColor.copy(alpha = 0.16f)) {
+                            Text(
+                                text = catLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = catColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                        if (detail.distanceMeters != null && detail.distanceMeters > 0.0) {
+                            Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)) {
+                                Text(
+                                    text = "現在地から " + formatDistance(detail.distanceMeters),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Surface(
+                onClick = onClose,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_x),
+                        contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
-            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_lucide_x),
-                    contentDescription = stringResource(R.string.close),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
-        if (detail.address.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = detail.address,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
 
         // 営業状態バッジ
         BusinessStatusBadge(status = detail.businessStatus, openingHoursText = detail.openingHoursText)
 
-        if (detail.distanceMeters != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "現在地から " + formatDistance(detail.distanceMeters),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        Spacer(modifier = Modifier.height(12.dp))
+        val addrText = if (detail.address.isNotBlank() && detail.address != "周辺エリア") {
+            detail.address
+        } else {
+            String.format(java.util.Locale.US, "周辺エリア (%.4f, %.4f)", detail.lat, detail.lon)
+        }
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_map_pin),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = addrText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
                 onClick = onStartRoute,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.weight(1.35f).height(48.dp),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_lucide_navigation),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(painter = painterResource(R.drawable.ic_lucide_navigation), contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(stringResource(R.string.go_here), fontWeight = FontWeight.Bold)
             }
 
             OutlinedButton(
                 onClick = onToggleFavorite,
-                modifier = Modifier.height(48.dp),
-                shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.weight(1f).height(48.dp),
+                shape = RoundedCornerShape(24.dp)
             ) {
                 Icon(
                     painter = painterResource(if (isFavorite) R.drawable.ic_star_filled else R.drawable.ic_star_outline),
@@ -160,7 +184,7 @@ fun PlaceDetailContent(
                     tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(if (isFavorite) stringResource(R.string.saved_place) else stringResource(R.string.save_place))
             }
         }

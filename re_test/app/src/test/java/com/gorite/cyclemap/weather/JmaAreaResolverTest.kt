@@ -80,4 +80,17 @@ class JmaAreaResolverTest {
         val resolved = resolver.resolve("存在しない県")
         assertNull(resolved)
     }
+
+    @Test
+    fun resolveFullReverseGeocodedLabel_returnsCorrectSubArea() {
+        val yamaguchiAddress = resolver.resolve("山口県", "山口県 山口市 井口明神")
+        assertNotNull(yamaguchiAddress)
+        assertEquals("350020", yamaguchiAddress?.class10Code) // 中部
+        assertFalse(yamaguchiAddress!!.isFallback)
+
+        val hiroshimaWardAddress = resolver.resolve("広島県", "広島県 広島市中区 基町")
+        assertNotNull(hiroshimaWardAddress)
+        assertEquals("340010", hiroshimaWardAddress?.class10Code) // 南部
+        assertFalse(hiroshimaWardAddress!!.isFallback)
+    }
 }

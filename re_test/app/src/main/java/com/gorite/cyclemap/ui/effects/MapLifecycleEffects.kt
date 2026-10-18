@@ -131,23 +131,20 @@ internal fun MapLifecycleEffects(
         }
         delay(500L)
         val zoom = view.zoomLevelDouble
-        // z14未満はゴチャつき防止で非表示
-        if (zoom < 14.0) {
-            view.overlays.removeAll { it is Marker && (it.title?.startsWith("POI:") == true) }
-            view.invalidate()
-            return@LaunchedEffect
-        }
         val center = view.mapCenter as? GeoPoint ?: return@LaunchedEffect
-        // ズームアウト時は重要POI (駅・観光) のみ、件数も絞る
-        val zoomedOut = zoom < 15.0
-        val activeCategories = if (zoomedOut) poiSelected.filter { it.important }.toSet() else poiSelected
+        val activeCategories = poiSelected
         if (activeCategories.isEmpty()) {
             view.overlays.removeAll { it is Marker && (it.title?.startsWith("POI:") == true) }
             view.invalidate()
             return@LaunchedEffect
         }
-        val radius = if (zoom >= 16.0) 800.0 else if (zoom >= 15.0) 1500.0 else 3000.0
-        val limit = if (zoomedOut) 15 else 40
+        val radius = when {
+            zoom >= 16.0 -> 1500.0
+            zoom >= 14.0 -> 4000.0
+            zoom >= 12.0 -> 12000.0
+            else -> 30000.0
+        }
+        val limit = 250
         val dbSelection = SearchDbSelector.select(center.latitude, center.longitude)
         val dataDir = cycleMapDataDir(context)
         val dbFile = when (dbSelection) {
@@ -157,16 +154,16 @@ internal fun MapLifecycleEffects(
         val pois = if (dbFile != null && dbFile.isFile) {
             withContext(Dispatchers.IO) {
                 // バス停 (highway:bus_stop) の密集で画面が圧迫されるのを防ぎ、駅 (railway:station) を優先
-                val rawList = searchNearbyPlaces(dbFile, center.latitude, center.longitude, radius, limit = limit * 4)
+                val rawList = searchNearbyPlaces(dbFile, center.latitude, center.longitude, radius, limit = limit)
                     .mapNotNull { spot ->
-                        if (spot.category.startsWith("highway:bus_stop") && zoom < 16.5) return@mapNotNull null
+                        if ((spot.category.startsWith("highway:bus_stop") || spot.category.startsWith("tourism:information")) && zoom < 16.0) return@mapNotNull null
                         val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
                         if (cat !in activeCategories) null else spot to cat
                     }
                     .sortedWith(
-                        // 駅・重要スポットを最優先し、同一重要度内では距離順
-                        compareByDescending<Pair<NearbySpot, PoiCategory>> { (_, cat) -> cat.important }
-                            .thenBy { (spot, _) -> spot.distanceM },
+                        compareByDescending<Pair<NearbySpot, PoiCategory>> { (spot, _) ->
+                            com.gorite.cyclemap.search.SearchRanking.computePoiProminenceScore(spot.name, spot.category)
+                        }.thenBy { (spot, _) -> spot.distanceM },
                     )
                 rawList
             }
