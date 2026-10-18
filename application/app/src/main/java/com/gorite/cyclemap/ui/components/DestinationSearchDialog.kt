@@ -269,7 +269,7 @@ internal fun DestinationSearchDialog(
                         .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // 左: 戻る矢印 (MapTopBar のハンバーガーボタン size(38.dp), icon 24.dp と完全同一)
+                    // 左: 戻る矢印 (Google Maps 標準の太い ArrowBack、濃い黒 #1F1F1F でくっきり表示)
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -278,9 +278,9 @@ internal fun DestinationSearchDialog(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_lucide_arrow_left),
+                            painter = painterResource(R.drawable.ic_google_arrow_back),
                             contentDescription = "戻る",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = Color(0xFF1F1F1F),
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -298,7 +298,7 @@ internal fun DestinationSearchDialog(
                             singleLine = true,
                             textStyle = TextStyle(
                                 fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = Color(0xFF1F1F1F),
                             ),
                             cursorBrush = SolidColor(Color(0xFF1A73E8)),
                             modifier = Modifier
@@ -309,7 +309,7 @@ internal fun DestinationSearchDialog(
                                     Text(
                                         text = "ここで検索",
                                         fontSize = 18.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = Color(0xFF5F6368),
                                     )
                                 }
                                 innerTextField()
@@ -319,7 +319,7 @@ internal fun DestinationSearchDialog(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // 右: 音声マイク / クリアボタン (MapTopBar のマイク size(36.dp), icon 22.dp と完全同一)
+                    // 右: 音声マイク / クリアボタン (MapTopBar のマイク size(36.dp), icon 22.dp と完全同一、濃い黒 #1F1F1F)
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -337,14 +337,14 @@ internal fun DestinationSearchDialog(
                             Icon(
                                 painter = painterResource(R.drawable.ic_lucide_x),
                                 contentDescription = "クリア",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = Color(0xFF1F1F1F),
                                 modifier = Modifier.size(20.dp),
                             )
                         } else {
                             Icon(
                                 painter = painterResource(R.drawable.ic_google_mic),
                                 contentDescription = "音声検索",
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                tint = Color(0xFF1F1F1F),
                                 modifier = Modifier.size(22.dp),
                             )
                         }
