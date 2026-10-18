@@ -7,7 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import com.gorite.cyclemap.ui.components.*
 import com.gorite.cyclemap.ui.state.*
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -57,8 +59,9 @@ internal fun MapScreenScaffold(
     val isLowPowerMode = batteryStatus.isLowPower
 
     CompositionLocalProvider(LocalAnimationEnabled provides effectiveAnimationEnabled) {
-        MapContentLayout(
-            modifier = modifier,
+        Box(modifier = modifier.fillMaxSize()) {
+            MapContentLayout(
+                modifier = Modifier.fillMaxSize(),
             scope = scope,
             drawerState = state.drawerState,
             selectedMenu = state.selectedMenuState.value,
@@ -225,9 +228,8 @@ internal fun MapScreenScaffold(
             weatherUiState = weatherUiState,
             onRefreshWeather = onRefreshWeather,
         )
-    }
 
-    MapModalsHost(
+        MapModalsHost(
         context = context,
         prefs = state.prefs,
         lifecycleOwner = state.lifecycleOwner,
@@ -484,4 +486,6 @@ internal fun MapScreenScaffold(
         onLocationLabelChanged = { state.locationLabelState.value = it },
         headingDegrees = state.headingDegreesState.floatValue,
     )
+        }
+    }
 }
