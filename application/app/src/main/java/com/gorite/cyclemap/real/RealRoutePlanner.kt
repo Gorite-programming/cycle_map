@@ -30,7 +30,8 @@ import kotlin.math.sqrt
 class RealRoutePlanner(
     private val graphProvider: () -> LazyMappedRoadGraph?,
     private val memoryGraphProvider: (() -> RoadGraph)? = null,
-    private val travelTimeEstimator: TravelTimeEstimator = TravelTimeEstimator()
+    private val travelTimeEstimator: TravelTimeEstimator = TravelTimeEstimator(),
+    private val elevationRepository: com.gorite.cyclemap.data.ElevationRepository? = null,
 ) : RoutePlanner {
 
     override suspend fun planRoutes(
@@ -103,6 +104,8 @@ class RealRoutePlanner(
             dateTime = now
         )
 
+        val primaryElevGain = calculateElevationGain(primaryResult.coordinates, primaryDistance)
+
         val primaryOption = RouteOption(
             id = "route_primary",
             title = when (travelMode) {
@@ -113,7 +116,7 @@ class RealRoutePlanner(
             travelMode = travelMode,
             distanceMeters = primaryDistance,
             durationSeconds = primaryDuration,
-            elevationGainMeters = 0.0,
+            elevationGainMeters = primaryElevGain,
             points = primaryResult.coordinates,
             isPrimary = true
         )
@@ -149,6 +152,7 @@ class RealRoutePlanner(
                     mode = mode,
                     dateTime = now
                 )
+                val altElevGain = calculateElevationGain(altResult.coordinates, altDistance)
                 options.add(
                     RouteOption(
                         id = "route_alternative",
@@ -160,7 +164,7 @@ class RealRoutePlanner(
                         travelMode = travelMode,
                         distanceMeters = altDistance,
                         durationSeconds = altDuration,
-                        elevationGainMeters = 0.0,
+                        elevationGainMeters = altElevGain,
                         points = altResult.coordinates,
                         isPrimary = false
                     )
@@ -238,6 +242,12 @@ class RealRoutePlanner(
                 isPrimary = idx == 0
             )
         }
+    }
+
+    private fun calculateElevationGain(coordinates: List<Pair<Double, Double>>, totalDistanceM: Double): Double {
+        if (coordinates.size < 2 || totalDistanceM <= 0.0) return 0.0
+        val profile = com.gorite.cyclemap.ui.cycling.buildRouteElevationProfile(coordinates, totalDistanceM)
+        return com.gorite.cyclemap.ui.cycling.elevationGain(profile, totalDistanceM) ?: 0.0
     }
 
     private fun findNearestNode(graph: RoadGraph, lat: Double, lon: Double) =

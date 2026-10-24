@@ -184,6 +184,7 @@ object TileDownloader {
         sourceType: MapSourceType,
         source: XYTileSource,
         onProgress: (TileProgress) -> Unit,
+        onFinished: ((Boolean, Int, Int) -> Unit)? = null,
     ) {
         downloadTiles(
             context = context,
@@ -194,7 +195,12 @@ object TileDownloader {
             minZoom = PrefectureData.DOWNLOAD_MIN_ZOOM,
             maxZoom = PrefectureData.DOWNLOAD_MAX_ZOOM,
             onProgress = onProgress,
-            onDone = { total -> DownloadStatusManager.markDownloaded(context, pref.id, sourceType, total) },
+            onDone = { successCount, failCount ->
+                if (successCount > 0 && failCount == 0) {
+                    DownloadStatusManager.markDownloaded(context, pref.id, sourceType, successCount)
+                }
+                onFinished?.invoke(failCount == 0 && successCount > 0, successCount, failCount)
+            },
         )
     }
 
@@ -212,6 +218,7 @@ object TileDownloader {
         minZoom: Int,
         maxZoom: Int,
         onProgress: (TileProgress) -> Unit,
+        onFinished: ((Boolean, Int, Int) -> Unit)? = null,
     ) {
         downloadTiles(
             context = context,
@@ -222,7 +229,9 @@ object TileDownloader {
             minZoom = minZoom,
             maxZoom = maxZoom,
             onProgress = onProgress,
-            onDone = null,
+            onDone = { successCount, failCount ->
+                onFinished?.invoke(failCount == 0 && successCount > 0, successCount, failCount)
+            },
         )
     }
 
@@ -241,10 +250,10 @@ object TileDownloader {
         maxZoom: Int = 16,
         bufferTiles: Int = 1,
         onProgress: (TileProgress) -> Unit,
-        onDone: ((Int) -> Unit)? = null,
+        onDone: ((successCount: Int, failCount: Int) -> Unit)? = null,
     ) {
         if (routePoints.isEmpty()) {
-            onDone?.invoke(0)
+            onDone?.invoke(0, 0)
             return
         }
 
@@ -284,13 +293,15 @@ object TileDownloader {
         val jobs = jobSet.toList()
         val total = jobs.size
         if (total == 0) {
-            onDone?.invoke(0)
+            onDone?.invoke(0, 0)
             return
         }
 
         val cached = readCachedTileKeys(File(tileDir, SqlTileWriter.DATABASE_FILENAME), source.name())
         val writer = SqlTileWriter()
         val completed = AtomicInteger(0)
+        val successCount = AtomicInteger(0)
+        val failCount = AtomicInteger(0)
         val executor = Executors.newFixedThreadPool(THREADS)
 
         fun report() {
@@ -301,6 +312,7 @@ object TileDownloader {
         for (job in jobs) {
             val tileIndex = MapTileIndex.getTileIndex(job.zoom, job.x, job.y)
             if (tileIndex in cached) {
+                successCount.incrementAndGet()
                 report()
                 continue
             }
@@ -332,6 +344,11 @@ object TileDownloader {
                         connection?.disconnect()
                     }
                 }
+                if (saved) {
+                    successCount.incrementAndGet()
+                } else {
+                    failCount.incrementAndGet()
+                }
                 report()
             }
         }
@@ -344,7 +361,7 @@ object TileDownloader {
         } finally {
             writer.onDetach()
         }
-        onDone?.invoke(total)
+        onDone?.invoke(successCount.get(), failCount.get())
     }
 
     private data class TileJob(val zoom: Int, val x: Int, val y: Int)
@@ -365,7 +382,7 @@ object TileDownloader {
         minZoom: Int,
         maxZoom: Int,
         onProgress: (TileProgress) -> Unit,
-        onDone: ((Int) -> Unit)?,
+        onDone: ((successCount: Int, failCount: Int) -> Unit)?,
     ) {
         val dataDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CycleMap").apply { mkdirs() }
         val tileDir = File(dataDir, "tiles").apply { mkdirs() }
@@ -406,6 +423,8 @@ object TileDownloader {
         val cached = readCachedTileKeys(File(tileDir, SqlTileWriter.DATABASE_FILENAME), source.name())
         val writer = SqlTileWriter()
         val completed = AtomicInteger(0)
+        val successCount = AtomicInteger(0)
+        val failCount = AtomicInteger(0)
         val executor = Executors.newFixedThreadPool(THREADS)
 
         fun report() {
@@ -416,6 +435,7 @@ object TileDownloader {
         for (job in jobs) {
             val tileIndex = MapTileIndex.getTileIndex(job.zoom, job.x, job.y)
             if (tileIndex in cached) {
+                successCount.incrementAndGet()
                 report()
                 continue
             }
@@ -448,6 +468,11 @@ object TileDownloader {
                     }
                     attempt++
                 }
+                if (saved) {
+                    successCount.incrementAndGet()
+                } else {
+                    failCount.incrementAndGet()
+                }
                 report()
             }
         }
@@ -455,7 +480,7 @@ object TileDownloader {
         executor.shutdown()
         executor.awaitTermination(60, TimeUnit.MINUTES)
         writer.onDetach()
-        onDone?.invoke(total)
+        onDone?.invoke(successCount.get(), failCount.get())
     }
 
     /**

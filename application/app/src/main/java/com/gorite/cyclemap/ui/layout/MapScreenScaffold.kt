@@ -49,8 +49,8 @@ internal fun MapScreenScaffold(
     weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
     onRefreshWeather: () -> Unit = {},
 ) {
-    val context = state.context
     val scope = state.scope
+    val context = state.context
     val effectiveAnimationEnabled = Motion.resolveEffectiveAnimation(
         state.animationEnabledState.value,
         Motion.isSystemAnimationEnabled(context),
@@ -62,8 +62,7 @@ internal fun MapScreenScaffold(
         Box(modifier = modifier.fillMaxSize()) {
             MapContentLayout(
                 modifier = Modifier.fillMaxSize(),
-            scope = scope,
-            drawerState = state.drawerState,
+            isDrawerOpenState = state.isDrawerOpenState,
             selectedMenu = state.selectedMenuState.value,
             onMenuSelect = { state.selectedMenuState.value = it },
             onOpenSearch = { state.showDestinationSearchState.value = true },
@@ -109,12 +108,24 @@ internal fun MapScreenScaffold(
                 state.accuracyCircleState.value = circle
                 state.mapViewState.value = view
             },
+            onMapDestroyed = {
+                state.mapViewState.value = null
+                state.locationMarkerState.value = null
+                state.accuracyCircleState.value = null
+                state.routeOverlayState.value = null
+                state.destinationMarkerState.value = null
+                state.startMarkerState.value = null
+                state.waypointMarkersState.value = emptyList()
+                state.gpxTrackOverlayState.value = null
+            },
             onPoiRefresh = { state.poiRefreshTickState.intValue++ },
             currentZoomLevel = state.currentZoomLevelState.doubleValue,
             onZoomLevelChanged = { state.currentZoomLevelState.doubleValue = it },
             onLongPress = { handleSpotSelected(it) },
             currentVectorTilt = state.currentVectorTiltState.doubleValue,
             onTiltChanged = { state.currentVectorTiltState.doubleValue = it },
+            currentVectorBearing = state.currentVectorBearingState.doubleValue,
+            onBearingChanged = { state.currentVectorBearingState.doubleValue = it },
             onVectorMapReady = { state.vectorMapState.value = it },
             effectiveAnimationEnabled = effectiveAnimationEnabled,
             hasLocationPermission = state.hasLocationPermissionState.value,
@@ -293,6 +304,7 @@ internal fun MapScreenScaffold(
         showRecordPanel = state.showRecordPanelState.value,
         isRecording = state.isRecordingState.value,
         gpxPointCount = state.gpxPointCountState.value,
+        gpxStatusMessage = state.gpxNotificationTextState.value,
         navigationProgress = state.navigationProgressState.value,
         hasLocationPermission = state.hasLocationPermissionState.value,
         gpxTrackOverlay = state.gpxTrackOverlayState.value,

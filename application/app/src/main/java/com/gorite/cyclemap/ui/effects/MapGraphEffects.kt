@@ -14,6 +14,8 @@ import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import com.gorite.cyclemap.data.RoutingGraphSelection
 import com.gorite.cyclemap.data.RoutingGraphSelector
 import com.gorite.cyclemap.routing.LazyMappedRoadGraph
@@ -50,6 +52,7 @@ internal fun MapGraphEffects(
     onLocationUpdate: ((Location) -> Unit)?,
     runRouteCalculation: (start: GeoPoint, goal: GeoPoint, isReroute: Boolean, waypointsOverride: List<GeoPoint>?, preferenceOverride: RoutePreference?) -> Unit,
     onGpxRecordingStarted: () -> Unit,
+    onGpxRecordingEmpty: () -> Unit,
     onGpxRecordingSaved: (points: Int, fileName: String) -> Unit,
 ) {
     /**
@@ -167,25 +170,42 @@ internal fun MapGraphEffects(
     DisposableEffect(mappedGraph) {
         val graphToDispose = mappedGraph
         onDispose {
-            val job = routeJobRef.getAndSet(null)
-            job?.cancel()
-            graphLock.write { graphToDispose?.close() }
+            // CRIT-02 fix: 新グラフ切替直後に起動した新しい routeJob を onDispose が道連れキャンセルするのを防ぐため、
+            // routeJobRef.cancel() は行わず、古いグラフの close() のみ実行する。
+            // 進行中ルート探索のキャンセルは startGraphSwitch 冒頭および画面破棄時の DisposableEffect(Unit) で行う。
+            kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                graphLock.write { graphToDispose?.close() }
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            routeJobRef.getAndSet(null)?.cancel()
         }
     }
 
     // GPX BroadcastReceiver
+    val currentOnGpxRecordingStarted by rememberUpdatedState(onGpxRecordingStarted)
+    val currentOnGpxRecordingEmpty by rememberUpdatedState(onGpxRecordingEmpty)
+    val currentOnGpxRecordingSaved by rememberUpdatedState(onGpxRecordingSaved)
+    val currentOnLocationUpdate by rememberUpdatedState(onLocationUpdate)
+
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
                     LocationTrackingService.ACTION_RECORDING_STARTED -> {
-                        onGpxRecordingStarted()
+                        currentOnGpxRecordingStarted()
+                    }
+                    LocationTrackingService.ACTION_RECORDING_EMPTY -> {
+                        currentOnGpxRecordingEmpty()
                     }
                     LocationTrackingService.ACTION_RECORDING_SAVED -> {
                         val path = intent.getStringExtra(LocationTrackingService.EXTRA_PATH).orEmpty()
                         val points = intent.getIntExtra(LocationTrackingService.EXTRA_POINTS, 0)
                         val fileName = File(path).name
-                        onGpxRecordingSaved(points, fileName)
+                        currentOnGpxRecordingSaved(points, fileName)
                     }
                 }
             }
@@ -194,6 +214,7 @@ internal fun MapGraphEffects(
             receiver,
             IntentFilter().apply {
                 addAction(LocationTrackingService.ACTION_RECORDING_STARTED)
+                addAction(LocationTrackingService.ACTION_RECORDING_EMPTY)
                 addAction(LocationTrackingService.ACTION_RECORDING_SAVED)
             },
             Context.RECEIVER_NOT_EXPORTED,

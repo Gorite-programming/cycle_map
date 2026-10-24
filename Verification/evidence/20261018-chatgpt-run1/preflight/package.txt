@@ -1,0 +1,289 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        515237a com.gorite.cyclemap.test/com.gorite.cyclemap.MainActivity filter 52b772b
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        a41fd46 com.gorite.cyclemap.test/androidx.profileinstaller.ProfileInstallReceiver filter 8d9a25d
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        a41fd46 com.gorite.cyclemap.test/androidx.profileinstaller.ProfileInstallReceiver filter 3685b07
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      androidx.profileinstaller.action.SKIP_FILE:
+        a41fd46 com.gorite.cyclemap.test/androidx.profileinstaller.ProfileInstallReceiver filter d951434
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        a41fd46 com.gorite.cyclemap.test/androidx.profileinstaller.ProfileInstallReceiver filter 510a7d2
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+      com.gorite.cyclemap.test.VERIFY:
+        8130788 com.gorite.cyclemap.test/com.gorite.cyclemap.verify.VerificationReceiver filter 795d521
+          Action: "com.gorite.cyclemap.test.VERIFY"
+
+Domain verification status:
+
+Permissions:
+  Permission [com.gorite.cyclemap.test.permission.VERIFY] (aa5e069):
+    sourcePackage=com.gorite.cyclemap.test
+    uid=10378 gids=[] type=0 prot=signature
+    perm=PermissionInfo{98a9530 com.gorite.cyclemap.test.permission.VERIFY}
+    flags=0x0
+
+Permissions:
+  Permission [com.gorite.cyclemap.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (d36baee):
+    sourcePackage=com.gorite.cyclemap.test
+    uid=10378 gids=[] type=0 prot=signature
+    perm=PermissionInfo{3d2272e com.gorite.cyclemap.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  com.gorite.cyclemap.test/androidx.startup.InitializationProvider:
+    Provider{3fee2cf com.gorite.cyclemap.test/androidx.startup.InitializationProvider}
+
+ContentProvider Authorities:
+  [com.gorite.cyclemap.test.androidx-startup]:
+    Provider{3fee2cf com.gorite.cyclemap.test/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{f564b8f com.gorite.cyclemap.test}
+
+Key Set Manager:
+  [com.gorite.cyclemap.test]
+      Signing KeySets: 144
+
+Packages:
+  Package [com.gorite.cyclemap.test] (cf5d885):
+    appId=10378
+    pkg=Package{d5a365 com.gorite.cyclemap.test}
+    codePath=/data/app/~~IF4YURGTyVUgamAviiK7KA==/com.gorite.cyclemap.test-_WRI-p2KcF3EofaDKsCl5w==
+    resourcePath=/data/app/~~IF4YURGTyVUgamAviiK7KA==/com.gorite.cyclemap.test-_WRI-p2KcF3EofaDKsCl5w==
+    legacyNativeLibraryDir=/data/app/~~IF4YURGTyVUgamAviiK7KA==/com.gorite.cyclemap.test-_WRI-p2KcF3EofaDKsCl5w==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=2 minSdk=33 targetSdk=35
+    minExtensionVersions=[]
+    versionName=α0.2-test
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP LARGE_HEAP ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    scannedAsStoppedSystemApp=false
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    timeStamp=2026-10-18 18:51:16
+    lastUpdateTime=2026-10-18 18:51:22
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    category=manifest: -1, override: -1, by user: -1
+    packageSource=1
+    appMetadataFilePath=null
+    appMetadataSource=0
+    signatures=PackageSignatures{487e71d version:2, signatures:[ad2a1e82], past signatures:[]}
+    installPermissionsFixed=false
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP LARGE_HEAP ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    componentsDeclared=7
+    declared permissions:
+      com.gorite.cyclemap.test.permission.VERIFY: prot=signature
+      com.gorite.cyclemap.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: prot=signature
+    requested permissions:
+      android.permission.POST_NOTIFICATIONS
+      android.permission.ACCESS_FINE_LOCATION
+      android.permission.FOREGROUND_SERVICE
+      android.permission.FOREGROUND_SERVICE_LOCATION
+      android.permission.INTERNET
+      android.permission.ACCESS_COARSE_LOCATION
+      android.permission.ACCESS_NETWORK_STATE
+      android.permission.ACCESS_WIFI_STATE
+      com.gorite.cyclemap.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+    install permissions:
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.FOREGROUND_SERVICE_LOCATION: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      android.permission.ACCESS_WIFI_STATE: granted=true
+      com.gorite.cyclemap.test.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+    User 0: ceDataInode=251368 deDataInode=149956 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=/data/user/0/com.gorite.cyclemap.test
+      firstInstallTime=2026-10-10 06:35:16
+      uninstallReason=0
+      overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+      legacy overlay paths:
+        /product/overlay/NavigationBarModeGestural/NavigationBarModeGesturalOverlay.apk
+      gids=[3003]
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.ACCESS_FINE_LOCATION: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|524288]
+        android.permission.ACCESS_COARSE_LOCATION: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+    User 150: ceDataInode=0 deDataInode=0 installed=false hidden=false suspended=false distractionFlags=0 stopped=true notLaunched=true enabled=0 instant=false virtual=false quarantined=false
+      installReason=0
+      dataDir=null
+      firstInstallTime=2026-10-10 06:35:16
+      uninstallReason=0
+      gids=[3003]
+      runtime permissions:
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+  queries via component:
+    com.nttdocomo.android.mascot:
+      com.gorite.cyclemap.test
+    com.hairy.panel.peak:
+      com.gorite.cyclemap.test
+    com.samsung.android.app.ledbackcover:
+      com.gorite.cyclemap.test
+    com.komorebi.memo:
+      com.gorite.cyclemap.test
+    com.android.settings.intelligence:
+      com.gorite.cyclemap.test
+    com.nttdocomo.android.mymagazine:
+      com.gorite.cyclemap.test
+    com.moonshot.kimichat:
+      com.gorite.cyclemap.test
+    com.nttdocomo.android.schedulememo:
+      com.gorite.cyclemap.test
+    com.nttdocomo.android.msg:
+      com.gorite.cyclemap.test
+    com.google.android.as.oss:
+      com.gorite.cyclemap.test
+    com.google.android.as:
+      com.gorite.cyclemap.test
+    jp.naver.line.android:
+      com.gorite.cyclemap.test
+    jp.wifishare.townwifi:
+      com.gorite.cyclemap.test
+    com.developer.zpallagi.batteryanalyzer:
+      com.gorite.cyclemap.test
+    com.antutu.ABenchMark:
+      com.gorite.cyclemap.test
+    ru.zdevs.zarchiver:
+      com.gorite.cyclemap.test
+    com.microdose.balljam:
+      com.gorite.cyclemap.test
+    jp.co.mcdonalds.android:
+      com.gorite.cyclemap.test
+    com.oakever.tiletrip:
+      com.gorite.cyclemap.test
+    com.valuesccg.uvoice:
+      com.gorite.cyclemap.test
+    com.ss.android.ugc.trill:
+      com.gorite.cyclemap.test
+  queryable via interaction:
+    User 0:
+      [com.sec.android.app.SecSetupWizard,com.android.settings,com.samsung.android.forest,com.samsung.gpuwatchapp,com.samsung.android.stickercenter,com.samsung.android.cameraxservice,com.sec.bcservice,com.samsung.android.themecenter,com.samsung.android.photoremasterservice,com.samsung.android.fmm,com.samsung.android.aircommandmanager,com.samsung.android.camerasdkservice,com.sec.android.CcInfo,com.android.localtransport,com.sec.android.app.quicktool,com.sec.android.emergencylauncher,com.samsung.android.app.dressroom,com.samsung.oda.service,com.sec.app.RilErrorNotifier,com.sec.android.sdhms,com.android.dynsystem,com.sec.android.app.factorykeystring,com.skms.android.agent,com.samsung.android.svcagent,com.qualcomm.qti.services.systemhelper,com.android.keychain,com.samsung.android.hdmapp,com.sec.android.app.personalization,com.sec.imsservice,com.sec.factory.camera,com.samsung.android.provider.filterprovider,com.samsung.android.dqagent,com.samsung.android.mdecservice,com.samsung.android.smartswitchassistant,com.samsung.android.providers.factory,com.sec.android.app.desktoplauncher,com.sec.android.app.parser,android,com.sec.sve,com.android.inputdevices,com.android.server.telecom,com.samsung.accessibility,com.sec.mhs.smarttethering,com.samsung.android.da.daagent,com.samsung.android.brightnessbackupservice,com.samsung.android.globalpostprocmgr,com.wssyncmldm,com.samsung.android.biometrics.app.setting,com.samsung.android.bbc.bbcagent,com.samsung.android.lool,com.android.location.fused,com.samsung.android.knox.zt.framework,com.qti.snapdragon.qdcm_ff,com.sec.android.smartfpsadjuster,com.android.providers.settings,com.samsung.android.knox.pushmanager,com.samsung.aasaservice,com.sec.automation,com.sec.android.app.servicemodeapp,com.sec.android.app.wlantest,com.sec.android.soagent,com.sec.android.diagmonagent,com.samsung.android.knox.mpos,com.samsung.android.app.omcagent,com.sec.android.app.hwmoduletest,com.sec.imslogger,com.sec.usbsettings,com.samsung.android.knox.attestation,com.samsung.android.vtcamerasettings,com.sec.facatfunction,com.samsung.android.wifi.ai,com.sec.modem.settings,com.sec.android.app.dexonpc,com.samsung.android.motionphoto.app,com.samsung.sait.sohservice,com.samsung.android.smartface,com.samsung.SMT,com.samsung.android.vexfwk.service,com.sec.epdg,com.samsung.android.ese,com.sec.android.iaft,com.samsung.android.emergency]:
+        com.gorite.cyclemap.test
+      [com.android.systemui,com.samsung.android.app.routines,com.sec.android.cover.ledcover,com.sec.android.dexsystemui,com.samsung.android.app.aodservice]:
+        com.gorite.cyclemap.test
+      com.nttdocomo.android.homezozo:
+        com.gorite.cyclemap.test
+      com.sec.android.app.launcher:
+        com.gorite.cyclemap.test
+      [com.google.android.gms,com.google.android.gsf]:
+        com.gorite.cyclemap.test
+      com.google.android.ext.services:
+        com.gorite.cyclemap.test
+      com.adamrocker.android.input.simeji:
+        com.gorite.cyclemap.test
+      com.huami.watch.hmwatchmanager:
+        com.gorite.cyclemap.test
+      [com.sec.android.app.SecSetupWizard,com.android.settings,com.samsung.android.forest,com.samsung.gpuwatchapp,com.samsung.android.stickercenter,com.samsung.android.cameraxservice,com.sec.bcservice,com.samsung.android.themecenter,com.samsung.android.photoremasterservice,com.samsung.android.fmm,com.samsung.android.aircommandmanager,com.samsung.android.camerasdkservice,com.sec.android.CcInfo,com.android.localtransport,com.sec.android.app.quicktool,com.sec.android.emergencylauncher,com.samsung.android.app.dressroom,com.samsung.oda.service,com.sec.app.RilErrorNotifier,com.sec.android.sdhms,com.android.dynsystem,com.sec.android.app.factorykeystring,com.skms.android.agent,com.samsung.android.svcagent,com.qualcomm.qti.services.systemhelper,com.android.keychain,com.samsung.android.hdmapp,com.sec.android.app.personalization,com.sec.imsservice,com.sec.factory.camera,com.samsung.android.provider.filterprovider,com.samsung.android.dqagent,com.samsung.android.mdecservice,com.samsung.android.smartswitchassistant,com.samsung.android.providers.factory,com.sec.android.app.desktoplauncher,com.sec.android.app.parser,android,com.sec.sve,com.android.inputdevices,com.android.server.telecom,com.samsung.accessibility,com.sec.mhs.smarttethering,com.samsung.android.da.daagent,com.samsung.android.brightnessbackupservice,com.samsung.android.globalpostprocmgr,com.wssyncmldm,com.samsung.android.biometrics.app.setting,com.samsung.android.bbc.bbcagent,com.samsung.android.lool,com.android.location.fused,com.samsung.android.knox.zt.framework,com.qti.snapdragon.qdcm_ff,com.sec.android.smartfpsadjuster,com.android.providers.settings,com.samsung.android.knox.pushmanager,com.samsung.aasaservice,com.sec.automation,com.sec.android.app.servicemodeapp,com.sec.android.app.wlantest,com.sec.android.soagent,com.sec.android.diagmonagent,com.samsung.android.knox.mpos,com.samsung.android.app.omcagent,com.sec.android.app.hwmoduletest,com.sec.imslogger,com.sec.usbsettings,com.samsung.android.knox.attestation,com.samsung.android.vtcamerasettings,com.sec.facatfunction,com.samsung.android.wifi.ai,com.sec.modem.settings,com.sec.android.app.dexonpc,com.samsung.android.motionphoto.app,com.samsung.sait.sohservice,com.samsung.android.smartface,com.samsung.SMT,com.samsung.android.vexfwk.service,com.sec.epdg,com.samsung.android.ese,com.sec.android.iaft,com.samsung.android.emergency]:
+        com.gorite.cyclemap.test
+    User 150:
+  queryable via uses-library:
+
+Dexopt state:
+  [com.gorite.cyclemap.test]
+    path: /data/app/~~IF4YURGTyVUgamAviiK7KA==/com.gorite.cyclemap.test-_WRI-p2KcF3EofaDKsCl5w==/base.apk
+      arm64: [status=run-from-apk] [reason=unknown] [primary-abi]
+        [location is error]
+
+Profile utilization state:
+  Current state:
+    Version: 1.0
+    Start reason: boot-no-update
+    Start time: not started
+    Finish time: not finished
+    PU_StatusWatcher:
+      Initial thermal status: 0
+      Thermal status: 0
+      Screen off: false
+      Low battery: true
+    PU_DexoptTrigger:
+      Dexopt concurrency: 4
+      Dexopting: false
+    PU_Storage:
+      Stored apps:
+        com.google.android.youtube 54
+        net.osmand 73
+        jp.naver.line.android 75
+        jp.wifishare.townwifi 75
+        com.sec.android.app.clockpackage 94
+        com.google.android.apps.maps 95
+        com.strava 95
+        com.android.settings 102
+        com.sec.android.app.camera 104
+        com.android.chrome 108
+        com.android.vending 109
+        com.brave.browser 112
+        com.huami.watch.hmwatchmanager 112
+        com.sec.android.easyMover 113
+        com.google.android.googlequicksearchbox 114
+        com.samsung.android.samsungpass 119
+        com.openai.chatgpt 123
+    Stored PU state:
+      Service:
+        Version: 1.0
+        Start reason: boot-after-mainline-update
+        Start time: Fri Oct 09 21:44:06 GMT+09:00 2026 ts=1791549846967
+        Finish time: Fri Oct 09 21:46:09 GMT+09:00 2026 ts=1791549969325
+        Took time 122sec
+      Watcher:
+        Initial thermal status: 0
+        Thermal status: 0
+        Screen off: true
+        Low battery: false
+      Metrics:
+        Predicted and launched apps: 0
+        Predicted apps: 17
+        Launched apps: 0
+        Best f1Score: 0.0, prefixCount: 0, precision: 0.0, recall: 0.0
+      Trigger:
+        Dexopt concurrency: 4
+        Dexopting: false
+        Hot apps list:
+          jp.naver.line.android, w=54, s=OPTIMIZED, optTimeMs=1791549877923, cancelCount=0, dexopt=20, dex2oatTimeMs=10345, filter=speed-profile
+          net.osmand, w=65, s=OPTIMIZED, optTimeMs=1791549871293, cancelCount=0, dexopt=20, dex2oatTimeMs=3731, filter=speed-profile
+          com.brave.browser, w=68, s=OPTIMIZED, optTimeMs=1791549871303, cancelCount=0, dexopt=20, dex2oatTimeMs=491, filter=speed-profile, dex2oatTimeMs=2887, filter=speed-profile, dex2oatTimeMs=0, filter=verify
+          com.gugu.music, w=72, s=OPTIMIZED, optTimeMs=1791549871517, cancelCount=0, dexopt=20, dex2oatTimeMs=3975, filter=speed-profile
+          jp.wifishare.townwifi, w=76, s=OPTIMIZED, optTimeMs=1791549876510, cancelCount=0, dexopt=20, dex2oatTimeMs=4907, filter=speed-profile
+          com.spotify.music, w=77, s=OPTIMIZED, optTimeMs=1791549888120, cancelCount=0, dexopt=20, dex2oatTimeMs=16422, filter=speed-profile
+          com.huami.watch.hmwatchmanager, w=79, s=OPTIMIZED, optTimeMs=1791549960357, cancelCount=0, dexopt=20, dex2oatTimeMs=18908, filter=speed-profile
+          com.google.android.googlequicksearchbox, w=82, s=OPTIMIZED, optTimeMs=1791549962002, cancelCount=0, dexopt=20, dex2oatTimeMs=15608, filter=speed-profile
+          com.android.vending, w=84, s=OPTIMIZED, optTimeMs=1791549962129, cancelCount=0, dexopt=20, dex2oatTimeMs=14240, filter=speed-profile
+          com.sec.android.app.clockpackage, w=92, s=OPTIMIZED, optTimeMs=1791549960503, cancelCount=0, dexopt=20, dex2oatTimeMs=2714, filter=speed-profile
+          com.android.settings, w=93, s=OPTIMIZED, optTimeMs=1791549962008, cancelCount=0, dexopt=20, dex2oatTimeMs=1234, filter=speed-profile
+          com.samsung.android.samsungpass, w=93, s=OPTIMIZED, optTimeMs=1791549962237, cancelCount=0, dexopt=20, dex2oatTimeMs=1433, filter=speed-profile
+          com.google.android.gm, w=96, s=OPTIMIZED, optTimeMs=1791549969325, cancelCount=0, dexopt=20, dex2oatTimeMs=6945, filter=speed-profile
+          com.samsung.android.app.contacts, w=99, s=OPTIMIZED, optTimeMs=1791549963598, cancelCount=0, dexopt=20, dex2oatTimeMs=1299, filter=speed-profile
+          com.digibites.accubattery, w=101, s=OPTIMIZED, optTimeMs=1791549964140, cancelCount=0, dexopt=20, dex2oatTimeMs=1697, filter=speed-profile
+          com.samsung.android.calendar, w=101, s=OPTIMIZED, optTimeMs=1791549963778, cancelCount=0, dexopt=20, dex2oatTimeMs=1271, filter=speed-profile
+          com.developer.zpallagi.batteryanalyzer, w=105, s=OPTIMIZED, optTimeMs=1791549964778, cancelCount=0, dexopt=20, dex2oatTimeMs=942, filter=speed-profile
+
+Compiler stats:
+  [com.gorite.cyclemap.test]
+    (No recorded stats)
+
+HeimdAllFS state:
+  HeimdAllFS does not supported.

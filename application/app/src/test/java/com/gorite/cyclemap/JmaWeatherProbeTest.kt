@@ -20,6 +20,7 @@ import com.google.gson.JsonParser
 import org.junit.Test
 
 class JmaWeatherProbeTest {
+    @org.junit.Ignore("外部ネットワーク接続が必要な手動検証用テスト")
     @Test
     fun fetchForecastForConfiguredTestCity() = runJmaWeatherProbe()
 }

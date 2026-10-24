@@ -1,0 +1,4 @@
+Installed CycleMap APK was pulled temporarily and SHA-256 compared with the local debug APK.
+Both hashes: e2da730237ad0bd50f6d86716132c770ce9ebe618a3b0e74350520fb32e6cbf3
+The pulled 82 MB temporary copy was deleted after comparison; it is not retained in this evidence folder.
+Local APK: application/app/build/outputs/apk/debug/app-debug.apk

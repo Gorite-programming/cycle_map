@@ -3,6 +3,7 @@ package com.gorite.cyclemap.ui.cycling
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +49,7 @@ import com.gorite.cyclemap.R
  */
 internal fun extractShortLocalityName(raw: String): String {
     var s = raw.trim()
-    if (s.isEmpty()) return "井口五丁目"
+    if (s.isEmpty()) return "現在地"
     // 都道府県を除去
     s = s.replace(Regex("^(東京都|北海道|(?:京都|大阪)府|.{2,3}県)"), "")
     // 政令市・市区町村・郡を除去
@@ -74,13 +77,41 @@ fun LocationSummarySheet(
 ) {
     val shortName = extractShortLocalityName(locationName)
     var showWeatherDialog by remember { mutableStateOf(false) }
+    var isExpanded by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    var verticalDrag by remember { mutableStateOf(0f) }
+    val weatherData = when (weatherUiState) {
+        is com.gorite.cyclemap.weather.WeatherUiState.Fresh -> weatherUiState.data
+        is com.gorite.cyclemap.weather.WeatherUiState.Stale -> weatherUiState.data
+        is com.gorite.cyclemap.weather.WeatherUiState.Error -> weatherUiState.cached
+        else -> null
+    }
+    val isOffline = (weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Stale && weatherUiState.isOffline) ||
+            weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Error
+    val displayTemp = weatherData?.currentTemp?.let { "${it.roundToInt()}℃" } ?: if (weatherData != null) "—℃" else temperatureText
+    val category = weatherData?.let {
+        com.gorite.cyclemap.weather.WeatherCategory.fromCode(it.weatherCode)
+    } ?: com.gorite.cyclemap.weather.WeatherCategory.SUNNY
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
         shadowElevation = 10.dp,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(isExpanded) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount -> verticalDrag += dragAmount },
+                    onDragEnd = {
+                        val threshold = with(density) { 36.dp.toPx() }
+                        if (verticalDrag < -threshold) isExpanded = true
+                        if (verticalDrag > threshold) isExpanded = false
+                        verticalDrag = 0f
+                    },
+                    onDragCancel = { verticalDrag = 0f },
+                )
+            },
     ) {
         Column(
             modifier = Modifier
@@ -118,27 +149,6 @@ fun LocationSummarySheet(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 // 右側: 天気・気温バッジ (気象庁データ連動)
-                val weatherData = when (weatherUiState) {
-                    is com.gorite.cyclemap.weather.WeatherUiState.Fresh -> weatherUiState.data
-                    is com.gorite.cyclemap.weather.WeatherUiState.Stale -> weatherUiState.data
-                    is com.gorite.cyclemap.weather.WeatherUiState.Error -> weatherUiState.cached
-                    else -> null
-                }
-                val isOffline = (weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Stale && weatherUiState.isOffline) ||
-                        weatherUiState is com.gorite.cyclemap.weather.WeatherUiState.Error
-
-                val displayTemp = if (weatherData != null) {
-                    if (weatherData.currentTemp != null) "${weatherData.currentTemp.roundToInt()}℃" else "—℃"
-                } else {
-                    temperatureText
-                }
-
-                val category = if (weatherData != null) {
-                    com.gorite.cyclemap.weather.WeatherCategory.fromCode(weatherData.weatherCode)
-                } else {
-                    com.gorite.cyclemap.weather.WeatherCategory.SUNNY
-                }
-
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -189,6 +199,36 @@ fun LocationSummarySheet(
                                 color = if (isOffline) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary,
                             )
                         }
+                    }
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(visible = isExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 8.dp),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    Text(
+                        text = "${shortName}周辺の天気",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = if (weatherData?.weatherText != null) {
+                            "$displayTemp・${weatherData.weatherText}"
+                        } else {
+                            "$displayTemp・天気情報を読み込み中"
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (isOffline) {
+                        Text(
+                            text = "保存済みの天気情報を表示中",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

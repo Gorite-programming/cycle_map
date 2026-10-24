@@ -147,6 +147,7 @@ class LazyMappedRoadGraph private constructor(
         heuristicMultiplier: Double = 1.0,
         arterialOnly: Boolean = false,
         arterialPenaltyMultiplier: Double = 1.0,
+        nonArterialPenaltyMultiplier: Double = 1.0,
         isCancelled: (() -> Boolean)? = null,
         maxExpandedNodes: Int = Int.MAX_VALUE,
         preference: RoutePreference = RoutePreference.RECOMMENDED,
@@ -155,6 +156,7 @@ class LazyMappedRoadGraph private constructor(
         require(start in nodeIds.indices && goal in nodeIds.indices) { "Unknown node index" }
         require(heuristicMultiplier >= 1.0) { "heuristicMultiplier must be at least 1.0" }
         require(arterialPenaltyMultiplier >= 1.0) { "arterialPenaltyMultiplier must be at least 1.0" }
+        require(nonArterialPenaltyMultiplier >= 1.0) { "nonArterialPenaltyMultiplier must be at least 1.0" }
         require(maxExpandedNodes > 0) { "maxExpandedNodes must be positive" }
         if (start == goal) {
             lastExpandedNodes = 0
@@ -213,7 +215,7 @@ class LazyMappedRoadGraph private constructor(
                 if (multiplier != null && (!arterialOnly || isArterial(record.type) || current == start || target == goal)) {
                     if (target >= 0 && (target == goal || bounds == null ||
                         bounds.contains(latitudes[target], longitudes[target]))) {
-                        val arterialBias = if (isArterial(record.type)) arterialPenaltyMultiplier else 1.0
+                        val arterialBias = if (isArterial(record.type)) arterialPenaltyMultiplier else nonArterialPenaltyMultiplier
                         val gradePen = if (costMode == RouteCostMode.CAR) 1.0 else gradePenalty(record.grade, preference)
                         val combinedMultiplier = (multiplier * gradePen * arterialBias).coerceAtLeast(0.90)
                         val stepCost = record.distance * combinedMultiplier

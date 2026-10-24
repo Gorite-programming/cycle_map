@@ -103,7 +103,7 @@ fun GoogleLayerButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        color = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlSurface,
         tonalElevation = 0.dp,
         shadowElevation = 5.dp,
         modifier = modifier.size(42.dp),
@@ -115,7 +115,7 @@ fun GoogleLayerButton(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_layers),
                 contentDescription = "地図レイヤー切替: $label",
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                tint = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlIcon,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -134,7 +134,7 @@ fun GoogleGpsButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        color = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlSurface,
         tonalElevation = 0.dp,
         shadowElevation = 5.dp,
         modifier = modifier.size(48.dp),
@@ -146,7 +146,7 @@ fun GoogleGpsButton(
             Icon(
                 painter = painterResource(R.drawable.ic_lucide_locate_fixed),
                 contentDescription = "現在地へ移動",
-                tint = if (following) Color(0xFF1A73E8) else Color(0xFF5F6368),
+                tint = if (following) com.gorite.cyclemap.ui.theme.CycleMapColors.RouteBlue else com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlIcon,
                 modifier = Modifier.size(24.dp),
             )
         }
@@ -166,7 +166,7 @@ fun GoogleZoomButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        color = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlSurface,
         tonalElevation = 0.dp,
         shadowElevation = 5.dp,
         modifier = modifier.size(42.dp),
@@ -178,7 +178,7 @@ fun GoogleZoomButton(
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = contentDescription,
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                tint = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlIcon,
                 modifier = Modifier.size(20.dp),
             )
         }

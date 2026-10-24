@@ -54,6 +54,7 @@ fun RoutePanelSheet(
     remainingText: String,
     durationText: String,
     gainM: Int?,
+    elevationSource: String = "推定",
     maxGradePct: Double?,
     maxDownhillPct: Double?,
     onSearchClick: () -> Unit,
@@ -91,9 +92,9 @@ fun RoutePanelSheet(
                         RouteDetailRow(R.drawable.ic_lucide_route, "総距離", totalDistanceM?.let { formatKm(it) } ?: "--")
                         RouteDetailRow(R.drawable.ic_lucide_map_pin, "残り", remainingText)
                         RouteDetailRow(R.drawable.ic_lucide_clock, "残り時間", durationText)
-                        RouteDetailRow(R.drawable.ic_lucide_trending_up, "獲得標高(推定)", gainM?.let { "${it}m" } ?: "--")
-                        RouteDetailRow(R.drawable.ic_lucide_mountain, "最大勾配(推定)", maxGradePct?.let { formatGrade(it) } ?: "--")
-                        RouteDetailRow(R.drawable.ic_lucide_trending_down, "最大下り(推定)", maxDownhillPct?.let { formatGrade(it) } ?: "--")
+                        RouteDetailRow(R.drawable.ic_lucide_trending_up, "獲得標高（$elevationSource）", gainM?.let { "${it}m" } ?: "--")
+                        RouteDetailRow(R.drawable.ic_lucide_mountain, "最大勾配（$elevationSource）", maxGradePct?.let { formatGrade(it) } ?: "--")
+                        RouteDetailRow(R.drawable.ic_lucide_trending_down, "最大下り（$elevationSource）", maxDownhillPct?.let { formatGrade(it) } ?: "--")
                     }
                 }
             }

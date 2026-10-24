@@ -1,11 +1,13 @@
 package com.gorite.cyclemap.ui.mapview
 
 import android.content.Context
+import androidx.compose.ui.graphics.toArgb
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
+import com.gorite.cyclemap.ui.theme.CycleMapColors
 import com.gorite.cyclemap.utils.cycleMapDataDir
-import com.gorite.cyclemap.utils.poiTextColor
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.geojson.Feature
@@ -62,6 +64,57 @@ internal fun applyNightModeColors(style: Style, isNight: Boolean) {
     ).forEach { layerId ->
         style.getLayer(layerId)?.setProperties(PropertyFactory.lineColor(roadCasingColor))
     }
+
+    // MED-02: 地名ラベル・道路ラベル・POIラベルの昼夜文字色・ハロー色更新
+    val textColor = if (isNight) "#E0E0E0" else "#202124"
+    val textHaloColor = if (isNight) "#1F1F1F" else "#FFFFFF"
+    listOf(
+        "places_locality", "places_subplace", "places_region", "places_country",
+        "roads_labels_minor", "roads_labels_major",
+        "cyclemap-dynamic-poi-symbols",
+    ).forEach { layerId ->
+        style.getLayer(layerId)?.setProperties(
+            PropertyFactory.textColor(textColor),
+            PropertyFactory.textHaloColor(textHaloColor),
+        )
+    }
+}
+
+/** Reduce dense place-name collisions and strengthen map-label separation at close zooms. */
+internal fun applyMapLabelReadability(style: Style) {
+    style.getLayer("places_locality")?.setProperties(
+        PropertyFactory.textSize(
+            Expression.interpolate(
+                Expression.linear(),
+                Expression.zoom(),
+                Expression.stop(14, 12f),
+                Expression.stop(18, 17f),
+            ),
+        ),
+        PropertyFactory.textHaloWidth(2.0f),
+    )
+    style.getLayer("places_subplace")?.setProperties(
+        PropertyFactory.textSize(
+            Expression.interpolate(
+                Expression.linear(),
+                Expression.zoom(),
+                Expression.stop(13, 10f),
+                Expression.stop(18, 15f),
+            ),
+        ),
+        PropertyFactory.textHaloWidth(2.0f),
+    )
+    style.getLayer("roads_labels_minor")?.setProperties(
+        PropertyFactory.textSize(
+            Expression.interpolate(
+                Expression.linear(),
+                Expression.zoom(),
+                Expression.stop(15, 10f),
+                Expression.stop(19, 11.5f),
+            ),
+        ),
+        PropertyFactory.textHaloWidth(2.0f),
+    )
 }
 
 internal fun vectorMapAreaFillColors(isNight: Boolean): Map<String, String> = listOf(
@@ -134,27 +187,32 @@ internal fun sanitizeMapLibreGlyphText(raw: String): String {
 }
 
 internal fun createPoiFeatures(spots: List<NearbySpot>, zoom: Double, isNightMode: Boolean): List<Feature> {
-    return spots.asSequence().mapNotNull { spot ->
-        val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
-        val feature = Feature.fromGeometry(Point.fromLngLat(spot.longitude, spot.latitude))
-        val prominence = com.gorite.cyclemap.search.SearchRanking.computePoiProminenceScore(spot.name, spot.category)
-        val showLabel = when {
-            zoom >= 15.0 -> true
-            zoom >= 13.5 -> prominence >= 640
-            zoom >= 11.5 -> prominence >= 840
-            else -> false
+    return spots.asSequence()
+        .sortedByDescending {
+            com.gorite.cyclemap.search.SearchRanking.computePoiProminenceScore(it.name, it.category)
         }
-        val displayName = if (showLabel) sanitizeMapLibreGlyphText(spot.name) else ""
-        feature.addStringProperty("name", displayName)
-        feature.addStringProperty("rawName", spot.name)
-        feature.addStringProperty("category", spot.category)
-        feature.addStringProperty("iconKey", "poi-pin-${cat.name}")
-        feature.addNumberProperty("sortKey", -prominence.toDouble())
-        val colorInt = poiTextColor(cat, isNightMode)
-        val hexColor = String.format(Locale.US, "#%06X", 0xFFFFFF and colorInt)
-        feature.addStringProperty("textColor", hexColor)
-        feature
-    }.take(250).toList()
+        .mapNotNull { spot ->
+            val cat = PoiCategory.forCategory(spot.category) ?: return@mapNotNull null
+            val feature = Feature.fromGeometry(Point.fromLngLat(spot.longitude, spot.latitude))
+            val prominence = com.gorite.cyclemap.search.SearchRanking.computePoiProminenceScore(spot.name, spot.category)
+            val showLabel = when {
+                zoom >= 18.0 -> true
+                zoom >= 16.0 -> prominence >= 700
+                zoom >= 14.5 -> prominence >= 1000
+                zoom >= 13.0 -> prominence >= 1300
+                else -> false
+            }
+            val displayName = if (showLabel) sanitizeMapLibreGlyphText(spot.name) else ""
+            feature.addStringProperty("name", displayName)
+            feature.addStringProperty("rawName", spot.name)
+            feature.addStringProperty("category", spot.category)
+            feature.addStringProperty("iconKey", "poi-pin-${cat.name}")
+            feature.addNumberProperty("sortKey", -prominence.toDouble())
+            val labelColor = if (isNightMode) CycleMapColors.MapLabelPrimaryDark else CycleMapColors.MapLabelPrimaryLight
+            val hexColor = String.format(Locale.US, "#%06X", 0xFFFFFF and labelColor.toArgb())
+            feature.addStringProperty("textColor", hexColor)
+            feature
+        }.take(75).toList()
 }
 
 internal fun updateBuildingExtrusion(style: Style, shouldExtrude: Boolean, isNightMode: Boolean) {
@@ -195,7 +253,9 @@ internal fun configureVectorMapUiSettings(context: Context, map: org.maplibre.an
 
     map.gesturesManager?.shoveGestureDetector?.let { detector ->
         detector.isEnabled = true
-        detector.maxShoveAngle = 45f
+        // 二本指を縦方向へ完全に揃えなくてもチルトを開始できるようにする。
+        detector.maxShoveAngle = 70f
+        detector.pixelDeltaThreshold = 4f * density
     }
 }
 

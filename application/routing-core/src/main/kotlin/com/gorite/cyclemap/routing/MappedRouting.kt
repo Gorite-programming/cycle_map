@@ -28,6 +28,7 @@ class MappedRoadGraph private constructor(
     val edgeCount: Int get() = edgeTo.size
 
     fun nearestNode(latitude: Double, longitude: Double): Long {
+        if (nodeIds.isEmpty()) return -1L
         var best = 0
         var bestDistance = Double.POSITIVE_INFINITY
         for (i in nodeIds.indices) {
@@ -46,7 +47,7 @@ class MappedRoadGraph private constructor(
         require(start >= 0 && goal >= 0) { "Unknown node" }
         if (start == goal) return MappedRouteResult(listOf(startId), 0.0, 0.0)
 
-        data class Entry(val index: Int, val estimate: Double) : Comparable<Entry> {
+        data class Entry(val index: Int, val costSoFar: Double, val estimate: Double) : Comparable<Entry> {
             override fun compareTo(other: Entry): Int = estimate.compareTo(other.estimate)
         }
         val open = PriorityQueue<Entry>()
@@ -55,10 +56,14 @@ class MappedRoadGraph private constructor(
         val cameFrom = HashMap<Int, Int>()
         cost[start] = 0.0
         distance[start] = 0.0
-        open += Entry(start, heuristic(start, goal))
+        open += Entry(start, 0.0, heuristic(start, goal))
 
         while (open.isNotEmpty()) {
-            val current = open.remove().index
+            val entry = open.remove()
+            val current = entry.index
+            if (entry.costSoFar > cost.getOrDefault(current, Double.POSITIVE_INFINITY)) {
+                continue
+            }
             if (current == goal) {
                 val indices = ArrayList<Int>()
                 var cursor = goal
@@ -87,7 +92,7 @@ class MappedRoadGraph private constructor(
                             cost[target] = newCost
                             distance[target] = distance.getValue(current) + edgeDistance[edge]
                             cameFrom[target] = current
-                            open += Entry(target, newCost + heuristic(target, goal))
+                            open += Entry(target, newCost, newCost + heuristic(target, goal))
                         }
                     }
                 }
@@ -223,8 +228,14 @@ private class LongIntIndex(expectedSize: Int) {
     private val mask: Int
 
     init {
-        var capacity = 1
-        while (capacity < expectedSize * 2) capacity = capacity shl 1
+        var cap = 1
+        val target = if (expectedSize > Int.MAX_VALUE / 2) Int.MAX_VALUE else expectedSize * 2
+        while (cap < target && cap > 0) {
+            val next = cap shl 1
+            if (next <= 0) break
+            cap = next
+        }
+        val capacity = cap
         keys = LongArray(capacity)
         values = IntArray(capacity) { -1 }
         occupied = BooleanArray(capacity)

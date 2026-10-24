@@ -80,6 +80,8 @@ internal fun VectorMapView(
     poiSelected: Set<PoiCategory> = PoiCategory.defaults(),
     cameraPadding: PaddingValues = PaddingValues(0.dp),
     onTiltChanged: (Double) -> Unit = {},
+    onZoomLevelChanged: (Double) -> Unit = {},
+    onBearingChanged: (Double) -> Unit = {},
     onPoiClick: (NearbySpot) -> Unit = {},
     onPoiSpotDeselect: () -> Unit = {},
     onLongPress: (GeoPoint) -> Unit = {},
@@ -98,6 +100,8 @@ internal fun VectorMapView(
     val currentNavigationActive by rememberUpdatedState(isNavigationActive)
     val currentPoiSelected by rememberUpdatedState(poiSelected)
     val currentOnTiltChanged by rememberUpdatedState(onTiltChanged)
+    val currentOnZoomChanged by rememberUpdatedState(onZoomLevelChanged)
+    val currentOnBearingChanged by rememberUpdatedState(onBearingChanged)
     val currentOnPoiClick by rememberUpdatedState(onPoiClick)
     val currentOnPoiSpotDeselect by rememberUpdatedState(onPoiSpotDeselect)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
@@ -176,13 +180,14 @@ internal fun VectorMapView(
                         val tileSelection = TileSourceSelector.select(initialTarget.latitude, initialTarget.longitude)
                         val pmtilesPath = resolveOfflinePmtilesPath(context, initialTarget.latitude, initialTarget.longitude)
                         if (pmtilesPath == null) {
-                            // オンラインへフォールバックせず安全に中断
+                            // オンラインへフォールバックせず警告バナーを表示するが、リスナー登録は中断せず維持する
                             offlineMissingPrefecture = when (tileSelection) {
                                 is TileSourceSelection.Available -> tileSelection.prefectureName
                                 is TileSourceSelection.Unavailable -> tileSelection.prefectureName
                             }
                             offlineDataMissing = true
-                            return@getMapAsync
+                        } else {
+                            offlineDataMissing = false
                         }
 
                         // 表示中領域のPOIをオフラインDBから動的フェッチして描画するヘルパー (ズームアウト時も最大250件表示)
@@ -242,23 +247,25 @@ internal fun VectorMapView(
                         activePmtilesPath = pmtilesPath
                         lastLoadedNightMode = currentNightMode
 
-                        // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
-                        coroutineScope.launch {
-                            val night = currentNightMode
-                            val finalStyleJson = withContext(Dispatchers.IO) {
-                                buildVectorStyleJson(context, night, pmtilesPath)
-                            }
+                        if (pmtilesPath != null) {
+                            // メインスレッドでのファイルI/Oを回避（Coroutines + Dispatchers.IO）
+                            coroutineScope.launch {
+                                val night = currentNightMode
+                                val finalStyleJson = withContext(Dispatchers.IO) {
+                                    buildVectorStyleJson(context, night, pmtilesPath)
+                                }
 
-                            withContext(Dispatchers.Main) {
-                                map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
-                                    lastLoadedNightMode = night
-                                    map.uiSettings.isCompassEnabled = false
-                                    setupRouteLayers(context, style)
-                                    setupDynamicPoiLayers(context, style, night)
-                                    updateRouteLine(style, routePoints, alternativeRoutes, destination)
-                                    updateLocationPoint(style, currentLocUpdated ?: currentLocation, bearing, currentNavigationActive, gpsStatus)
-                                    triggerPoisRef = { triggerFetchPois(map) }
-                                    triggerFetchPois(map)
+                                withContext(Dispatchers.Main) {
+                                    map.setStyle(Style.Builder().fromJson(finalStyleJson)) { style ->
+                                        lastLoadedNightMode = night
+                                        map.uiSettings.isCompassEnabled = false
+                                        setupRouteLayers(context, style)
+                                        setupDynamicPoiLayers(context, style, night)
+                                        updateRouteLine(style, routePoints, alternativeRoutes, destination)
+                                        updateLocationPoint(style, currentLocUpdated ?: currentLocation, bearing, currentNavigationActive, gpsStatus)
+                                        triggerPoisRef = { triggerFetchPois(map) }
+                                        triggerFetchPois(map)
+                                    }
                                 }
                             }
                         }
@@ -283,6 +290,8 @@ internal fun VectorMapView(
                             val pos = map.cameraPosition
                             currentTilt = pos.tilt
                             currentOnTiltChanged(pos.tilt)
+                            currentOnZoomChanged(pos.zoom)
+                            currentOnBearingChanged(pos.bearing)
 
                             val currentExtruded = lastExtruded
                             val shouldExtrude = if (currentPowerSaveActive) {
@@ -405,11 +414,27 @@ internal fun VectorMapView(
             }
         }
 
-        // 現在地追従（停止時・低速巡航時のデバウンス制御）
+        // 現在地追従（停止時・低速巡航時のデバウンス制御、MED-08: 乖離時復帰・トグル直後復帰）
         LaunchedEffect(currentLocation, followLocation, speedMps, mapLibreMap) {
             val map = mapLibreMap ?: return@LaunchedEffect
             val loc = currentLocation ?: return@LaunchedEffect
-            if (!followLocation) return@LaunchedEffect
+            if (!followLocation) {
+                lastFollowLocation = false
+                return@LaunchedEffect
+            }
+
+            val followStateJustEnabled = !lastFollowLocation && followLocation
+            lastFollowLocation = followLocation
+
+            val camTarget = map.cameraPosition.target
+            val targetDist = if (camTarget != null) {
+                CameraMotionPolicy.distanceMeters(camTarget.latitude, camTarget.longitude, loc.latitude, loc.longitude)
+            } else {
+                Double.MAX_VALUE
+            }
+
+            // 10m以上離れている、またはfollowLocationがONになった直後はポリシーに関わらず即座に復帰
+            val forceRecenter = followStateJustEnabled || targetDist > 10.0
 
             val now = android.os.SystemClock.elapsedRealtime()
             val dist = if (!lastCameraLat.isNaN()) {
@@ -425,13 +450,13 @@ internal fun VectorMapView(
                 elapsedMillisSinceLastUpdate = elapsed,
             )
 
-            if (decision.shouldUpdateCamera) {
+            if (forceRecenter || decision.shouldUpdateCamera) {
                 lastCameraLat = loc.latitude
                 lastCameraLon = loc.longitude
                 lastCameraUpdateTime = now
                 map.easeCamera(
                     CameraUpdateFactory.newLatLng(LatLng(loc.latitude, loc.longitude)),
-                    decision.animationDurationMs
+                    if (forceRecenter) 300 else decision.animationDurationMs
                 )
             }
         }

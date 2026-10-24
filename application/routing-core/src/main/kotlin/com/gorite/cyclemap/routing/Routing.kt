@@ -94,7 +94,7 @@ class AStarRouter(
     var lastExpandedNodes: Int = 0
         private set
 
-    private data class QueueEntry(val nodeId: Long, val estimatedTotal: Double) : Comparable<QueueEntry> {
+    private data class QueueEntry(val nodeId: Long, val costSoFar: Double, val estimatedTotal: Double) : Comparable<QueueEntry> {
         override fun compareTo(other: QueueEntry): Int = estimatedTotal.compareTo(other.estimatedTotal)
     }
 
@@ -107,10 +107,14 @@ class AStarRouter(
         val open = PriorityQueue<QueueEntry>()
         val cameFrom = mutableMapOf<Long, Long>()
         val costSoFar = mutableMapOf(startId to 0.0)
-        open += QueueEntry(startId, heuristic(startId, goalId))
+        open += QueueEntry(startId, 0.0, heuristic(startId, goalId))
 
         while (open.isNotEmpty()) {
-            val current = open.remove().nodeId
+            val entry = open.remove()
+            val current = entry.nodeId
+            if (entry.costSoFar > costSoFar.getOrDefault(current, Double.POSITIVE_INFINITY)) {
+                continue
+            }
             lastExpandedNodes++
             if (current == goalId) return buildResult(cameFrom, costSoFar.getValue(goalId), goalId)
 
@@ -120,7 +124,7 @@ class AStarRouter(
                 if (newCost < costSoFar.getOrDefault(edge.to, Double.POSITIVE_INFINITY)) {
                     costSoFar[edge.to] = newCost
                     cameFrom[edge.to] = current
-                    open += QueueEntry(edge.to, newCost + heuristic(edge.to, goalId))
+                    open += QueueEntry(edge.to, newCost, newCost + heuristic(edge.to, goalId))
                 }
             }
         }

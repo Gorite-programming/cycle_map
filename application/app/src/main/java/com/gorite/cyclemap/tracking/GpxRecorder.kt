@@ -17,7 +17,7 @@ class GpxRecorder {
     val pointCount: Int get() = points.size
 
     fun addPoint(location: Location) {
-        points.add(
+        addPoint(
             GpxPoint(
                 latitude = location.latitude,
                 longitude = location.longitude,
@@ -27,9 +27,14 @@ class GpxRecorder {
         )
     }
 
+    fun addPoint(point: GpxPoint) {
+        points.add(point)
+    }
+
     fun writeToFile(file: File): File {
-        file.parentFile?.mkdirs()
         val snapshot = synchronized(points) { points.toList() }
+        require(snapshot.isNotEmpty()) { "Cannot save a GPX track without recorded points" }
+        file.parentFile?.mkdirs()
         val tmpFile = File(file.parentFile, "${file.name}.tmp")
         try {
             tmpFile.writer().use { it.write(GpxWriter.write(snapshot)) }

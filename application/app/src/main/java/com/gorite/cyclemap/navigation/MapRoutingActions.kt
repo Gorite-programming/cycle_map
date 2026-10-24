@@ -111,8 +111,14 @@ internal fun executeDownloadCorridorTiles(
                 onProgress = { progress ->
                     onProgressUpdate("${progress.completed}/${progress.total}")
                 },
-                onDone = { total ->
-                    onProgressUpdate("保存完了 (${total}枚)")
+                onDone = { successCount, failCount ->
+                    if (failCount == 0 && successCount > 0) {
+                        onProgressUpdate("保存完了 (${successCount}枚)")
+                    } else if (successCount > 0) {
+                        onProgressUpdate("一部完了 (${successCount}枚成功 / ${failCount}枚失敗)")
+                    } else {
+                        onProgressUpdate("ダウンロード失敗 (オフラインまたは通信エラー)")
+                    }
                     onFinished()
                 },
             )

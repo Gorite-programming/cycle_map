@@ -194,7 +194,12 @@ def find_candidates(conn, prefecture: str, distance_m: float = 100.0) -> List[Tu
         if not raw_addr:
             return ""
         s = raw_addr.strip().lower()
-        tr = str.maketrans("０１２３４５６７８９一二三四五六七八九十", "01234567891234567891")
+        # MED-13: 漢数字の十の位（二桁・単独）を正規表現で展開
+        s = re.sub(r"([二三四五六七八九])十([一二三四五六七八九])", r"\1\2", s)
+        s = re.sub(r"([二三四五六七八九])十", r"\g<1>0", s)
+        s = re.sub(r"十([一二三四五六七八九])", r"1\1", s)
+        s = re.sub(r"十", "10", s)
+        tr = str.maketrans("０１２３４５６７８９一二三四五六七八九", "0123456789123456789")
         s = s.translate(tr)
         s = re.sub(r"[−ー‐―–〜~ｰ/／,，.．\s]+", "-", s)
         s = re.sub(r"(丁目|番地|番|号)", "-", s)

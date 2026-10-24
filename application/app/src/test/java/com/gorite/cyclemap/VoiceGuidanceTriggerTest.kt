@@ -6,6 +6,7 @@ import com.gorite.cyclemap.speech.VoiceCue
 import com.gorite.cyclemap.speech.VoiceGuidanceMode
 import com.gorite.cyclemap.speech.VoiceGuidanceStage
 import com.gorite.cyclemap.speech.VoiceGuidanceThresholds
+import com.gorite.cyclemap.speech.RouteInstructionText
 import com.gorite.cyclemap.speech.VoiceTriggerEvaluator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -37,6 +38,14 @@ class VoiceGuidanceTriggerTest {
         assertEquals(100.0, VoiceGuidanceThresholds.DISTANCE_NEAR_METERS, 0.001)
         assertEquals(30.0, VoiceGuidanceThresholds.DISTANCE_IMMEDIATE_METERS, 0.001)
         assertEquals(30.0, VoiceGuidanceThresholds.ARRIVAL_DISTANCE_METERS, 0.001)
+    }
+
+    @Test
+    fun routeInstructionDisplay_usesJapanesePhraseInsteadOfDiagnosticReason() {
+        val instruction = createInstruction(InstructionType.LEFT_TURN, 1000.0).copy(reason = "single-branch")
+
+        assertEquals("左折です", RouteInstructionText.displayLabel(instruction))
+        assertTrue(!RouteInstructionText.displayLabel(instruction).contains(instruction.reason))
     }
 
     @Test

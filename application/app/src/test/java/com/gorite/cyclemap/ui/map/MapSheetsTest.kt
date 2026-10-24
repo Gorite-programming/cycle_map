@@ -8,8 +8,8 @@ class MapSheetsTest {
 
     @Test
     fun testBottomSheetAnchorHeights() {
-        assertEquals(120, BottomSheetAnchor.Peek.heightDp.value.toInt())
-        assertEquals(320, BottomSheetAnchor.Half.heightDp.value.toInt())
+        assertEquals(180, BottomSheetAnchor.Peek.heightDp.value.toInt())
+        assertEquals(340, BottomSheetAnchor.Half.heightDp.value.toInt())
         assertEquals(560, BottomSheetAnchor.Full.heightDp.value.toInt())
         assertTrue(BottomSheetAnchor.Peek.heightDp < BottomSheetAnchor.Half.heightDp)
         assertTrue(BottomSheetAnchor.Half.heightDp < BottomSheetAnchor.Full.heightDp)

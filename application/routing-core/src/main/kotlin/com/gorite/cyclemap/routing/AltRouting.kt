@@ -272,8 +272,17 @@ class BidirectionalRouter(
         openForward += SearchEntry(startId, 0.0, forwardEstimate(startId, goalId), false)
         openBackward += SearchEntry(goalId, 0.0, backwardEstimate(goalId, startId), true)
         var best = Double.POSITIVE_INFINITY; var meeting: Long? = null; var expanded = 0
+        var minForwardG = 0.0
+        var minBackwardG = 0.0
         while (openForward.isNotEmpty() && openBackward.isNotEmpty()) {
-            if (minOpenG(openForward, forward) + minOpenG(openBackward, backward) >= best) break
+            while (openForward.isNotEmpty() && openForward.peek().g != forward[openForward.peek().nodeId]) {
+                openForward.remove()
+            }
+            while (openBackward.isNotEmpty() && openBackward.peek().g != backward[openBackward.peek().nodeId]) {
+                openBackward.remove()
+            }
+            if (openForward.isEmpty() || openBackward.isEmpty()) break
+            if (openForward.peek().g + openBackward.peek().g >= best) break
             val expandForward = openForward.peek().estimate <= openBackward.peek().estimate
             val queue = if (expandForward) openForward else openBackward
             val distances = if (expandForward) forward else backward

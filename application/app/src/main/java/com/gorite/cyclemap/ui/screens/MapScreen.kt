@@ -20,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.gorite.cyclemap.routing.RoutePoint
 import com.gorite.cyclemap.routing.RoutePreference
 import com.gorite.cyclemap.routing.calculateRouteProgress
@@ -45,6 +47,7 @@ internal fun MapScreen(
     val state = rememberMapScreenState(
         onNavigationStateChanged = onNavigationStateChanged,
     )
+    val density = LocalDensity.current
 
     val orientationAnimator = remember {
         MapOrientationAnimator(
@@ -170,6 +173,11 @@ internal fun MapScreen(
             state.gpxPointCountState.value = 0
             state.gpxNotificationTextState.value = "記録を開始しました"
         },
+        onGpxRecordingEmpty = {
+            state.isRecordingState.value = false
+            state.gpxPointCountState.value = 0
+            state.gpxNotificationTextState.value = "位置情報を取得できなかったため記録しませんでした"
+        },
         onGpxRecordingSaved = { points, fileName ->
             state.isRecordingState.value = false
             state.gpxPointCountState.value = points
@@ -177,18 +185,98 @@ internal fun MapScreen(
         },
     )
 
+    // ベクター→ラスター切替時のルート線・マーカー再構築 (HIGH-03 補完)
+    val curMapView = state.mapViewState.value
+    val curNavRoute = state.navigationRouteState.value
+    val curDest = state.destinationState.value
+    val curWaypoints = state.waypointsState.value
+    LaunchedEffect(curMapView, curNavRoute, curDest, curWaypoints) {
+        val view = curMapView ?: return@LaunchedEffect
+
+        // 目的地の再構築
+        if (curDest != null && state.destinationMarkerState.value == null) {
+            val destM = org.osmdroid.views.overlay.Marker(view).apply {
+                position = curDest
+                title = "目的地"
+                icon = androidx.core.content.ContextCompat.getDrawable(state.context, R.drawable.ic_destination)
+                setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+            }
+            view.overlays.add(destM)
+            state.destinationMarkerState.value = destM
+        }
+
+        // 経由地の再構築
+        if (curWaypoints.isNotEmpty() && state.waypointMarkersState.value.isEmpty()) {
+            val wpMarkers = curWaypoints.mapIndexed { idx, wp ->
+                org.osmdroid.views.overlay.Marker(view).apply {
+                    position = wp
+                    title = "経由地 ${idx + 1}"
+                    icon = waypointDrawable(state.context, idx + 1)
+                    setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_CENTER)
+                }
+            }
+            wpMarkers.forEach { view.overlays.add(it) }
+            state.waypointMarkersState.value = wpMarkers
+        }
+
+        // ルート線の再構築
+        if (curNavRoute.isNotEmpty() && state.routeOverlayState.value == null) {
+            val polyline = org.osmdroid.views.overlay.Polyline(view).apply {
+                setPoints(curNavRoute.map { GeoPoint(it.latitude, it.longitude) })
+                outlinePaint.color = android.graphics.Color.parseColor("#333333")
+                outlinePaint.strokeWidth = 24f
+                outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                outlinePaint.isAntiAlias = true
+            }
+            view.overlays.add(polyline)
+            state.routeOverlayState.value = polyline
+        }
+        view.invalidate()
+    }
+
     LaunchedEffect(state.navigationRouteState.value, state.mapViewState.value, state.vectorMapState.value, state.isNavigationActiveState.value) {
         val navRoute = state.navigationRouteState.value
         if (navRoute.isEmpty() || state.isNavigationActiveState.value) return@LaunchedEffect
+        // Preview中はGPS追従を止めて、全ルートのカメラフィットを維持する。
+        state.followLocationState.value = false
         withFrameNanos { }
         val points = navRoute.map { GeoPoint(it.latitude, it.longitude) }
         val bounds = BoundingBox.fromGeoPoints(points)
         state.mapViewState.value?.zoomToBoundingBox(bounds, true, 64)
         state.vectorMapState.value?.let { vMap ->
-            val builder = org.maplibre.android.geometry.LatLngBounds.Builder()
-            points.forEach { builder.include(org.maplibre.android.geometry.LatLng(it.latitude, it.longitude)) }
-            val latLngBounds = builder.build()
-            vMap.animateCamera(org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(latLngBounds, 64))
+            val topPadding = with(density) { 220.dp.roundToPx() }
+            val bottomPadding = with(density) { 490.dp.roundToPx() }
+            val sidePadding = with(density) { 80.dp.roundToPx() }
+
+            val minLat = points.minOf { it.latitude }
+            val maxLat = points.maxOf { it.latitude }
+            val minLon = points.minOf { it.longitude }
+            val maxLon = points.maxOf { it.longitude }
+
+            // CRIT-03 fix: 1点ルート（または全点同一座標）の場合は LatLngBounds.build() が例外を投げるため、
+            // newLatLngZoom にフォールバックしてクラッシュを防止する
+            if (points.size < 2 || ((maxLat - minLat) < 1e-5 && (maxLon - minLon) < 1e-5)) {
+                vMap.animateCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLngZoom(
+                        org.maplibre.android.geometry.LatLng(points[0].latitude, points[0].longitude),
+                        16.0,
+                    ),
+                )
+            } else {
+                val builder = org.maplibre.android.geometry.LatLngBounds.Builder()
+                points.forEach { builder.include(org.maplibre.android.geometry.LatLng(it.latitude, it.longitude)) }
+                val latLngBounds = builder.build()
+                vMap.animateCamera(
+                    org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(
+                        latLngBounds,
+                        sidePadding,
+                        topPadding,
+                        sidePadding,
+                        bottomPadding,
+                    ),
+                )
+            }
         }
     }
 
@@ -275,12 +363,13 @@ internal fun MapScreen(
             val remainingDistance = maxOf(0.0, progress.routeDistanceMeters - progress.distanceFromStartMeters)
             val distanceToTurn = progress.distanceToNextManeuverMeters ?: 0.0
             val remainingSec = remainingDistance / 4.16 // 平均15km/h換算
+            val upcoming = inst.filter { it.distanceFromStartMeters > progress.distanceFromStartMeters }
             state.viewModel.updateNavProgress(
                 distanceToTurn = distanceToTurn,
                 remainingDistance = remainingDistance,
                 remainingSec = remainingSec,
-                currentInst = inst.firstOrNull(),
-                nextInst = inst.getOrNull(1),
+                currentInst = upcoming.firstOrNull() ?: inst.lastOrNull(),
+                nextInst = upcoming.getOrNull(1),
                 isRerouting = state.isReroutingState.value,
             )
         }

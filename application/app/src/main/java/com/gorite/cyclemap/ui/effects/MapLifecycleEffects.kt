@@ -215,7 +215,7 @@ internal fun MapLifecycleEffects(
                     onSelectPoiSpot(
                         NearbySpot(
                             name = poi.name,
-                            category = cat.name.lowercase(),
+                            category = poi.category,
                             latitude = poi.latitude,
                             longitude = poi.longitude,
                             distanceM = dist,

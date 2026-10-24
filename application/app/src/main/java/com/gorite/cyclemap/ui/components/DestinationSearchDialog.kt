@@ -245,7 +245,7 @@ internal fun DestinationSearchDialog(
             .zIndex(100f)
             .navigationBarsPadding()
             .imePadding(),
-        color = Color.White,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
             modifier = Modifier
@@ -260,7 +260,7 @@ internal fun DestinationSearchDialog(
                     .padding(horizontal = 14.dp)
                     .height(52.dp),
                 shape = RoundedCornerShape(26.dp),
-                color = Color(0xFFF1F3F4), // タップ時にグレーに変更
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 shadowElevation = 0.dp,
             ) {
                 Row(
@@ -280,7 +280,7 @@ internal fun DestinationSearchDialog(
                         Icon(
                             painter = painterResource(R.drawable.ic_google_arrow_back),
                             contentDescription = "戻る",
-                            tint = Color(0xFF1F1F1F),
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(24.dp),
                         )
                     }
@@ -298,9 +298,9 @@ internal fun DestinationSearchDialog(
                             singleLine = true,
                             textStyle = TextStyle(
                                 fontSize = 18.sp,
-                                color = Color(0xFF1F1F1F),
+                                color = MaterialTheme.colorScheme.onSurface,
                             ),
-                            cursorBrush = SolidColor(Color(0xFF1A73E8)),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester),
@@ -309,7 +309,7 @@ internal fun DestinationSearchDialog(
                                     Text(
                                         text = "ここで検索",
                                         fontSize = 18.sp,
-                                        color = Color(0xFF5F6368),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                                 innerTextField()
@@ -319,33 +319,20 @@ internal fun DestinationSearchDialog(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // 右: 音声マイク / クリアボタン (MapTopBar のマイク size(36.dp), icon 22.dp と完全同一、濃い黒 #1F1F1F)
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .clickable {
-                                if (query.isNotEmpty()) {
-                                    query = ""
-                                } else {
-                                    /* 音声検索 */
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (query.isNotEmpty()) {
+                    // 右: 入力時クリアボタン (LOW-02: 未実装音声検索マイクは非表示化)
+                    if (query.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { query = "" },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_lucide_x),
                                 contentDescription = "クリア",
-                                tint = Color(0xFF1F1F1F),
+                                tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(20.dp),
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_google_mic),
-                                contentDescription = "音声検索",
-                                tint = Color(0xFF1F1F1F),
-                                modifier = Modifier.size(22.dp),
                             )
                         }
                     }
@@ -370,8 +357,8 @@ internal fun DestinationSearchDialog(
                     ScrollableTabRow(
                         selectedTabIndex = SearchCategory.entries.indexOf(selectedCategory),
                         edgePadding = 12.dp,
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF1A73E8),
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                             SearchCategory.entries.forEach { cat ->
@@ -384,7 +371,7 @@ internal fun DestinationSearchDialog(
                                             cat.label,
                                             fontSize = 13.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) Color(0xFF1A73E8) else Color(0xFF5F6368),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     },
                                 )
@@ -423,7 +410,7 @@ internal fun DestinationSearchDialog(
                                 Text(
                                     text = "旧形式の検索DBが使用されています。漢字または前方・部分一致で検索してください",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF202124),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.weight(1f),
                                 )
                                 IconButton(
@@ -433,7 +420,7 @@ internal fun DestinationSearchDialog(
                                     Icon(
                                         painterResource(R.drawable.ic_lucide_x),
                                         contentDescription = "閉じる",
-                                        tint = Color(0xFF5F6368),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp),
                                     )
                                 }
@@ -527,12 +514,12 @@ internal fun DestinationSearchDialog(
                                         painterResource(R.drawable.ic_lucide_search),
                                         contentDescription = null,
                                         modifier = Modifier.size(48.dp),
-                                        tint = Color(0xFF9AA0A6),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Spacer(modifier = Modifier.height(16.dp))
                                     Text(
                                         "目的地を検索してください",
-                                        color = Color(0xFF5F6368),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }

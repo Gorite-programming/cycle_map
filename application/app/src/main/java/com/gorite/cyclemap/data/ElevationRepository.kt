@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
 import com.gorite.cyclemap.ui.cycling.ElevationSample
+import com.gorite.cyclemap.ui.cycling.ElevationSource
 import com.gorite.cyclemap.ui.cycling.buildRouteElevationProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -89,15 +90,30 @@ class ElevationRepository(private val context: Context) {
             while (coordIdx < cumDists.size - 1 && cumDists[coordIdx + 1] < dist) {
                 coordIdx++
             }
-            val (lat, lon) = coordinates[coordIdx]
+            val (lat, lon) = if (coordIdx < coordinates.size - 1) {
+                val d0 = cumDists[coordIdx]
+                val d1 = cumDists[coordIdx + 1]
+                val f = if (d1 > d0) ((dist - d0) / (d1 - d0)).coerceIn(0.0, 1.0) else 0.0
+                val (lat0, lon0) = coordinates[coordIdx]
+                val (lat1, lon1) = coordinates[coordIdx + 1]
+                (lat0 + (lat1 - lat0) * f) to (lon0 + (lon1 - lon0) * f)
+            } else {
+                coordinates[coordIdx]
+            }
             val (tx, ty) = toTileCoord(lat, lon, DEM_ZOOM)
             val bitmap = getTileBitmap(tx, ty, downloadIfMissing = false)
             val realElev = if (bitmap != null) {
                 decodeElevationFromBitmap(bitmap, lat, lon, tx, ty, DEM_ZOOM)
             } else null
 
-            val finalElev = realElev ?: fallbackProfile.getOrNull(s)?.elevationM ?: 10.0
-            result.add(ElevationSample(dist, finalElev.coerceAtLeast(0.0)))
+            val fallback = fallbackProfile.getOrNull(s)?.elevationM ?: 10.0
+            result.add(
+                ElevationSample(
+                    distanceM = dist,
+                    elevationM = (realElev ?: fallback).coerceAtLeast(0.0),
+                    source = if (realElev != null) ElevationSource.GSI_DEM else ElevationSource.ESTIMATED,
+                ),
+            )
         }
 
         result
@@ -174,7 +190,7 @@ class ElevationRepository(private val context: Context) {
         // x > 2^23: h = (x - 2^24) * 0.01
         val xVal = (r shl 16) or (g shl 8) or b
         return when {
-            xVal == 0x800000 -> 0.0 // 海面
+            xVal == 0x800000 -> null // 無効値 (海面・データなし) は欠損として返しフォールバック補間に委ねる
             xVal < 0x800000 -> xVal * 0.01
             else -> (xVal - 0x1000000) * 0.01
         }

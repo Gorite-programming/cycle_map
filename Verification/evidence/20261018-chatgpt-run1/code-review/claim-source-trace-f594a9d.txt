@@ -1,0 +1,85 @@
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:19: * 国土地理院 標高タイル (DEM10B PNG) のキャッシュおよび標高算出リポジトリ。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:21: * ズームレベル14のPNGタイルからピクセルのRGB値をデコードして正確な標高 (m) を算出する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:29:     * 指定された緯度・経度の標高 (m) を取得する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:33:        val (tx, ty) = toTileCoord(lat, lon, DEM_ZOOM)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:34:        val key = "${DEM_ZOOM}_${tx}_${ty}"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:36:        return decodeElevationFromBitmap(bitmap, lat, lon, tx, ty, DEM_ZOOM)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:40:     * ルート全体の標高プロファイルを非同期に実データ（国土地理院DEM10B）から算出する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:42:     * 完全オフライン等で取得できない区間は地形モデルでスムーズに補間する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:72:        // ルート上の必要なDEMタイルのインデックスを事前収集
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:75:            tileCoords.add(toTileCoord(coord.first, coord.second, DEM_ZOOM))
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:93:            val (tx, ty) = toTileCoord(lat, lon, DEM_ZOOM)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:96:                decodeElevationFromBitmap(bitmap, lat, lon, tx, ty, DEM_ZOOM)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:107:        val key = "${DEM_ZOOM}_${tx}_${ty}"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:125:        // 国土地理院 DEM10B タイルからダウンロード
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:126:        val urlStr = "https://cyberjapandata.gsi.go.jp/xyz/dem10b_png/$DEM_ZOOM/$tx/$ty.png"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:144:            Log.d(TAG, "DEM tile download skipped or failed: $key (${e.message})")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:170:        // 地理院DEM PNG仕様:
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/ElevationRepository.kt:193:        private const val DEM_ZOOM = 14
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/PrefectureSelectors.kt:106:object SearchDbSelector {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/PrefectureSelectors.kt:187:object TileSourceSelector {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/real/RealRoutePlanner.kt:156:                            TravelModeType.Bicycle -> "裏道・平坦優先ルート"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxParser.kt:179:        // 統計計算 (距離、速度、獲得標高)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxParser.kt:193:                // 標高差 (プラスのみ合算)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:72:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:106:            val f = SearchDbSelector.findFirstAvailableDb(dataDir) ?: File(dataDir, "search.db")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:109:            when (val sel = SearchDbSelector.select(loc.first, loc.second)) {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:111:                    val f = SearchDbSelector.resolveDbFile(dataDir, sel.fileName) ?: File(dataDir, sel.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:13: * 構成: UI → CyclingData (このファイル) → 実データ (GPS / ルート / 標高DB)。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:14: * 標高は現在オフラインモック ([mockElevationProfile])。DEM・標高タイル接続時は
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:36:    /** 獲得標高 (m) */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:38:    /** 現在標高 (m) */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:40:    /** 現在周辺の勾配 (%)。前後80m平均。モック標高ベースの推定値。 */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:42:    /** この先の勾配 (%)。前方80m (終点付近は残距離)。モック標高ベースの推定値。 */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:47:// 標高プロファイル
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:50:/** ルート上の標高サンプル。distanceM はスタートからの距離。 */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:57: * モック標高プロファイルを生成する (MOCK: 実標高DB未接続のため)。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:58: * 総距離から決定的に地形を合成する。UI開発・表示確認用。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:59: * TODO: DEM / 地理院標高タイルに接続し、ルート座標ごとの実標高に置換する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:77: * ルート座標とエッジ距離から、地形に応じた標高プロファイルを算出する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:78: * 内陸度合いや距離ごとの起伏をサンプリングしてリアルな標高曲線を生成する。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:122:/** 指定距離における標高を線形補間で返す。 */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:135:/** スタート〜指定距離までの獲得標高 (上り分の積算)。 */
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/CyclingData.kt:229: * 注意: 現状の標高源はモック ([mockElevationProfile]) のため、これらの勾配値は推定値。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/ElevationProfileChart.kt:24: * 標高グラフ (横軸=距離, 縦軸=標高)。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/ElevationProfileChart.kt:66:        // 横グリッド + 標高ラベル (3本)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/ElevationProfileChart.kt:134:                // 現在地ピン (外枠リング + 白芯 + 標高吹き出し)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/ElevationProfileChart.kt:139:                // 標高バブル数値
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideDashboard.kt:30:// ダッシュボード (現在速度 / 残り距離 + 残り時間 / 平均 / 獲得標高 / 現在標高 + 勾配)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideDashboard.kt:88:                "獲得標高",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideDashboard.kt:92:                "現在標高",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideHistoryView.kt:318:                    StatPill("獲得標高", "+%.0f m".format(Locale.US, ride.elevationGainMeters), CyclingCyan)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RouteInfoPanels.kt:37: * [started] が false の間は案内開始前の確認表示 (選好切替、標高グラフあり)。
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RouteInfoPanels.kt:139:        // 基本指標セル (残り時間 / 予想平均速度 / 獲得標高)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RouteInfoPanels.kt:159:                "獲得標高",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RouteInfoPanels.kt:221:                "標高プロファイル（推定）",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RoutePanelSheet.kt:94:                        RouteDetailRow(R.drawable.ic_lucide_trending_up, "獲得標高(推定)", gainM?.let { "${it}m" } ?: "--")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:22:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:148:        val dbSelection = SearchDbSelector.select(center.latitude, center.longitude)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:151:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:240:        val dbSelection = SearchDbSelector.select(location.latitude, location.longitude)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:11:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:57:        val dbSelection = SearchDbSelector.select(center.first, center.second)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:60:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:106:        val dbSelection = SearchDbSelector.select(center.first, center.second)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:109:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapControlsOverlay.kt:37:import com.gorite.cyclemap.ui.map.NetworkStatusIndicator
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapControlsOverlay.kt:77:        MapLayer.TERRAIN -> "地形"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapControlsOverlay.kt:115:        NetworkStatusIndicator(networkLink)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapViewsContainer.kt:26:import com.gorite.cyclemap.data.TileSourceSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapViewsContainer.kt:168:            val vectorTileSelection = TileSourceSelector.select(tileLat, tileLon)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/map/MapSheetContents.kt:447:                            text = "・ 獲得標高 +${option.elevationGainMeters.toInt()}m",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/map/MapSheets.kt:225:                            text = "・ 獲得標高 +${candidate.elevationGainMeters.toInt()}m",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/map/MapTopBar.kt:123:                // 右群: 音声マイク (NetworkStatusIndicatorもアクセシビリティ維持のため極小統合)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/map/MapTopBar.kt:129:                        NetworkStatusIndicator(networkLink)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/map/MapTopBar.kt:203:fun NetworkStatusIndicator(link: Link) {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:7:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:9:import com.gorite.cyclemap.data.TileSourceSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:33:    return TileSourceSelector.resolveTileForLocation(dataDir, lat, lon)?.absolutePath
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:42:    val sel = SearchDbSelector.select(lat, lon)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:44:        val f = SearchDbSelector.resolveDbFile(dataDir, sel.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:48:        SearchDbSelector.findFirstAvailableDb(dataDir),
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:33:import com.gorite.cyclemap.data.TileSourceSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:176:                        val tileSelection = TileSourceSelector.select(initialTarget.latitude, initialTarget.longitude)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/utils/MapHelpers.kt:60:    TERRAIN("地形起伏"),
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/utils/MapUtilities.kt:56:/** 地理院 陰影起伏図 (等高線・地形の把握用。航空写真ではない)。 */

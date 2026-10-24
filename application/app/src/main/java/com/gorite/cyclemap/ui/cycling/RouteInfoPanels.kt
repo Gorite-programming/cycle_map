@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,23 +67,23 @@ fun RouteInfoCardContent(
                 Icon(
                     painterResource(R.drawable.ic_lucide_navigation),
                     contentDescription = null,
-                    tint = Color(0xFF1A73E8),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(22.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("ルートプレビュー", color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("ルートプレビュー", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     metrics.remainingM?.let { formatKm(it) } ?: "--",
-                    color = Color(0xFF1A73E8),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Black,
                     fontSize = 18.sp,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Surface(
                     shape = CircleShape,
-                    color = Color(0xFFF1F3F4),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
@@ -93,7 +93,7 @@ fun RouteInfoCardContent(
                         Icon(
                             painterResource(R.drawable.ic_lucide_x),
                             contentDescription = "ルートを消去",
-                            tint = Color(0xFF5F6368),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -112,11 +112,11 @@ fun RouteInfoCardContent(
                 val isSelected = pref == selectedPreference
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isSelected) Color(0xFFE8F0FE) else Color(0xFFF8F9FA),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     border = if (isSelected) {
-                        BorderStroke(1.5.dp, Color(0xFF1A73E8))
+                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                     } else {
-                        BorderStroke(1.dp, Color(0xFFDADCE0))
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -129,7 +129,7 @@ fun RouteInfoCardContent(
                             pref.label,
                             fontSize = 13.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color(0xFF1A73E8) else Color(0xFF3C4043),
+                            color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -156,7 +156,7 @@ fun RouteInfoCardContent(
             )
             RouteStatCell(
                 R.drawable.ic_lucide_trending_up,
-                "獲得標高",
+                "獲得標高（${elevationSourceLabel(profile)}）",
                 metrics.elevationGainM?.let { "${it.toInt()}m" } ?: "--",
                 Modifier.weight(1f),
             )
@@ -176,33 +176,33 @@ fun RouteInfoCardContent(
                     .weight(1f)
                     .height(48.dp),
                 shape = RoundedCornerShape(24.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A73E8)),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Icon(
                     painterResource(R.drawable.ic_lucide_navigation),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("ナビ開始", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+                Text("ナビ開始", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onPrimary)
             }
             if (onDownloadCorridorTiles != null) {
                 OutlinedButton(
                     onClick = onDownloadCorridorTiles,
                     modifier = Modifier.height(48.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1A73E8)),
-                    border = BorderStroke(1.dp, Color(0xFFDADCE0)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_lucide_download),
                         contentDescription = "オフライン地図保存",
-                        tint = Color(0xFF1A73E8),
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(tileDownloadStatus ?: "回廊保存", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1A73E8))
+                    Text(tileDownloadStatus ?: "回廊保存", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -212,14 +212,14 @@ fun RouteInfoCardContent(
                 profile = profile,
                 totalDistanceM = totalDistanceM,
                 progressDistanceM = progressDistanceM,
-                lineColor = Color(0xFF1A73E8),
-                passedColor = Color(0xFF0F9D58),
-                gridColor = Color(0xFFE8EAED),
-                labelColor = Color(0xFF5F6368),
+                lineColor = MaterialTheme.colorScheme.primary,
+                passedColor = MaterialTheme.colorScheme.secondary,
+                gridColor = MaterialTheme.colorScheme.outlineVariant,
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                "標高プロファイル（推定）",
-                color = Color(0xFF5F6368),
+                "標高プロファイル（${elevationSourceLabel(profile)}）",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -237,7 +237,7 @@ private fun GradePill(label: String, grade: Double, modifier: Modifier = Modifie
     }
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = Color(0xFFF1F3F4),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier.fillMaxWidth(),
     ) {
         Row(
@@ -245,18 +245,18 @@ private fun GradePill(label: String, grade: Double, modifier: Modifier = Modifie
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(label, color = Color(0xFF5F6368), fontSize = 12.sp)
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painterResource(iconRes),
                     contentDescription = level.label,
-                    tint = Color(0xFF202124),
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     "${formatGrade(grade)} · ${level.label}",
-                    color = Color(0xFF202124),
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                 )
@@ -271,11 +271,11 @@ private fun RouteStatCell(iconRes: Int, label: String, value: String, modifier: 
         Icon(
             painterResource(iconRes),
             contentDescription = null,
-            tint = Color(0xFF5F6368),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp),
         )
         Spacer(modifier = Modifier.height(2.dp))
-        Text(label, color = Color(0xFF5F6368), fontSize = 11.sp)
-        Text(value, color = Color(0xFF202124), fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+        Text(value, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
     }
 }

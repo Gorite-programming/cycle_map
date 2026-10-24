@@ -44,6 +44,32 @@ BBOXES = {
     "none":      (-90.0, 90.0, -180.0, 180.0),
 }
 
+def normalize_search_text(s: str) -> str:
+    """SearchNormalizer.kt と同一の正規化 (カタカナ→ひらがな、全角英数→半角英小文字)"""
+    if not s:
+        return ""
+    res = []
+    for ch in s.strip():
+        code = ord(ch)
+        if ord('Ａ') <= code <= ord('Ｚ'):
+            res.append(chr(code - ord('Ａ') + ord('a')))
+        elif ord('ａ') <= code <= ord('ｚ'):
+            res.append(chr(code - ord('ａ') + ord('a')))
+        elif ord('A') <= code <= ord('Z'):
+            res.append(ch.lower())
+        elif ord('０') <= code <= ord('９'):
+            res.append(chr(code - ord('０') + ord('0')))
+        elif ord('ァ') <= code <= ord('ヶ'):
+            res.append(chr(code - 0x60))
+        elif ch in ('ー', '－', '―'):
+            res.append('ー')
+        elif ch.isspace():
+            res.append(' ')
+        else:
+            res.append(ch)
+    import re
+    return re.sub(r'\s+', ' ', "".join(res))
+
 DB_BATCH       = 100_000   # DB への一括 INSERT サイズ
 WAY_CHUNK_SIZE = 50_000    # Way キャッシュのチャンクサイズ (pickle 単位)
 PRINT_INTERVAL = 1_000_000 # 進捗表示間隔 (node 数)
@@ -173,7 +199,7 @@ class Pass1Handler(osmium.SimpleHandler):
         if not in_bbox(lat, lon, self.bbox):
             return
         cat = category_for(n.tags)
-        self._db_buffer.append(("node", n.id, name, cat, lat, lon, name))
+        self._db_buffer.append(("node", n.id, name, cat, lat, lon, normalize_search_text(name)))
         self._node_total += 1
         if len(self._db_buffer) >= DB_BATCH:
             self._flush_nodes()
@@ -340,7 +366,7 @@ def write_ways(con: sqlite3.Connection, way_cache_path: str,
                 clon = lon_sum / count
                 if not in_bbox(clat, clon, bbox):
                     continue
-                buf.append(("way", wid, name, cat, clat, clon, name))
+                buf.append(("way", wid, name, cat, clat, clon, normalize_search_text(name)))
                 if len(buf) >= DB_BATCH:
                     con.executemany(
                         "INSERT INTO places(osm_type,osm_id,name,category,lat,lon,search_text)"

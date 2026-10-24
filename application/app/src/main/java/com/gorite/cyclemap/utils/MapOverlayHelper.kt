@@ -106,8 +106,9 @@ internal fun googlePoiMarker(
     category: PoiCategory,
     name: String,
     showLabel: Boolean = true,
+    isNight: Boolean = false,
 ): GooglePoiVisual {
-    val cacheKey = "${category.name}:${if (showLabel) name.trim() else ""}"
+    val cacheKey = "${category.name}:${if (showLabel) name.trim() else ""}:$isNight"
     val cached = googlePoiCache.get(cacheKey)
     if (cached != null) return cached
 
@@ -216,7 +217,8 @@ internal fun googlePoiMarker(
         val totalTextH = lines.size * singleLineHeight + (lines.size - 1) * lineSpacing
         var currentY = pinCy - (totalTextH / 2f) - fontMetrics.ascent
 
-        textPaint.color = poiTextColor(category)
+        textPaint.color = poiTextColor(category, isNight = isNight)
+        haloPaint.color = if (isNight) android.graphics.Color.parseColor("#1F1F1F") else android.graphics.Color.WHITE
 
         for (line in lines) {
             // 先に白い太縁取り

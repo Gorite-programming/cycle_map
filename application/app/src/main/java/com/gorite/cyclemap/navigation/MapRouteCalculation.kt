@@ -271,8 +271,9 @@ internal fun executeRouteCalculation(
 
             Log.i(
                 "CycleMapRoute",
-                "ROUTE_RESULT success=${result.isReachable} truncated=${result.wasTruncated} " +
-                    "routeNodeCount=${result.nodeIds.size} routeDistanceM=${result.totalDistanceMeters.toInt()}",
+                "ROUTE_RESULT pref=$pref success=${result.isReachable} truncated=${result.wasTruncated} " +
+                    "routeNodeCount=${result.nodeIds.size} routeDistanceM=${result.totalDistanceMeters.toInt()} " +
+                    "routeCost=${"%.2f".format(java.util.Locale.US, result.totalCost)} pathHash=${result.nodeIds.hashCode()}",
             )
             val richInstructions = env.graphLock.read {
                 if (routeJob.isCancelled()) return@read emptyList<RouteInstruction>()
@@ -336,7 +337,7 @@ internal fun executeRouteCalculation(
                     env.getRouteOverlay()?.let { view.overlays?.remove(it) }
                     Polyline(view).apply {
                         setPoints(result.coordinates.map { (lat, lon) -> GeoPoint(lat, lon) })
-                        outlinePaint.color = android.graphics.Color.parseColor("#EC407A")
+                        outlinePaint.color = android.graphics.Color.parseColor("#333333")
                         outlinePaint.strokeWidth = 24f
                         outlinePaint.strokeJoin = Paint.Join.ROUND
                         outlinePaint.strokeCap = Paint.Cap.ROUND
@@ -381,6 +382,14 @@ internal fun executeRouteCalculation(
                 env.onCalculatingRouteChanged(false)
                 env.onReroutingChanged(false)
                 env.routeJobRef.compareAndSet(routeJob, null)
+            }
+        } finally {
+            (env.context as? ComponentActivity)?.runOnUiThread {
+                if (env.routeJobRef.get() === routeJob) {
+                    env.routeJobRef.compareAndSet(routeJob, null)
+                    env.onCalculatingRouteChanged(false)
+                    env.onReroutingChanged(false)
+                }
             }
         }
     }

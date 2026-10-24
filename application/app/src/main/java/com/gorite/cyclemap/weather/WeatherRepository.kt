@@ -155,7 +155,7 @@ class WeatherRepository(
     fun refresh(isOnline: Boolean) {
         val area = currentArea ?: return
         if (!isOnline) {
-            val cached = loadCachedForOffice(area.officeCode)
+            val cached = loadCachedForOffice(area.officeCode, area.class10Code)
             if (cached != null) {
                 _uiState.value = WeatherUiState.Stale(cached, isOffline = true)
             } else {
@@ -185,11 +185,11 @@ class WeatherRepository(
                 saveCache(parsed)
                 _uiState.value = WeatherUiState.Fresh(parsed)
             } else {
-                val cached = loadCachedForOffice(area.officeCode)
+                val cached = loadCachedForOffice(area.officeCode, area.class10Code)
                 _uiState.value = WeatherUiState.Error("気象データの解析に失敗しました", cached)
             }
         }.onFailure { err ->
-            val cached = loadCachedForOffice(area.officeCode)
+            val cached = loadCachedForOffice(area.officeCode, area.class10Code)
             if (cached != null) {
                 _uiState.value = WeatherUiState.Stale(cached, isOffline = true)
             } else {
@@ -203,6 +203,7 @@ class WeatherRepository(
             val json = gson.toJson(data)
             prefs.edit()
                 .putString(KEY_LAST_DATA, json)
+                .putString(KEY_OFFICE_PREFIX + data.officeCode + "_" + data.class10Code, json)
                 .putString(KEY_OFFICE_PREFIX + data.officeCode, json)
                 .apply()
         } catch (_: Exception) {
@@ -210,10 +211,16 @@ class WeatherRepository(
         }
     }
 
-    private fun loadCachedForOffice(officeCode: String): WeatherForecastData? {
-        val json = prefs.getString(KEY_OFFICE_PREFIX + officeCode, null) ?: return null
+    private fun loadCachedForOffice(officeCode: String, class10Code: String? = null): WeatherForecastData? {
+        val key = if (class10Code != null) {
+            KEY_OFFICE_PREFIX + officeCode + "_" + class10Code
+        } else {
+            KEY_OFFICE_PREFIX + officeCode
+        }
+        val json = prefs.getString(key, null) ?: prefs.getString(KEY_OFFICE_PREFIX + officeCode, null) ?: return null
         return try {
-            gson.fromJson(json, WeatherForecastData::class.java)
+            val cached = gson.fromJson(json, WeatherForecastData::class.java)
+            if (class10Code != null && cached.class10Code != class10Code) null else cached
         } catch (_: Exception) {
             null
         }

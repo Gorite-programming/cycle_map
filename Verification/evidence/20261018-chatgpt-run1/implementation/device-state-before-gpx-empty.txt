@@ -1,0 +1,3 @@
+location_mode_before=3
+airplane_mode_on_before=0
+wifi_on_before=1

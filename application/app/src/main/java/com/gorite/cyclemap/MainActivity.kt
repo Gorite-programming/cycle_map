@@ -56,10 +56,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val isDark = remember(themeMode, currentLocation, timeTick) {
+            val isDark = remember(themeMode, isSystemDark, currentLocation, timeTick) {
                 DayNightResolver.resolveIsDark(
                     mode = themeMode,
-                    isSystemInDarkTheme = false,
+                    isSystemInDarkTheme = isSystemDark,
                     latitude = currentLocation?.latitude ?: 34.3965,
                     longitude = currentLocation?.longitude ?: 132.4596,
                     epochMillis = timeTick,

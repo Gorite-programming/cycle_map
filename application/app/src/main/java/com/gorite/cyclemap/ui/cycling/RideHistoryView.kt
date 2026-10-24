@@ -65,6 +65,7 @@ val CyclingCyan = Color(0xFF00E5FF)
 fun RideHistorySheet(
     isRecording: Boolean,
     pointCount: Int,
+    statusMessage: String? = null,
     rideSummary: String?,
     gpxDir: File,
     onStartRecording: () -> Unit,
@@ -74,13 +75,20 @@ fun RideHistorySheet(
     onDismiss: () -> Unit,
 ) {
     var refreshTrigger by remember { mutableIntStateOf(0) }
-    val histories = remember(isRecording, refreshTrigger) {
-        if (!gpxDir.exists()) emptyList()
-        else {
-            gpxDir.listFiles { file -> file.extension.lowercase() == "gpx" }
-                ?.sortedByDescending { it.lastModified() }
-                ?.mapNotNull { GpxParser.parse(it) }
-                ?: emptyList()
+    val histories by androidx.compose.runtime.produceState<List<RideHistorySummary>>(
+        initialValue = emptyList(),
+        isRecording,
+        refreshTrigger,
+        gpxDir,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (!gpxDir.exists()) emptyList()
+            else {
+                gpxDir.listFiles { file -> file.extension.lowercase() == "gpx" }
+                    ?.sortedByDescending { it.lastModified() }
+                    ?.mapNotNull { GpxParser.parse(it) }
+                    ?: emptyList()
+            }
         }
     }
 
@@ -139,6 +147,15 @@ fun RideHistorySheet(
                                 Text("記録開始")
                             }
                         }
+                    }
+                    statusMessage?.let { message ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (message.contains("記録しませんでした")) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     rideSummary?.let {
                         Spacer(modifier = Modifier.height(6.dp))

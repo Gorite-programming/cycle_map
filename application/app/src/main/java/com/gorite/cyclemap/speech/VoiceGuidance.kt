@@ -142,6 +142,7 @@ class AndroidTextToSpeechEngine(
 ) : TextToSpeechEngine, TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ready: Boolean = false
+    private var pendingText: String? = null
 
     init {
         tts = TextToSpeech(context.applicationContext, this)
@@ -153,9 +154,15 @@ class AndroidTextToSpeechEngine(
             ready = !(langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED)
             if (!ready) {
                 Log.w("AndroidTTS", "Japanese TTS not supported or missing data: $langResult")
+            } else {
+                pendingText?.let { text ->
+                    pendingText = null
+                    speak(text)
+                }
             }
         } else {
             ready = false
+            pendingText = null
             Log.e("AndroidTTS", "TTS initialization failed with code: $status")
         }
         onReadyChanged?.invoke(ready)
@@ -163,7 +170,8 @@ class AndroidTextToSpeechEngine(
 
     override fun speak(text: String): Boolean {
         if (!ready || tts == null) {
-            Log.w("AndroidTTS", "Cannot speak, engine not ready (ready=$ready)")
+            Log.w("AndroidTTS", "Engine not ready yet (ready=$ready), buffering pending speech")
+            pendingText = text
             return false
         }
         val utteranceId = "tts_fallback_${System.currentTimeMillis()}"
@@ -172,12 +180,14 @@ class AndroidTextToSpeechEngine(
     }
 
     override fun stop() {
+        pendingText = null
         tts?.stop()
     }
 
     override fun isReady(): Boolean = ready
 
     fun shutdown() {
+        pendingText = null
         tts?.stop()
         tts?.shutdown()
         tts = null
@@ -329,22 +339,7 @@ object VoiceTriggerEvaluator {
         isOffRoute: Boolean,
         spokenKeys: Set<String>,
     ): VoiceCue? {
-        // 1. ルート逸脱・再探索の判定
-        if (isOffRoute) {
-            val key = "REROUTE"
-            if (!spokenKeys.contains(key)) {
-                val phrase = VoicePhraseCatalog.PHRASES["reroute"]
-                return VoiceCue(
-                    stage = VoiceGuidanceStage.REROUTE,
-                    instructionIndex = -1,
-                    spokenText = phrase?.text ?: "ルートから外れました。再探索します",
-                    rawResId = phrase?.rawResId,
-                )
-            }
-            return null
-        }
-
-        // 2. 目的地到着の判定
+        // 1. 目的地到着の判定 (MED-05: 逸脱中であっても到着圏内到達時は到着案内を最優先)
         if (remainingMeters != null && remainingMeters <= VoiceGuidanceThresholds.ARRIVAL_DISTANCE_METERS) {
             val key = "ARRIVED"
             if (!spokenKeys.contains(key)) {
@@ -353,6 +348,21 @@ object VoiceTriggerEvaluator {
                     stage = VoiceGuidanceStage.ARRIVED,
                     instructionIndex = -1,
                     spokenText = phrase?.text ?: "目的地に到着しました",
+                    rawResId = phrase?.rawResId,
+                )
+            }
+            return null
+        }
+
+        // 2. ルート逸脱・再探索の判定
+        if (isOffRoute) {
+            val key = "REROUTE"
+            if (!spokenKeys.contains(key)) {
+                val phrase = VoicePhraseCatalog.PHRASES["reroute"]
+                return VoiceCue(
+                    stage = VoiceGuidanceStage.REROUTE,
+                    instructionIndex = -1,
+                    spokenText = phrase?.text ?: "ルートから外れました。再探索します",
                     rawResId = phrase?.rawResId,
                 )
             }
@@ -422,6 +432,23 @@ object VoiceTriggerEvaluator {
     }
 }
 
+/** UI向けの案内ラベル。RouteInstruction.reason は診断専用なので表示文には使わない。 */
+object RouteInstructionText {
+    fun displayLabel(instruction: RouteInstruction): String {
+        val key = VoiceTriggerEvaluator.resolvePhraseKey(instruction.type, instruction.turnAngleDegrees)
+        val phrase = VoicePhraseCatalog.getText(key, VoiceGuidanceStage.NEAR)
+        if (phrase != null) {
+            return phrase.replaceFirst(Regex("^およそ\\d+メートル先、"), "")
+        }
+        return when (instruction.type) {
+            InstructionType.LEFT_TURN, InstructionType.SHARP_LEFT, InstructionType.FORK_LEFT -> "左へ進みます"
+            InstructionType.RIGHT_TURN, InstructionType.SHARP_RIGHT, InstructionType.FORK_RIGHT -> "右へ進みます"
+            InstructionType.U_TURN_LEFT, InstructionType.U_TURN_RIGHT -> "Uターンします"
+            else -> "次の案内地点です"
+        }
+    }
+}
+
 /**
  * 本番ナビゲーション用音声案内マネージャー。
  */
@@ -442,6 +469,11 @@ class VoiceGuidanceNavigator(
         instructions: List<RouteInstruction>,
         isOffRoute: Boolean = false,
     ) {
+        // MED-05: ルート復帰時は "REROUTE" をクリアして次回逸脱時に再警告できるようにする
+        if (!isOffRoute) {
+            spokenKeys.remove("REROUTE")
+        }
+
         val cue = VoiceTriggerEvaluator.evaluate(
             traveledMeters = traveledMeters,
             remainingMeters = remainingMeters,

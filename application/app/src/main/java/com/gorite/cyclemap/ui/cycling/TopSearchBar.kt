@@ -44,7 +44,7 @@ fun TopSearchBar(
     locationLabel: String? = null,
     onMicClick: () -> Unit = onSearchClick,
     onAvatarClick: () -> Unit = {},
-    userAvatarText: String = "拓真",
+    userAvatarText: String = "",
     placeholderText: String = "ここで検索",
 ) {
     Surface(
@@ -117,10 +117,10 @@ fun TopSearchBar(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            // 紫アバター丸「拓真」 (#7B1FA2)
+            // アバターボタン (アイコン表示)
             Surface(
                 shape = CircleShape,
-                color = Color(0xFF7B1FA2),
+                color = Color(0xFF1A73E8),
                 modifier = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
@@ -130,11 +130,11 @@ fun TopSearchBar(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = userAvatarText,
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                    Icon(
+                        painter = painterResource(R.drawable.ic_person),
+                        contentDescription = "ユーザーメニュー",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -162,76 +162,7 @@ fun CategoryChipRow(
         contentPadding = contentPadding,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 1. "🔍 マップに相談" (水色ピル: #E8F0FE, 青文字: #1A73E8)
-        item(key = "chip_consult") {
-            Surface(
-                onClick = onConsultClick,
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFFE8F0FE),
-                shadowElevation = 2.dp,
-                modifier = Modifier.height(36.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_lucide_search),
-                        contentDescription = "マップに相談",
-                        tint = Color(0xFF1A73E8),
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "マップに相談",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1A73E8),
-                    )
-                }
-            }
-        }
-
-        // 2. "🚗 自宅・4 分" (白背景、枠線、車アイコン、緑所要時間)
-        item(key = "chip_home") {
-            Surface(
-                onClick = onHomeClick,
-                shape = RoundedCornerShape(18.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFDADCE0)),
-                shadowElevation = 2.dp,
-                modifier = Modifier.height(36.dp),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_google_car),
-                        contentDescription = "自宅",
-                        tint = Color(0xFF5F6368),
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "自宅・",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF202124),
-                    )
-                    Text(
-                        text = "4 分",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF188038),
-                    )
-                }
-            }
-        }
-
-        // 3. "🍴 レストラン"
+        // 1. "🍴 レストラン"
         item(key = "chip_restaurant") {
             GoogleCategoryChip(
                 iconRes = R.drawable.ic_lucide_utensils,

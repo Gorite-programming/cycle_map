@@ -1,0 +1,5 @@
+0
+1
+1
+Active default network: 103
+mWifiInfo SSID: "xg100n-17e709-1", BSSID: 34:38:39:17:e7:0a, MAC: 22:f6:19:8f:95:d1, IP: /192.168.1.18, Security type: 2, Supplicant state: COMPLETED, Wi-Fi standard: 11ax, RSSI: -75, Link speed: 8Mbps, Tx Link speed: 8Mbps, Max Supported Tx Link speed: 286Mbps, Rx Link speed: 68Mbps, Max Supported Rx Link speed: 286Mbps, Frequency: 2412MHz, Net ID: 19, Metered hint: false, score: 60, isUsable: true, CarrierMerged: false, SubscriptionId: -1, IsPrimary: 1, Trusted: true, Restricted: false, Ephemeral: false, OEM paid: false, OEM private: false, OSU AP: false, FQDN: <none>, Provider friendly name: <none>, Requesting package name: <none>"xg100n-17e709-1"wpa2-pskMLO Information: , Is TID-To-Link negotiation supported by the AP: false, AP MLD Address: <none>, AP MLO Link Id: <none>, AP MLO Affiliated links: <none>, Vendor Data: <none>

@@ -1,0 +1,1 @@
+19:40 JST: KEYCODE_BACK from CycleMap root activity closed its task; the prior Google Maps task became foreground. The resulting temporary capture was deleted because it was not CycleMap evidence. Subsequent actions explicitly start MainActivity and verify topResumedActivity before tapping.

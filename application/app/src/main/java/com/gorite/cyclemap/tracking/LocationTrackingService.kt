@@ -42,6 +42,20 @@ class LocationTrackingService : Service() {
     private var previousLocation: Location? = null
     private var smoothedSpeed = 0.0
 
+    private val gpsHealthMonitor = GpsHealthMonitor()
+    private val healthHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val healthCheckRunnable = object : Runnable {
+        override fun run() {
+            if (tracking) {
+                val newStatus = gpsHealthMonitor.tick()
+                if (newStatus != lastStatus) {
+                    notifyStatus(newStatus)
+                }
+                healthHandler.postDelayed(this, 1_000L)
+            }
+        }
+    }
+
     @Volatile var lastStatus: GpsSignalStatus = GpsSignalStatus.HEALTHY
         private set
 
@@ -122,6 +136,9 @@ class LocationTrackingService : Service() {
         }
 
         tracking = true
+        gpsHealthMonitor.reset()
+        healthHandler.removeCallbacks(healthCheckRunnable)
+        healthHandler.postDelayed(healthCheckRunnable, 1_000L)
         startForeground(NOTIFICATION_ID, trackingNotification())
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
             .setMinUpdateIntervalMillis(250L)
@@ -157,6 +174,12 @@ class LocationTrackingService : Service() {
         }.format(Date())
         val points = snapshot?.pointCount ?: 0
 
+        if (points == 0) {
+            sendBroadcast(Intent(ACTION_RECORDING_EMPTY).setPackage(packageName))
+            startForeground(NOTIFICATION_ID, trackingNotification())
+            return
+        }
+
         Thread {
             try {
                 val output = snapshot?.writeToFile(File(outputDir, "cyclemap_$timestamp.gpx"))
@@ -178,6 +201,7 @@ class LocationTrackingService : Service() {
 
     private fun stopTracking() {
         stopRecordingIfNeeded()
+        healthHandler.removeCallbacks(healthCheckRunnable)
         fusedClient.removeLocationUpdates(callback)
         tracking = false
         previousLocation = null
@@ -192,6 +216,7 @@ class LocationTrackingService : Service() {
 
     override fun onDestroy() {
         stopRecordingIfNeeded()
+        healthHandler.removeCallbacks(healthCheckRunnable)
         fusedClient.removeLocationUpdates(callback)
         tracking = false
         previousLocation = null
@@ -208,9 +233,11 @@ class LocationTrackingService : Service() {
     private fun considerLocation(newLocation: Location) {
         val isTooInaccurate = newLocation.hasAccuracy() && newLocation.accuracy > 100f
         if (isTooInaccurate) {
-            notifyStatus(GpsSignalStatus.WEAK)
+            gpsHealthMonitor.onAccuracyDegraded()
+            notifyStatus(gpsHealthMonitor.status)
             return
         }
+        gpsHealthMonitor.onValidFix()
 
         val oldLocation = previousLocation
         var speed = 0.0
@@ -290,6 +317,7 @@ class LocationTrackingService : Service() {
         const val ACTION_STOP_RECORDING = "com.gorite.cyclemap.GPX_STOP"
         const val ACTION_RECORDING_STARTED = "com.gorite.cyclemap.GPX_STARTED"
         const val ACTION_RECORDING_SAVED = "com.gorite.cyclemap.GPX_SAVED"
+        const val ACTION_RECORDING_EMPTY = "com.gorite.cyclemap.GPX_EMPTY"
         const val EXTRA_PATH = "path"
         const val EXTRA_POINTS = "points"
         private const val CHANNEL_ID = "cyclemap_location"

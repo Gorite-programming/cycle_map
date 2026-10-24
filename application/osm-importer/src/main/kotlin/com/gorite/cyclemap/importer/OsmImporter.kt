@@ -765,6 +765,8 @@ fun main(args: Array<String>) {
     // Use the two-pass builder instead of the old PbfReader + OsmGraphBuilder
     val graph = TwoPassGraphBuilder(bbox).build(input)
     GraphBinaryWriter().write(graph, output)
+    val indexFile = File(output.path + ".idx")
+    writeGraphIndex(output, indexFile)
 
     peak.stop()
     val edgeCount = graph.outgoing.values.sumOf { it.size }

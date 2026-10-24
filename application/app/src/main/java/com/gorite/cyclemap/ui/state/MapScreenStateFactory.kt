@@ -126,7 +126,13 @@ internal fun rememberMapScreenState(
     val lastValidLocationState = remember { mutableStateOf<android.location.Location?>(null) }
     val lastValidRouteProgressMetersState = remember { mutableStateOf<Double?>(null) }
     val lastValidBearingDegreesState = remember { mutableFloatStateOf(0f) }
-    val selectedLayerState = remember { mutableStateOf(MapLayer.VECTOR_LIBERTY) }
+    val selectedLayerState = remember {
+        val savedLayer = prefs.getString("selected_layer", MapLayer.VECTOR_LIBERTY.name)
+        mutableStateOf(try { MapLayer.valueOf(savedLayer ?: "") } catch (_: Exception) { MapLayer.VECTOR_LIBERTY })
+    }
+    LaunchedEffect(selectedLayerState.value) {
+        prefs.edit().putString("selected_layer", selectedLayerState.value.name).apply()
+    }
 
     val vectorMapState = remember { mutableStateOf<MapLibreMap?>(null) }
     val mapViewState = remember { mutableStateOf<MapView?>(null) }
@@ -138,9 +144,13 @@ internal fun rememberMapScreenState(
     val speedKmhState = remember { mutableStateOf(0.0) }
     val headingDegreesState = remember { mutableFloatStateOf(0f) }
     val hasHeadingSensorFixState = remember { mutableStateOf(false) }
-    val isHeadingUpState = remember { mutableStateOf(true) }
+    val isHeadingUpState = remember { mutableStateOf(prefs.getBoolean("is_heading_up", true)) }
+    LaunchedEffect(isHeadingUpState.value) {
+        prefs.edit().putBoolean("is_heading_up", isHeadingUpState.value).apply()
+    }
     val followLocationState = remember { mutableStateOf(true) }
     val currentVectorTiltState = remember { mutableDoubleStateOf(0.0) }
+    val currentVectorBearingState = remember { mutableDoubleStateOf(0.0) }
 
     val navArrowCache = remember { NavArrowCache() }
     val navArrowDrawable = remember(context) {
@@ -169,8 +179,22 @@ internal fun rememberMapScreenState(
     val showFavoritesOnlyInSheetState = remember { mutableStateOf(false) }
     val showRecordPanelState = remember { mutableStateOf(false) }
     val showCyclingSettingsState = remember { mutableStateOf(false) }
-    val poiVisibleState = remember { mutableStateOf(true) }
-    val poiSelectedState = remember { mutableStateOf(PoiCategory.defaults()) }
+    val poiVisibleState = remember { mutableStateOf(prefs.getBoolean("poi_visible", true)) }
+    LaunchedEffect(poiVisibleState.value) {
+        prefs.edit().putBoolean("poi_visible", poiVisibleState.value).apply()
+    }
+    val poiSelectedState = remember {
+        val saved = prefs.getStringSet("poi_selected", null)
+        val initial = if (saved != null) {
+            saved.mapNotNull { name -> try { PoiCategory.valueOf(name) } catch (_: Exception) { null } }.toSet()
+        } else {
+            PoiCategory.defaults()
+        }
+        mutableStateOf(if (initial.isEmpty()) PoiCategory.defaults() else initial)
+    }
+    LaunchedEffect(poiSelectedState.value) {
+        prefs.edit().putStringSet("poi_selected", poiSelectedState.value.map { it.name }.toSet()).apply()
+    }
     val poiRefreshTickState = remember { mutableIntStateOf(0) }
     val currentZoomLevelState = remember { mutableDoubleStateOf(15.0) }
     val selectedPoiSpotState = remember { mutableStateOf<NearbySpot?>(null) }
@@ -218,7 +242,10 @@ internal fun rememberMapScreenState(
     val navStartElapsedMsState = remember { mutableStateOf(0L) }
     val isReroutingState = remember { mutableStateOf(false) }
     val isArrivedState = remember { mutableStateOf(false) }
-    val autoRerouteEnabledState = remember { mutableStateOf(true) }
+    val autoRerouteEnabledState = remember { mutableStateOf(prefs.getBoolean("auto_reroute_enabled", true)) }
+    LaunchedEffect(autoRerouteEnabledState.value) {
+        prefs.edit().putBoolean("auto_reroute_enabled", autoRerouteEnabledState.value).apply()
+    }
     val rerouteCountState = remember { mutableIntStateOf(0) }
     val rerouteLimitWarnedState = remember { mutableStateOf(false) }
     val lastRerouteElapsedMsState = remember { mutableStateOf(0L) }
@@ -244,7 +271,13 @@ internal fun rememberMapScreenState(
         }
     }
 
-    val voiceGuidanceModeState = remember { mutableStateOf(VoiceGuidanceMode.VOICEVOX) }
+    val voiceGuidanceModeState = remember {
+        val saved = prefs.getString("voice_guidance_mode", VoiceGuidanceMode.VOICEVOX.name)
+        mutableStateOf(try { VoiceGuidanceMode.valueOf(saved ?: "") } catch (_: Exception) { VoiceGuidanceMode.VOICEVOX })
+    }
+    LaunchedEffect(voiceGuidanceModeState.value) {
+        prefs.edit().putString("voice_guidance_mode", voiceGuidanceModeState.value.name).apply()
+    }
     val metanAudioEngine = remember(context) { ShikokuMetanAudioEngine(context) }
     val voiceNavigator = remember(context, metanAudioEngine) {
         val tts = AndroidTextToSpeechEngine(context)
@@ -276,6 +309,7 @@ internal fun rememberMapScreenState(
     val showAreaDownloadConfirmDialogState = remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val isDrawerOpenState = remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val viewModel = remember { com.gorite.cyclemap.ui.map.MapViewModel() }
@@ -305,6 +339,7 @@ internal fun rememberMapScreenState(
         navArrowDrawable = navArrowDrawable,
         navDotDrawable = navDotDrawable,
         drawerState = drawerState,
+        isDrawerOpenState = isDrawerOpenState,
         graphLock = graphLock,
         routeJobRef = routeJobRef,
         pendingRouteRef = pendingRouteRef,
@@ -335,6 +370,7 @@ internal fun rememberMapScreenState(
         isHeadingUpState = isHeadingUpState,
         followLocationState = followLocationState,
         currentVectorTiltState = currentVectorTiltState,
+        currentVectorBearingState = currentVectorBearingState,
         showPrefectureListDialogState = showPrefectureListDialogState,
         selectedPrefectureForActionState = selectedPrefectureForActionState,
         showAlreadyDownloadedDialogState = showAlreadyDownloadedDialogState,

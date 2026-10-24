@@ -1,0 +1,95 @@
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/data/PrefectureSelectors.kt:106:object SearchDbSelector {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/navigation/MapRoutingActions.kt:36:    gpxTrackOverlay: Polyline?,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/navigation/MapRoutingActions.kt:48:        gpxTrackOverlay?.let { view.overlays.remove(it) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/real/RealRoutePlanner.kt:6:import com.gorite.cyclemap.routing.AStarRouter
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/real/RealRoutePlanner.kt:7:import com.gorite.cyclemap.routing.CyclingCostModel
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/routing/TravelModes.kt:68:        TravelMode.Bicycle -> CyclingCostModel
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/routing/TravelModes.kt:109:            val router = AStarRouter(graph, costModel)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxRecorder.kt:56:    private val gpxTimeFormat = ThreadLocal.withInitial {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxRecorder.kt:65:        append("<gpx version=\"1.1\" creator=\"CycleMap\" xmlns=\"http://www.topografix.com/GPX/1/1\">")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxRecorder.kt:69:        val formatter = checkNotNull(gpxTimeFormat.get())
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/GpxRecorder.kt:82:        append("</gpx>")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/LocationTrackingService.kt:154:        val outputDir = File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "CycleMap/gpx")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/LocationTrackingService.kt:162:                val output = snapshot?.writeToFile(File(outputDir, "cyclemap_$timestamp.gpx"))
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/tracking/LocationTrackingService.kt:297:        private const val PREFERENCES = "gpx_recording"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:72:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:106:            val f = SearchDbSelector.findFirstAvailableDb(dataDir) ?: File(dataDir, "search.db")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:109:            when (val sel = SearchDbSelector.select(loc.first, loc.second)) {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/DestinationSearchDialog.kt:111:                    val f = SearchDbSelector.resolveDbFile(dataDir, sel.fileName) ?: File(dataDir, sel.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:39:    gpxPointCount: Int,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:44:    gpxTrackOverlay: Polyline?,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:90:        val gpxDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOCUMENTS), "CycleMap/gpx")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:93:            pointCount = gpxPointCount,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:99:            gpxDir = gpxDir,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:112:                    gpxTrackOverlay?.let { view.overlays.remove(it) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/components/MapSettingsDialogs.kt:136:                    gpxTrackOverlay?.let {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/GoogleNavFooter.kt:58:    gpxPointCount: Int,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/GoogleNavFooter.kt:134:                                text = if (isRecording) "REC ${gpxPointCount}p" else "GPX",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/GoogleNavFooter.kt:212:                                text = if (isRecording) "REC ${gpxPointCount}p" else "GPX記録",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideHistoryView.kt:69:    gpxDir: File,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideHistoryView.kt:78:        if (!gpxDir.exists()) emptyList()
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/cycling/RideHistoryView.kt:80:            gpxDir.listFiles { file -> file.extension.lowercase() == "gpx" }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:22:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:148:        val dbSelection = SearchDbSelector.select(center.latitude, center.longitude)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:151:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapLifecycleEffects.kt:240:        val dbSelection = SearchDbSelector.select(location.latitude, location.longitude)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:11:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:57:        val dbSelection = SearchDbSelector.select(center.first, center.second)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:60:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:106:        val dbSelection = SearchDbSelector.select(center.first, center.second)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/effects/MapSearchEffects.kt:109:            is SearchDbSelection.Available -> SearchDbSelector.resolveDbFile(dataDir, dbSelection.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapBottomOverlays.kt:69:    gpxPointCount: Int,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapBottomOverlays.kt:363:                            text = if (isRecording) "記録中 (${gpxPointCount}pt)" else "GPX記録",
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapContentLayout.kt:127:    gpxPointCount: Int,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapContentLayout.kt:322:                    gpxPointCount = gpxPointCount,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapModalsHost.kt:91:    gpxPointCount: Int,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapModalsHost.kt:94:    gpxTrackOverlay: Polyline?,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapModalsHost.kt:227:        gpxPointCount = gpxPointCount,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapModalsHost.kt:232:        gpxTrackOverlay = gpxTrackOverlay,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapScreenScaffold.kt:179:            gpxPointCount = state.gpxPointCountState.value,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapScreenScaffold.kt:217:                    (context as? ComponentActivity)?.runOnUiThread { state.gpxHistoryState.value = loaded }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapScreenScaffold.kt:295:        gpxPointCount = state.gpxPointCountState.value,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapScreenScaffold.kt:298:        gpxTrackOverlay = state.gpxTrackOverlayState.value,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/layout/MapScreenScaffold.kt:299:        onGpxTrackOverlayChanged = { state.gpxTrackOverlayState.value = it },
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:7:import com.gorite.cyclemap.data.SearchDbSelector
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:42:    val sel = SearchDbSelector.select(lat, lon)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:44:        val f = SearchDbSelector.resolveDbFile(dataDir, sel.fileName)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapFiles.kt:48:        SearchDbSelector.findFirstAvailableDb(dataDir),
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:109:    var offlineDataMissing by remember { mutableStateOf(false) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:110:    var offlineMissingPrefecture by remember { mutableStateOf<String?>(null) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:180:                            offlineMissingPrefecture = when (tileSelection) {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:184:                            offlineDataMissing = true
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:352:        if (offlineDataMissing) {
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:354:                prefectureName = offlineMissingPrefecture,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:170:            state.gpxPointCountState.value = 0
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:171:            state.gpxNotificationTextState.value = "記録を開始しました"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:175:            state.gpxPointCountState.value = points
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:176:            state.gpxNotificationTextState.value = "GPX保存完了 ($points 点): $fileName"
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:226:            if (recording) state.gpxPointCountState.value = points
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:361:            gpxTrackOverlay = state.gpxTrackOverlayState.value,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/screens/MapScreen.kt:369:                state.gpxTrackOverlayState.value = null
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenState.kt:162:    val gpxHistoryState: MutableState<List<GpxHistoryEntry>>,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenState.kt:176:    val gpxTrackOverlayState: MutableState<Polyline?>,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenState.kt:198:    val gpxPointCountState: MutableState<Int>,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenState.kt:199:    val gpxNotificationTextState: MutableState<String?>,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:186:    val gpxHistoryState = remember { mutableStateOf<List<GpxHistoryEntry>>(emptyList()) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:202:    val gpxTrackOverlayState = remember { mutableStateOf<Polyline?>(null) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:267:    val gpxPointCountState = remember { mutableStateOf(0) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:268:    val gpxNotificationTextState = remember { mutableStateOf<String?>(null) }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:369:        gpxHistoryState = gpxHistoryState,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:383:        gpxTrackOverlayState = gpxTrackOverlayState,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:405:        gpxPointCountState = gpxPointCountState,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/ui/state/MapScreenStateFactory.kt:406:        gpxNotificationTextState = gpxNotificationTextState,
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/utils/MapHelpers.kt:210:    val dir = File(dataDir, "gpx")
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/utils/MapHelpers.kt:212:    return dir.listFiles { f -> f.isFile && f.name.endsWith(".gpx") }
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/verify/VerificationReceiver.kt:114:        val airplane = android.provider.Settings.Global.getInt(cr, android.provider.Settings.Global.AIRPLANE_MODE_ON, -1)
+f594a9d:application/app/src/main/java/com/gorite/cyclemap/verify/VerificationReceiver.kt:121:        return "DEVICE airplane=$airplane wifi=$wifiOn locationProviders=$providers"
+f594a9d:application/app/src/main/res/values-en/strings.xml:26:    <string name="status_offline">Offline Mode</string>
+f594a9d:application/app/src/main/res/values/strings.xml:26:    <string name="status_offline">完全オフライン</string>
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/AltRouting.kt:391:        val router = AStarRouter(graph, edgeCostModel)
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/HsaRouting.kt:149:        val skeleton = AStarRouter(graph, SkeletonCostModel(baseModel)).route(startId, goalId)
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/HsaRouting.kt:233:            val baseline = AStarRouter(graph, edgeCostModel).route(startId, goalId)
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/HsaRouting.kt:370:        aStarResult = AStarRouter(graph, edgeCostModel).route(startId, goalId)
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/Routing.kt:61:object CyclingCostModel : EdgeCostModel {
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/Routing.kt:90:class AStarRouter(
+f594a9d:application/routing-core/src/main/kotlin/com/gorite/cyclemap/routing/RoutingBenchmark.kt:107:        result = AStarRouter(graph, edgeCostModel).route(startId, goalId)

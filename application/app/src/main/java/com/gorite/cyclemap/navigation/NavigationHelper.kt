@@ -373,6 +373,19 @@ internal class MapOrientationAnimator(
         if (view == null && vectorView == null) return
 
         val isVector = isVectorActive() && vectorView != null
+        if (isVector) {
+            val gestures = vectorView!!.gesturesManager
+            val userGestureInProgress = gestures?.let {
+                it.shoveGestureDetector.isInProgress ||
+                    it.rotateGestureDetector.isInProgress ||
+                    it.standardScaleGestureDetector.isInProgress ||
+                    it.moveGestureDetector.isInProgress
+            } == true
+            if (userGestureInProgress) {
+                currentAnimator?.cancel()
+                return
+            }
+        }
         val currentHeading = if (isVector) {
             vectorView!!.cameraPosition.bearing.toFloat()
         } else if (view != null) {

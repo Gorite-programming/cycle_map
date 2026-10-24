@@ -123,7 +123,7 @@ internal fun GoogleNavHeader(
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(
@@ -132,8 +132,16 @@ internal fun GoogleNavHeader(
                                 top = if (isLandscape) 10.dp else (statusBarTopPadding + 10.dp),
                                 bottom = if (isLandscape) 10.dp else 14.dp,
                             ),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        com.gorite.cyclemap.ui.map.NextFlowAnimation(
+                            animationEnabled = effectiveAnimationEnabled,
+                            fadeColor = navCardColor,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                         // 進行方向アイコン
                         Icon(
                             painter = painterResource(guide.arrowIcon),
@@ -193,8 +201,10 @@ internal fun GoogleNavHeader(
                 }
             }
         }
+    }
 
-        // 3. ルート逸脱バナー
+        // 3. ルート逸脱バナー (MED-10: ステータスバーと重ならないよう上部パディング考慮)
+        val hasTopCard = isRerouting || currentGuide != null
         AnimatedVisibility(
             visible = isOffRoute && !isRerouting,
             enter = Motion.bannerEnter(effectiveAnimationEnabled),
@@ -205,7 +215,9 @@ internal fun GoogleNavHeader(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFD93025)),
                 shape = RoundedCornerShape(12.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (!hasTopCard && !isLandscape) statusBarTopPadding else 0.dp),
             ) {
                 Text(
                     text = if (!autoRerouteEnabled) "ルートから外れています（自動リルートOFF）" else "ルートから外れています",

@@ -3,7 +3,6 @@ package com.gorite.cyclemap.ui.mapview
 import com.gorite.cyclemap.R
 import com.gorite.cyclemap.utils.cycleMapDataDir
 import com.gorite.cyclemap.utils.googlePoiMarker
-import com.gorite.cyclemap.utils.poiTextColor
 import java.io.File
 import android.content.Context
 import android.graphics.Bitmap
@@ -17,6 +16,8 @@ import android.graphics.Shader
 import androidx.core.content.ContextCompat
 import com.gorite.cyclemap.tracking.GpsSignalStatus
 import com.gorite.cyclemap.ui.cycling.PoiCategory
+import com.gorite.cyclemap.ui.theme.CycleMapColors
+import androidx.compose.ui.graphics.toArgb
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.LineLayer
@@ -157,8 +158,8 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         style.addImage("cyclemap-location-beam-icon", createGoogleLocationPuckBitmap(context, true))
     }
     if (style.getImage("cyclemap-nav-arrow-icon") == null) {
-        val arrowBitmap = drawableToBitmap(context, R.drawable.ic_nav_arrow, 84)
-        style.addImage("cyclemap-nav-arrow-icon", arrowBitmap)
+        val navigationPuck = drawableToBitmap(context, R.drawable.ic_google_location_puck, 108)
+        style.addImage("cyclemap-nav-arrow-icon", navigationPuck)
     }
 
     if (style.getSource("cyclemap-alt-route-source") == null) {
@@ -187,6 +188,34 @@ internal fun setupRouteLayers(context: Context, style: Style) {
         } else {
             style.addLayer(altCasing)
             style.addLayer(altLine)
+        }
+    }
+
+    if (style.getSource("cyclemap-gpx-track-source") == null) {
+        val gpxSource = GeoJsonSource("cyclemap-gpx-track-source")
+        style.addSource(gpxSource)
+        val gpxCasing = LineLayer("cyclemap-gpx-track-casing", "cyclemap-gpx-track-source").apply {
+            setProperties(
+                PropertyFactory.lineColor(Color.parseColor("#006064")),
+                PropertyFactory.lineWidth(9f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        }
+        val gpxLine = LineLayer("cyclemap-gpx-track-line", "cyclemap-gpx-track-source").apply {
+            setProperties(
+                PropertyFactory.lineColor(Color.parseColor("#00E5FF")),
+                PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+            )
+        }
+        if (style.getLayer("buildings-3d") != null) {
+            style.addLayerBelow(gpxCasing, "buildings-3d")
+            style.addLayerBelow(gpxLine, "buildings-3d")
+        } else {
+            style.addLayer(gpxCasing)
+            style.addLayer(gpxLine)
         }
     }
 
@@ -262,7 +291,7 @@ internal fun setupRouteLayers(context: Context, style: Style) {
                 PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
                 PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true),
-                PropertyFactory.iconSize(0.6f),
+                PropertyFactory.iconSize(1.0f),
             )
             setFilter(Expression.eq(Expression.get("mode"), Expression.literal("arrow")))
         })
@@ -385,6 +414,23 @@ internal fun updateRouteLine(
 }
 
 /**
+ * ベクター地図上の GPX 走行軌跡を GeoJSON に反映
+ */
+internal fun updateGpxTrack(
+    style: Style,
+    points: List<GeoPoint>?,
+) {
+    val source = style.getSourceAs<GeoJsonSource>("cyclemap-gpx-track-source") ?: return
+    if (points.isNullOrEmpty() || points.size < 2) {
+        source.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+        return
+    }
+    val coordinates = points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val lineString = LineString.fromLngLats(coordinates)
+    source.setGeoJson(FeatureCollection.fromFeature(Feature.fromGeometry(lineString)))
+}
+
+/**
  * 標準地図と完全同一の Googleマップ風しずく型ピン画像をスタイルに登録する
  */
 internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: Boolean = false) {
@@ -409,7 +455,7 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: 
         val poiSource = GeoJsonSource("cyclemap-dynamic-pois")
         style.addSource(poiSource)
 
-        val haloColor = if (isNightMode) Color.parseColor("#202124") else Color.WHITE
+        val haloColor = (if (isNightMode) CycleMapColors.MapLabelHaloDark else CycleMapColors.MapLabelHaloLight).toArgb()
         val poiSymbolLayer = SymbolLayer("cyclemap-dynamic-poi-symbols", "cyclemap-dynamic-pois").apply {
             setProperties(
                 PropertyFactory.iconImage(Expression.get("iconKey")),
@@ -427,7 +473,7 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: 
                 ),
                 PropertyFactory.symbolSortKey(Expression.get("sortKey")),
                 PropertyFactory.symbolZOrder(Property.SYMBOL_Z_ORDER_AUTO),
-                PropertyFactory.iconAllowOverlap(true), PropertyFactory.iconIgnorePlacement(true), PropertyFactory.iconOptional(false),
+                PropertyFactory.iconAllowOverlap(false), PropertyFactory.iconIgnorePlacement(false), PropertyFactory.iconOptional(true),
                 PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                 PropertyFactory.textField(Expression.get("name")), PropertyFactory.textSize(10.5f), PropertyFactory.textColor(Expression.get("textColor")),
                 PropertyFactory.textHaloColor(haloColor), PropertyFactory.textHaloWidth(2.2f), PropertyFactory.textHaloBlur(0.3f),
@@ -435,7 +481,7 @@ internal fun setupDynamicPoiLayers(context: Context, style: Style, isNightMode: 
                 PropertyFactory.textPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                 PropertyFactory.textRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                 PropertyFactory.textAllowOverlap(false), PropertyFactory.textIgnorePlacement(false), PropertyFactory.textOptional(true),
-                PropertyFactory.textMaxWidth(7.5f),
+                PropertyFactory.textMaxWidth(9.0f),
             )
         }
 

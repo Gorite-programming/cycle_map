@@ -2,6 +2,8 @@ package com.gorite.cyclemap.routing
 
 import java.io.File
 import java.io.RandomAccessFile
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.random.Random
@@ -11,6 +13,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LazyMappedRoutingTest {
+    private data class FixtureEdge(val target: Int, val distanceMeters: Double, val gradePercent: Double)
+
     private fun graphWith(lats: DoubleArray, lons: DoubleArray): LazyMappedRoadGraph {
         val n = lats.size
         val tmp = File.createTempFile("lazymapped-test", ".graph")
@@ -42,6 +46,72 @@ class LazyMappedRoutingTest {
             0,
         ) as LazyMappedRoadGraph
         return graph
+    }
+
+    private fun graphWithAlternativeGrades(): LazyMappedRoadGraph {
+        val edges = listOf(
+            listOf(
+                FixtureEdge(1, 115.0, 0.0),
+                FixtureEdge(2, 105.0, 2.0),
+                FixtureEdge(3, 90.0, 10.0),
+            ),
+            listOf(FixtureEdge(4, 115.0, 0.0)),
+            listOf(FixtureEdge(4, 105.0, 2.0)),
+            listOf(FixtureEdge(4, 90.0, 10.0)),
+            emptyList(),
+        )
+        val bytes = ByteArrayOutputStream()
+        val edgeStarts = LongArray(edges.size)
+        val edgeFirstOrdinals = IntArray(edges.size)
+        val edgeCounts = IntArray(edges.size)
+        val edgeTargets = ArrayList<Int>()
+        DataOutputStream(bytes).use { out ->
+            edges.forEachIndexed { source, outgoing ->
+                edgeStarts[source] = bytes.size().toLong()
+                edgeFirstOrdinals[source] = edgeTargets.size
+                edgeCounts[source] = outgoing.size
+                outgoing.forEach { edge ->
+                    out.writeLong(100L + source)
+                    out.writeLong(100L + edge.target)
+                    out.writeDouble(edge.distanceMeters)
+                    val roadType = "residential".toByteArray(Charsets.UTF_8)
+                    out.writeShort(roadType.size)
+                    out.write(roadType)
+                    out.writeByte(0) // not one-way metadata
+                    out.writeByte(1) // grade is present
+                    out.writeDouble(edge.gradePercent)
+                    edgeTargets += edge.target
+                }
+            }
+        }
+        val tmp = File.createTempFile("lazymapped-preference", ".graph").apply { deleteOnExit() }
+        val channel = RandomAccessFile(tmp, "r").channel
+        val nodeIds = LongArray(edges.size) { 100L + it }
+        val zeros = DoubleArray(edges.size) { 34.0 }
+        val ctor = LazyMappedRoadGraph::class.java.getDeclaredConstructor(
+            FileChannel::class.java,
+            ByteBuffer::class.java,
+            LongArray::class.java,
+            DoubleArray::class.java,
+            DoubleArray::class.java,
+            LongArray::class.java,
+            IntArray::class.java,
+            IntArray::class.java,
+            IntArray::class.java,
+            Int::class.javaPrimitiveType,
+        ).apply { isAccessible = true }
+        return ctor.newInstance(
+            channel,
+            ByteBuffer.wrap(bytes.toByteArray()),
+            nodeIds,
+            zeros,
+            DoubleArray(edges.size) { 131.0 },
+            edgeStarts,
+            edgeFirstOrdinals,
+            edgeCounts,
+            edgeTargets.toIntArray(),
+            edgeTargets.size,
+        ) as LazyMappedRoadGraph
     }
 
     private fun bruteForce(lats: DoubleArray, lons: DoubleArray, lat: Double, lon: Double): Int {
@@ -130,6 +200,19 @@ class LazyMappedRoutingTest {
             // FLAT: 上り坂回避は上限5.0倍でクランプ
             val flatUp = penalty(15.0f, RoutePreference.FLAT)
             assertTrue(flatUp <= 5.0)
+        }
+    }
+
+    @Test
+    fun routePreference_selectsFlatRecommendedAndSteepAlternativesWhenAvailable() {
+        graphWithAlternativeGrades().use { graph ->
+            val flat = graph.route(0, 4, preference = RoutePreference.FLAT)
+            val recommended = graph.route(0, 4, preference = RoutePreference.RECOMMENDED)
+            val hill = graph.route(0, 4, preference = RoutePreference.HILL_CLIMB)
+
+            assertEquals(listOf(100L, 101L, 104L), flat.nodeIds)
+            assertEquals(listOf(100L, 102L, 104L), recommended.nodeIds)
+            assertEquals(listOf(100L, 103L, 104L), hill.nodeIds)
         }
     }
 

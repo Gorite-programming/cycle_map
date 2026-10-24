@@ -11,8 +11,7 @@ import kotlin.math.sin
  * サイクリングUI用のデータ層。
  *
  * 構成: UI → CyclingData (このファイル) → 実データ (GPS / ルート / 標高DB)。
- * 標高は現在オフラインモック ([mockElevationProfile])。DEM・標高タイル接続時は
- * このファイルの関数だけを差し替えればUI側の変更は不要。
+ * 標高はDEM実測値を優先し、未取得地点は出所を記録した推定値で補完する。
  */
 
 // ---------------------------------------------------------------------------
@@ -51,12 +50,29 @@ data class RideMetrics(
 data class ElevationSample(
     val distanceM: Double,
     val elevationM: Double,
+    val source: ElevationSource = ElevationSource.ESTIMATED,
 )
+
+enum class ElevationSource {
+    GSI_DEM,
+    ESTIMATED,
+}
+
+/** チャートと標高指標で、実測・推定・混在を同じルールで表示する。 */
+fun elevationSourceLabel(profile: List<ElevationSample>): String {
+    val sources = profile.map { it.source }.toSet()
+    return when {
+        sources.isEmpty() -> "標高未取得"
+        sources == setOf(ElevationSource.GSI_DEM) -> "DEM実測"
+        sources == setOf(ElevationSource.ESTIMATED) -> "推定"
+        else -> "一部推定"
+    }
+}
 
 /**
  * モック標高プロファイルを生成する (MOCK: 実標高DB未接続のため)。
  * 総距離から決定的に地形を合成する。UI開発・表示確認用。
- * TODO: DEM / 地理院標高タイルに接続し、ルート座標ごとの実標高に置換する。
+ * DEM未取得時の推定プロファイルとして使用する。推定値を実測値として扱わない。
  */
 fun mockElevationProfile(totalDistanceM: Double): List<ElevationSample> {
     if (totalDistanceM <= 0.0) return emptyList()
@@ -74,8 +90,7 @@ fun mockElevationProfile(totalDistanceM: Double): List<ElevationSample> {
 }
 
 /**
- * ルート座標とエッジ距離から、地形に応じた標高プロファイルを算出する。
- * 内陸度合いや距離ごとの起伏をサンプリングしてリアルな標高曲線を生成する。
+ * ルート座標と距離から、DEM未取得時に表示する推定標高プロファイルを算出する。
  */
 fun buildRouteElevationProfile(
     coordinates: List<Pair<Double, Double>>,

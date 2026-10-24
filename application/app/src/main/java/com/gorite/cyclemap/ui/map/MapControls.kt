@@ -71,7 +71,7 @@ fun MapControls(
                     modifier = Modifier
                         .size(24.dp)
                         .rotate(-safeBearing),
-                    tint = Color(0xFFD32F2F)
+                    tint = com.gorite.cyclemap.ui.theme.CycleMapColors.Danger
                 )
             }
         }
@@ -164,7 +164,7 @@ fun FloatingCircleButton(
 ) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
+        color = com.gorite.cyclemap.ui.theme.CycleMapColors.MapControlSurface,
         tonalElevation = 0.dp,
         shadowElevation = 5.dp,
         modifier = modifier

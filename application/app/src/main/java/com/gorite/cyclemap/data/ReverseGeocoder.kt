@@ -146,9 +146,16 @@ object ReverseGeocoder {
         // 3. 町・丁目判定 (特定された区または市の境界内にあるノードを最優先)
         val townCandidates = candidates.filter { it.category in TOWN_CATEGORIES && it.distanceM <= TOWN_MAX_METERS }
         val activeBoundary = if (resolvedWard != null) {
-            AdministrativeBoundaries.ALL.firstOrNull { it.adminLevel == 8 && it.name == resolvedWard.name }
+            AdministrativeBoundaries.ALL.firstOrNull {
+                it.adminLevel == 8 && it.name == resolvedWard.name &&
+                    (prefectureName == null || it.prefectureName == prefectureName) &&
+                    (resolvedCity.name.isEmpty() || it.parentCity == resolvedCity.name)
+            }
         } else {
-            AdministrativeBoundaries.ALL.firstOrNull { it.adminLevel == 7 && it.name == resolvedCity.name }
+            AdministrativeBoundaries.ALL.firstOrNull {
+                it.adminLevel == 7 && it.name == resolvedCity.name &&
+                    (prefectureName == null || it.prefectureName == prefectureName)
+            }
         }
 
         val town = if (activeBoundary != null) {

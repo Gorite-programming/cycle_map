@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material3.DrawerState
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -37,8 +35,6 @@ import com.gorite.cyclemap.ui.cycling.GoogleNavTab
 import com.gorite.cyclemap.ui.cycling.NearbySpot
 import com.gorite.cyclemap.ui.cycling.PoiCategory
 import com.gorite.cyclemap.ui.cycling.QuickSpotType
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.maplibre.android.maps.MapLibreMap
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
@@ -48,8 +44,7 @@ import org.osmdroid.views.overlay.Marker
 @Composable
 internal fun MapContentLayout(
     modifier: Modifier = Modifier,
-    scope: CoroutineScope,
-    drawerState: DrawerState,
+    isDrawerOpenState: androidx.compose.runtime.MutableState<Boolean>,
     selectedMenu: String,
     onMenuSelect: (String) -> Unit,
     onOpenSearch: () -> Unit,
@@ -85,12 +80,15 @@ internal fun MapContentLayout(
     poiSelected: Set<PoiCategory>,
     navDotDrawable: Drawable?,
     onMapCreated: (MapView, Marker?, AccuracyCircleOverlay?) -> Unit,
+    onMapDestroyed: () -> Unit = {},
     onPoiRefresh: () -> Unit,
     currentZoomLevel: Double,
     onZoomLevelChanged: (Double) -> Unit,
     onLongPress: (GeoPoint) -> Unit,
     currentVectorTilt: Double,
     onTiltChanged: (Double) -> Unit,
+    currentVectorBearing: Double = 0.0,
+    onBearingChanged: (Double) -> Unit = {},
     onVectorMapReady: (MapLibreMap) -> Unit,
     // Notification banners props
     effectiveAnimationEnabled: Boolean,
@@ -148,50 +146,11 @@ internal fun MapContentLayout(
     weatherUiState: com.gorite.cyclemap.weather.WeatherUiState = com.gorite.cyclemap.weather.WeatherUiState.Unavailable,
     onRefreshWeather: () -> Unit = {},
 ) {
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = false,
-        drawerContent = {
-            MapDrawerContent(
-                selectedMenu = selectedMenu,
-                onClose = { scope.launch { drawerState.close() } },
-                onSearchClick = {
-                    onMenuSelect("検索")
-                    onOpenSearch()
-                    scope.launch { drawerState.close() }
-                },
-                onDownloadClick = {
-                    onMenuSelect("ダウンロード")
-                    onOpenDownload()
-                    scope.launch { drawerState.close() }
-                },
-                onLicenseClick = {
-                    onMenuSelect("ライセンス")
-                    onOpenLicense()
-                    scope.launch { drawerState.close() }
-                },
-                onSettingsClick = {
-                    onMenuSelect("設定")
-                    onOpenSettings()
-                    scope.launch { drawerState.close() }
-                },
-                onDeveloperOptionsClick = {
-                    onMenuSelect("開発者")
-                    onOpenDeveloperOptions()
-                    scope.launch { drawerState.close() }
-                },
-                onVersionClick = {
-                    onMenuSelect("バージョン情報")
-                    onOpenVersion()
-                    scope.launch { drawerState.close() }
-                },
-            )
-        },
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
         val isLandscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val effectiveTopPadding = maxOf(systemInsets.calculateTopPadding(), statusBarTop)
-        Column(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -200,6 +159,7 @@ internal fun MapContentLayout(
                 MapViewsContainer(
                     modifier = Modifier.fillMaxSize(),
                     mapView = mapView,
+                    vectorMap = vectorMap,
                     selectedLayer = selectedLayer,
                     isAreaSelectMode = isAreaSelectMode,
                     areaDragState = areaDragState,
@@ -223,12 +183,14 @@ internal fun MapContentLayout(
                     navDotDrawable = navDotDrawable,
                     gpsStatus = gpsStatus,
                     onMapCreated = onMapCreated,
+                    onMapDestroyed = onMapDestroyed,
                     onUserPan = { onFollowLocationChange(false) },
                     onPoiRefresh = onPoiRefresh,
                     onZoomLevelChanged = onZoomLevelChanged,
                     onPoiSpotDeselect = { onSelectPoiSpot(null) },
                     onLongPress = onLongPress,
                     onTiltChanged = onTiltChanged,
+                    onBearingChanged = onBearingChanged,
                     onPoiClick = onSelectPoiSpot,
                     onVectorMapReady = onVectorMapReady,
                 )
@@ -270,7 +232,7 @@ internal fun MapContentLayout(
                     effectiveTopPadding = effectiveTopPadding,
                     isLandscape = isLandscape,
                     systemInsets = systemInsets,
-                    onMenuClick = { scope.launch { drawerState.open() } },
+            onMenuClick = { isDrawerOpenState.value = true },
                     onSearchClick = onOpenSearch,
                     onAvatarClick = onOpenDeveloperOptions,
                     onHomeClick = onHomeClick,
@@ -279,6 +241,7 @@ internal fun MapContentLayout(
                     notificationBannerGroup = notificationBanners,
                     navigationProgress = navigationProgress,
                     navigationInstructions = navigationInstructions,
+                    gpsStatus = gpsStatus,
                     isRerouting = isRerouting,
                     offRouteDetector = offRouteDetector,
                     autoRerouteEnabled = autoRerouteEnabled,
@@ -295,6 +258,7 @@ internal fun MapContentLayout(
                     mapView = mapView,
                     currentZoomLevel = currentZoomLevel,
                     currentVectorTilt = currentVectorTilt,
+                    vectorBearing = currentVectorBearing,
                     headingDegrees = headingDegrees,
                     isHeadingUp = isHeadingUp,
                     onHeadingUpToggle = onHeadingUpToggle,
@@ -353,6 +317,30 @@ internal fun MapContentLayout(
                     onRefreshWeather = onRefreshWeather,
                 )
             }
+        }
+        val show3dSimulationState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+        if (show3dSimulationState.value) {
+            com.gorite.cyclemap.ui.simulation.Isometric3dSimulationDialog(
+                onDismiss = { show3dSimulationState.value = false }
+            )
+        }
+
+        MapDrawerOverlay(
+            visible = isDrawerOpenState.value,
+            onDismiss = { isDrawerOpenState.value = false },
+        ) {
+            MapDrawerContent(
+                selectedMenu = selectedMenu,
+                onClose = { isDrawerOpenState.value = false },
+                onSearchClick = { isDrawerOpenState.value = false; onMenuSelect("検索"); onOpenSearch() },
+                onDownloadClick = { isDrawerOpenState.value = false; onMenuSelect("ダウンロード"); onOpenDownload() },
+                on3dSimulationClick = { isDrawerOpenState.value = false; onMenuSelect("3D"); show3dSimulationState.value = true },
+                onLicenseClick = { isDrawerOpenState.value = false; onMenuSelect("ライセンス"); onOpenLicense() },
+                onSettingsClick = { isDrawerOpenState.value = false; onMenuSelect("設定"); onOpenSettings() },
+                onDeveloperOptionsClick = { isDrawerOpenState.value = false; onMenuSelect("開発者"); onOpenDeveloperOptions() },
+                onVersionClick = { isDrawerOpenState.value = false; onMenuSelect("バージョン情報"); onOpenVersion() },
+            )
         }
     }
 }

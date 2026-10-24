@@ -38,6 +38,7 @@ fun GoogleNavHeaderView(
     nextStep: com.gorite.cyclemap.contract.GuidanceStep?,
     laneHints: List<com.gorite.cyclemap.contract.LaneInfo>,
     isRerouting: Boolean,
+    animationEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     GoogleNavHeaderV2(
@@ -45,6 +46,7 @@ fun GoogleNavHeaderView(
         nextStep = nextStep,
         laneHints = laneHints,
         isRerouting = isRerouting,
+        animationEnabled = animationEnabled,
         modifier = modifier
     )
 }
@@ -76,6 +78,7 @@ fun GoogleNavHeaderView(
     instructionText: String,
     streetName: String?,
     lanes: List<String> = emptyList(),
+    animationEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -88,6 +91,12 @@ fun GoogleNavHeaderView(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 14.dp)
         ) {
+            // 上部UIの最上段 NEXT>>> アニメーションバナー
+            NextFlowAnimation(
+                animationEnabled = animationEnabled,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically

@@ -211,13 +211,39 @@ object TileSourceSelector {
         val tilesSub = File(dataDir, "tiles/$fileName")
         if (tilesSub.isFile && tilesSub.length() > 0) return tilesSub
 
-        val candidates = listOf(
-            File(dataDir, fileName.lowercase()),
-            File(dataDir, fileName.replaceFirstChar { it.uppercase() }),
-            File(dataDir, "tiles/" + fileName.lowercase()),
-            File(dataDir, "tiles/" + fileName.replaceFirstChar { it.uppercase() })
-        )
-        return candidates.firstOrNull { it.isFile && it.length() > 0 }
+        val baseName = fileName.removeSuffix(".pmtiles").removeSuffix("_osm")
+        val candidateNames = listOf(
+            fileName,
+            fileName.lowercase(),
+            fileName.replaceFirstChar { it.uppercase() },
+            "$baseName.pmtiles",
+            "${baseName.lowercase()}.pmtiles",
+            "${baseName.replaceFirstChar { it.uppercase() }}.pmtiles",
+            "${baseName}_osm.pmtiles",
+            "${baseName.lowercase()}_osm.pmtiles",
+            "${baseName.replaceFirstChar { it.uppercase() }}_osm.pmtiles",
+        ).distinct()
+
+        for (name in candidateNames) {
+            val f1 = File(dataDir, name)
+            if (f1.isFile && f1.length() > 0) return f1
+            val f2 = File(dataDir, "tiles/$name")
+            if (f2.isFile && f2.length() > 0) return f2
+        }
+        return null
+    }
+
+    /**
+     * 配置済みの PMTiles のうち、ファイル名昇順で最初に見つかった実在ファイルを返す。
+     */
+    fun findFirstAvailableTile(dataDir: File): File? {
+        val rootFiles = dataDir.listFiles() ?: emptyArray()
+        val tilesSubDir = File(dataDir, "tiles")
+        val subFiles = if (tilesSubDir.isDirectory) tilesSubDir.listFiles() ?: emptyArray() else emptyArray()
+        val allFiles = (rootFiles.toList() + subFiles.toList()).filter { file ->
+            file.isFile && file.name.endsWith(".pmtiles", ignoreCase = true) && file.length() > 0
+        }.sortedBy { it.name }
+        return allFiles.firstOrNull()
     }
 
     fun resolveTileForLocation(dataDir: File, latitude: Double, longitude: Double): File? {

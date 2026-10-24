@@ -28,6 +28,7 @@ import com.gorite.cyclemap.ui.cycling.SpotPanelSheet
 import com.gorite.cyclemap.ui.cycling.SpotQuickCategory
 import com.gorite.cyclemap.ui.cycling.buildRouteElevationProfile
 import com.gorite.cyclemap.ui.cycling.elevationGain
+import com.gorite.cyclemap.ui.cycling.elevationSourceLabel
 import com.gorite.cyclemap.ui.cycling.gradeSummary
 import com.gorite.cyclemap.ui.cycling.mockElevationProfile
 import org.osmdroid.util.GeoPoint
@@ -70,7 +71,7 @@ internal fun MapPanelsHost(
     onSelectTravelMode: (com.gorite.cyclemap.contract.TravelModeType) -> Unit = {},
     onStartNavigation: () -> Unit = {},
 ) {
-    if (showRoutePanel) {
+    if (showRoutePanel && calculatedRoutes.isEmpty() && routeSummary == null) {
         val routeProfile = if (realElevProfile.isNotEmpty()) realElevProfile else remember(routeSummary, navigationRoute) {
             routeSummary?.let {
                 if (navigationRoute.isNotEmpty()) buildRouteElevationProfile(navigationRoute.map { pt -> pt.latitude to pt.longitude }, it.distanceMeters)
@@ -89,6 +90,7 @@ internal fun MapPanelsHost(
             gainM = routeProfile.takeIf { it.size >= 2 }?.let {
                 elevationGain(it, routeSummary?.distanceMeters ?: 0.0)?.toInt()
             },
+            elevationSource = elevationSourceLabel(routeProfile),
             maxGradePct = routeGradeSummary?.maxUphillPct,
             maxDownhillPct = routeGradeSummary?.maxDownhillPct,
             onSearchClick = onOpenSearchFromRoutePanel,

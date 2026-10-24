@@ -14,23 +14,32 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.gorite.cyclemap.net.Link
+import com.gorite.cyclemap.ui.cycling.GoogleFloatingActionButton
 import com.gorite.cyclemap.ui.cycling.GoogleGpsButton
 import com.gorite.cyclemap.ui.cycling.GoogleLayerButton
 import com.gorite.cyclemap.ui.cycling.GoogleMapsControlColumn
 import com.gorite.cyclemap.ui.cycling.GoogleZoomButton
+import com.gorite.cyclemap.ui.cycling.GoogleZoomPill
 import com.gorite.cyclemap.ui.cycling.NavStartFAB
 import com.gorite.cyclemap.ui.map.FloatingCircleButton
 import com.gorite.cyclemap.ui.map.MapControls
@@ -47,6 +56,7 @@ internal fun BoxScope.MapControlsOverlay(
     mapView: MapView?,
     currentZoomLevel: Double,
     currentVectorTilt: Double,
+    vectorBearing: Double = 0.0,
     headingDegrees: Float,
     isHeadingUp: Boolean,
     onHeadingUpToggle: () -> Unit,
@@ -77,7 +87,7 @@ internal fun BoxScope.MapControlsOverlay(
         MapLayer.TERRAIN -> "地形"
     }
     val mapBearing = if (selectedLayer == MapLayer.VECTOR_LIBERTY) {
-        (vectorMap?.cameraPosition?.bearing ?: 0.0).toFloat()
+        vectorBearing.toFloat()
     } else {
         mapView?.mapOrientation ?: 0f
     }
@@ -156,6 +166,38 @@ internal fun BoxScope.MapControlsOverlay(
                 onClick = toggleNextLayer,
                 label = currentLayerLabel,
             )
+            // 3D / 2D トグルボタン (縦画面)
+            GoogleFloatingActionButton(
+                onClick = onToggleTiltAction,
+                contentDescription = if (currentVectorTilt > 15.0) "2D表示へ切替" else "3D表示へ切替",
+            ) {
+                Text(
+                    text = if (currentVectorTilt > 15.0) "2D" else "3D",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (currentVectorTilt > 15.0) Color(0xFF1A73E8) else Color(0xFF3C4043),
+                )
+            }
+            // エリア選択ボタン (縦画面)
+            Surface(
+                shape = if (isAreaSelectMode) RoundedCornerShape(22.dp) else CircleShape,
+                color = if (isAreaSelectMode) MaterialTheme.colorScheme.primary else Color.White,
+                shadowElevation = 6.dp,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onAreaSelectToggle),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_download),
+                        contentDescription = if (isAreaSelectMode) "エリア選択中" else "エリアダウンロード",
+                        modifier = Modifier.size(22.dp),
+                        tint = if (isAreaSelectMode) Color.White else Color(0xFF3C4043),
+                    )
+                }
+            }
             val safeBearing = if (mapBearing.isNaN()) 0f else mapBearing
             AnimatedVisibility(
                 visible = kotlin.math.abs(safeBearing) > 2.0f,
@@ -177,15 +219,11 @@ internal fun BoxScope.MapControlsOverlay(
                     )
                 }
             }
-            GoogleZoomButton(
-                iconRes = R.drawable.ic_ms_add,
-                contentDescription = "拡大",
-                onClick = onZoomInAction,
-            )
-            GoogleZoomButton(
-                iconRes = R.drawable.ic_lucide_minus,
-                contentDescription = "縮小",
-                onClick = onZoomOutAction,
+            GoogleZoomPill(
+                onZoomIn = onZoomInAction,
+                onZoomOut = onZoomOutAction,
+                canZoomIn = canZoomIn,
+                canZoomOut = canZoomOut,
             )
         }
 
@@ -205,6 +243,44 @@ internal fun BoxScope.MapControlsOverlay(
             )
             NavStartFAB(
                 onClick = onNavStartClick,
+            )
+        }
+    } else {
+        // 案内中も地図上部の右側に主要操作を残し、Google Mapsのナビ画面に近い操作配置にする。
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = effectiveTopPadding + 150.dp, end = 14.dp)
+                .zIndex(2f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            FloatingCircleButton(
+                onClick = onHeadingUpToggle,
+                contentDescription = "コンパス・北向き切替",
+                modifier = Modifier.size(42.dp),
+            ) {
+                val safeBearing = if (mapBearing.isNaN()) 0f else mapBearing
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_compass),
+                    contentDescription = null,
+                    modifier = Modifier.size(21.dp).rotate(-safeBearing),
+                    tint = Color(0xFFD32F2F),
+                )
+            }
+            GoogleZoomButton(
+                iconRes = R.drawable.ic_ms_add,
+                contentDescription = "拡大",
+                onClick = onZoomInAction,
+            )
+            GoogleZoomButton(
+                iconRes = R.drawable.ic_lucide_minus,
+                contentDescription = "縮小",
+                onClick = onZoomOutAction,
+            )
+            GoogleGpsButton(
+                following = followLocation,
+                onClick = onTargetClick,
             )
         }
     }

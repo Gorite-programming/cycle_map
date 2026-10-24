@@ -90,3 +90,29 @@ def test_merge_all_and_export_excludes(tmp_db, tmp_path):
     out = str(tmp_path / "m.search.db")
     summary = export_mod.export_search_db(tmp_db, "hiroshima", out)
     assert summary["row_count"] == 3  # 4件 - 統合1件
+
+
+def test_kanji_number_address_normalization(tmp_db):
+    """MED-13: 漢数字の十丁目・一丁目が正しく10丁目・1丁目に正規化され衝突しないことを確認"""
+    conn = masterdb.connect(tmp_db)
+    try:
+        # 十丁目と一丁目にそれぞれ同名店舗がある場合
+        p1 = _row("セブン-イレブン", "shop:convenience", 34.3900, 132.4600, "osm", "node/10", 10,
+                  address="広島県広島市中区大手町十丁目1-1")
+        p2 = _row("セブン-イレブン", "shop:convenience", 34.3950, 132.4650, "overture", "node/1", 30,
+                  address="広島県広島市中区大手町一丁目1-1")
+        p3 = _row("セブン-イレブン", "shop:convenience", 34.3900, 132.4600, "overture", "node/10_ov", 30,
+                  address="広島県広島市中区大手町10丁目1-1")
+        masterdb.insert_pois(conn, [p1, p2, p3])
+
+        # merge_all を実行
+        merged_count = mg.merge_all(conn, "hiroshima")
+        # p1 と p3（大手町10丁目）は同一住所としてマージされ、p2（大手町1丁目）はマージされないこと
+        assert merged_count == 1
+        active = masterdb.query_pois(conn, include_merged=False)
+        active_ids = {r["source_id"] for r in active}
+        assert "node/1" in active_ids  # 1丁目は残る
+        assert "node/10" in active_ids  # 高優先度のOSM(10丁目)が残る
+        assert "node/10_ov" not in active_ids  # 低優先度のOverture(10丁目)はマージされて除外
+    finally:
+        conn.close()

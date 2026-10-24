@@ -26,6 +26,11 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Polyline
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import com.gorite.cyclemap.ui.mapview.updateGpxTrack
 import java.io.File
 import java.util.Locale
 
@@ -37,10 +42,12 @@ internal fun MapSettingsDialogs(
     showRecordPanel: Boolean,
     isRecording: Boolean,
     gpxPointCount: Int,
+    gpxStatusMessage: String?,
     navStats: NavigationStats?,
     navigationProgress: RouteProgress?,
     hasLocationPermission: Boolean,
     mapView: MapView?,
+    vectorMap: MapLibreMap? = null,
     gpxTrackOverlay: Polyline?,
     onGpxTrackOverlayChanged: (Polyline?) -> Unit,
     onWarningMessage: (String) -> Unit,
@@ -91,6 +98,7 @@ internal fun MapSettingsDialogs(
         RideHistorySheet(
             isRecording = isRecording,
             pointCount = gpxPointCount,
+            statusMessage = gpxStatusMessage,
             rideSummary = stats?.let {
                 "今回: ${formatRemaining((navigationProgress?.routeDistanceMeters ?: 0.0).coerceAtLeast(it.remainingMeters))}中 " +
                     "${formatRemaining((navigationProgress?.distanceFromStartMeters ?: 0.0))}走行 · " +
@@ -108,6 +116,26 @@ internal fun MapSettingsDialogs(
                 LocationTrackingService.stopRecording(context)
             },
             onShowTrackOnMap = { ride ->
+                if (vectorMap != null) {
+                    vectorMap.getStyle { style ->
+                        val geoPoints = ride.points.map { GeoPoint(it.latitude, it.longitude) }
+                        updateGpxTrack(style, geoPoints)
+                    }
+                    if (ride.points.isNotEmpty()) {
+                        if (ride.points.size == 1) {
+                            vectorMap.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(
+                                    LatLng(ride.points[0].latitude, ride.points[0].longitude),
+                                    15.0,
+                                ),
+                            )
+                        } else {
+                            val builder = LatLngBounds.Builder()
+                            ride.points.forEach { builder.include(LatLng(it.latitude, it.longitude)) }
+                            vectorMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 64))
+                        }
+                    }
+                }
                 mapView?.let { view ->
                     gpxTrackOverlay?.let { view.overlays.remove(it) }
                     val polyline = Polyline(view).apply {
@@ -132,6 +160,9 @@ internal fun MapSettingsDialogs(
                 onCloseRecordPanel()
             },
             onDeleteRide = {
+                vectorMap?.getStyle { style ->
+                    updateGpxTrack(style, emptyList())
+                }
                 mapView?.let { view ->
                     gpxTrackOverlay?.let {
                         view.overlays.remove(it)

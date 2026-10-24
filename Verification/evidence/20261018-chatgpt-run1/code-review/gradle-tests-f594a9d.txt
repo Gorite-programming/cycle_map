@@ -1,0 +1,78 @@
+
+> Configure project :app
+WARNING: The option setting 'android.overridePathCheck=true' is experimental.
+The current default is 'false'.
+
+> Task :routing-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :routing-core:processResources NO-SOURCE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResValues
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:generateDebugResources
+> Task :app:mergeDebugResources
+> Task :app:packageDebugResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:parseDebugLocalResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:processDebugManifestForPackage
+> Task :app:javaPreCompileDebug
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest
+> Task :routing-core:processTestResources NO-SOURCE
+> Task :osm-importer:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :osm-importer:processResources NO-SOURCE
+> Task :osm-importer:processTestResources NO-SOURCE
+> Task :app:processDebugResources
+> Task :routing-core:compileKotlin
+> Task :routing-core:compileJava NO-SOURCE
+> Task :routing-core:classes UP-TO-DATE
+> Task :routing-core:jar
+> Task :routing-core:compileTestKotlin
+> Task :routing-core:compileTestJava NO-SOURCE
+> Task :routing-core:testClasses UP-TO-DATE
+> Task :osm-importer:compileKotlin
+> Task :routing-core:test
+> Task :osm-importer:compileJava NO-SOURCE
+> Task :osm-importer:classes UP-TO-DATE
+> Task :osm-importer:jar
+> Task :osm-importer:compileTestKotlin
+> Task :osm-importer:compileTestJava NO-SOURCE
+> Task :osm-importer:testClasses UP-TO-DATE
+> Task :osm-importer:test
+
+> Task :app:compileDebugKotlin
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/main/java/com/gorite/cyclemap/navigation/NavigationHelper.kt:256:38 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/main/java/com/gorite/cyclemap/tracking/LocationTrackingService.kt:220:31 Condition is always 'true'.
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/main/java/com/gorite/cyclemap/ui/mapview/VectorMapView.kt:482:17 'fun setPadding(p0: Int, p1: Int, p2: Int, p3: Int): Unit' is deprecated. Deprecated in Java.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+
+> Task :app:compileDebugUnitTestKotlin
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/test/java/com/gorite/cyclemap/ui/map/ContractUiTest.kt:40:20 Check for instance is always 'true'.
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/test/java/com/gorite/cyclemap/ui/map/ContractUiTest.kt:41:20 Check for instance is always 'true'.
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/test/java/com/gorite/cyclemap/ui/map/ContractUiTest.kt:42:20 Check for instance is always 'true'.
+w: file:///private/tmp/cycle_map_f594a9d/application/app/src/test/java/com/gorite/cyclemap/ui/map/ContractUiTest.kt:43:20 Check for instance is always 'true'.
+
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+[Incubating] Problems report is available at: file:///private/tmp/cycle_map_f594a9d/application/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.11.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 21s
+32 actionable tasks: 32 executed
+gradle_test_exit=0

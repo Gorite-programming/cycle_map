@@ -118,7 +118,8 @@ internal fun BoxScope.MapBottomOverlays(
             onStopNavigation = onStopNavigation,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = systemInsets.calculateBottomPadding())
+                .padding(horizontal = 10.dp)
+                .padding(bottom = systemInsets.calculateBottomPadding() + 8.dp)
                 .zIndex(2f),
         )
     } else if (routeSummary != null) {
@@ -375,7 +376,7 @@ internal fun BoxScope.MapBottomOverlays(
                 ) {
                     // 5. 地名・天候サマリーシート (SCR-01, SCR-02)
                     LocationSummarySheet(
-                        locationName = locationLabel.ifEmpty { "井口明神" },
+                        locationName = locationLabel.ifEmpty { "現在地" },
                         weatherUiState = weatherUiState,
                         onRefreshWeather = onRefreshWeather,
                         onClick = onExploreClick,

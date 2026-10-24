@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -41,19 +42,22 @@ fun GoogleNavHeaderV2(
     nextStep: GuidanceStep?,
     laneHints: List<LaneInfo>,
     isRerouting: Boolean,
+    animationEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val containerColor = if (isRerouting) MaterialTheme.colorScheme.error else GoogleGreen
+    val isDarkTheme = MaterialTheme.colorScheme.background.red < 0.25f
+    val containerColor = if (isRerouting) MaterialTheme.colorScheme.error else if (isDarkTheme) Color(0xFF00695C) else GoogleGreen
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = containerColor,
-        shadowElevation = 6.dp
+        shadowElevation = 8.dp,
+        shape = RoundedCornerShape(20.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             if (isRerouting) {
                 Row(
@@ -64,7 +68,7 @@ fun GoogleNavHeaderV2(
                         painter = painterResource(R.drawable.ic_lucide_route),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(44.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
@@ -75,6 +79,13 @@ fun GoogleNavHeaderV2(
                     )
                 }
             } else if (currentStep != null) {
+                // 上部UI最上段: > > > T X E N が順次降下し、右へ流れてフェードアウト
+                NextFlowAnimation(
+                    animationEnabled = animationEnabled,
+                    fadeColor = containerColor,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -84,7 +95,7 @@ fun GoogleNavHeaderV2(
                         painter = painterResource(turnTypeToDrawableRes(currentStep.turnType)),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(48.dp)
                     )
 
                     Spacer(modifier = Modifier.width(16.dp))
@@ -92,13 +103,13 @@ fun GoogleNavHeaderV2(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = formatDistance(currentStep.distanceToTurnMeters),
-                            style = MaterialTheme.typography.headlineMedium,
+                            style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
                             text = currentStep.instructionText,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
@@ -186,32 +197,34 @@ fun GoogleNavFooterV2(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp,
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+        color = Color(0xFF101114),
+        shadowElevation = 10.dp,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                val etaText = if (eta != null) {
-                    val dt = java.time.Instant.ofEpochMilli(eta.arrivalEpochMillis)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val duration = formatDuration(eta?.remainingSeconds ?: remainingSeconds)
+                val arrivalText = eta?.let {
+                    val time = java.time.Instant.ofEpochMilli(it.arrivalEpochMillis)
                         .atZone(java.time.ZoneId.systemDefault())
                         .toLocalTime()
-                    String.format("%02d:%02d 到着", dt.hour, dt.minute)
-                } else {
-                    formatEta(remainingSeconds)
-                }
+                    String.format("%02d:%02d", time.hour, time.minute)
+                } ?: "到着時刻を計算中"
 
                 Text(
-                    text = etaText,
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = duration,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
-                    color = GoogleGreen
+                    color = Color(0xFFFFC928),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -220,7 +233,7 @@ fun GoogleNavFooterV2(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "・ " + formatDuration(if (eta != null) eta.remainingSeconds else remainingSeconds),
+                        text = "・ $arrivalText",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -249,14 +262,16 @@ fun GoogleNavFooterV2(
 
                 Button(
                     onClick = onStopNavigation,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier.height(48.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303134)),
+                    shape = CircleShape,
+                    modifier = Modifier.size(48.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.nav_stop),
-                        color = MaterialTheme.colorScheme.onError,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        painter = painterResource(R.drawable.ic_lucide_x),
+                        contentDescription = stringResource(R.string.nav_stop),
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
                     )
                 }
             }
@@ -273,6 +288,7 @@ fun LandscapeNavHudBar(
     eta: EtaInfo?,
     remainingSeconds: Double,
     onStopNavigation: () -> Unit,
+    animationEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -289,6 +305,10 @@ fun LandscapeNavHudBar(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (currentStep != null) {
+                    NextFlowAnimation(
+                        animationEnabled = animationEnabled,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
                     Icon(
                         painter = painterResource(turnTypeToDrawableRes(currentStep.turnType)),
                         contentDescription = null,

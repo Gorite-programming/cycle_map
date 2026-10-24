@@ -129,9 +129,10 @@ object JmaWeatherParser {
         return try {
             val timePart = isoDateTime.substringAfter('T').substringBefore('+')
             val hour = timePart.substringBefore(':').toIntOrNull() ?: return "気温"
+            // MED-06: 00:00 (朝の最低気温), 09:00 (日中の最高気温)
             when (hour) {
-                in 0..9 -> "朝の最低気温"
-                in 10..15 -> "日中の最高気温"
+                in 0..4 -> "朝の最低気温"
+                in 5..15 -> "日中の最高気温"
                 else -> "${hour}時頃の気温"
             }
         } catch (_: Exception) {

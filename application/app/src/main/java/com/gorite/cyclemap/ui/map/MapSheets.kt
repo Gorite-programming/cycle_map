@@ -1,7 +1,6 @@
 package com.gorite.cyclemap.ui.map
 
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -47,11 +46,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import com.gorite.cyclemap.R
+import com.gorite.cyclemap.ui.theme.LocalAnimationEnabled
+import com.gorite.cyclemap.ui.theme.Motion
 
 enum class BottomSheetAnchor(val heightDp: Dp) {
-    Peek(120.dp),
-    Half(320.dp),
+    Peek(180.dp),
+    Half(340.dp),
     Full(560.dp)
 }
 
@@ -65,9 +68,17 @@ fun ThreeStageBottomSheet(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val maxSheetHeight = (screenHeight - 96.dp).coerceAtLeast(240.dp)
+    val density = LocalDensity.current
+    val dragThresholdPx = with(density) { 60.dp.toPx() }
     val animatedHeight by animateDpAsState(
-        targetValue = anchor.heightDp,
-        animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
+        targetValue = anchor.heightDp.coerceAtMost(maxSheetHeight),
+        animationSpec = Motion.motionTween(
+            durationMillis = 260,
+            easing = Motion.StandardEasing,
+            enabled = LocalAnimationEnabled.current,
+        ),
         label = "sheetHeight"
     )
     var dragAccumulated by remember { mutableFloatStateOf(0f) }
@@ -92,14 +103,14 @@ fun ThreeStageBottomSheet(
                 },
                 onDragStopped = {
                     when {
-                        dragAccumulated < -60f -> {
+                        dragAccumulated < -dragThresholdPx -> {
                             when (anchor) {
                                 BottomSheetAnchor.Peek -> onAnchorChange(BottomSheetAnchor.Half)
                                 BottomSheetAnchor.Half -> onAnchorChange(BottomSheetAnchor.Full)
                                 BottomSheetAnchor.Full -> Unit
                             }
                         }
-                        dragAccumulated > 60f -> {
+                        dragAccumulated > dragThresholdPx -> {
                             when (anchor) {
                                 BottomSheetAnchor.Full -> onAnchorChange(BottomSheetAnchor.Half)
                                 BottomSheetAnchor.Half -> onAnchorChange(BottomSheetAnchor.Peek)

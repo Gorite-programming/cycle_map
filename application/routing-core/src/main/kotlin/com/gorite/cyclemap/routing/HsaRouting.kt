@@ -438,7 +438,7 @@ class MappedHsaRouter(private val graph: LazyMappedRoadGraph) {
             goalIndex,
             heuristicMultiplier = options.prepassHeuristicMultiplier,
             arterialOnly = options.prepassArterialOnly,
-            arterialPenaltyMultiplier = options.prepassArterialPenaltyMultiplier,
+            nonArterialPenaltyMultiplier = options.prepassArterialPenaltyMultiplier,
         )
         expandedNodes += graph.lastExpandedNodes
         if (!prepass.isReachable) {

@@ -42,6 +42,7 @@ internal fun BoxScope.MapTopOverlays(
     notificationBannerGroup: @Composable (Modifier) -> Unit,
     navigationProgress: RouteProgress?,
     navigationInstructions: List<RouteInstruction>,
+    gpsStatus: com.gorite.cyclemap.tracking.GpsSignalStatus,
     isRerouting: Boolean,
     offRouteDetector: OffRouteDetector,
     autoRerouteEnabled: Boolean,
@@ -71,7 +72,7 @@ internal fun BoxScope.MapTopOverlays(
                 onCategoryClick = onSelectCategory,
                 onMicClick = onSearchClick,
                 onAvatarClick = onAvatarClick,
-                userAvatarText = "拓真",
+                userAvatarText = "",
                 placeholderText = "ここで検索",
                 bannerContent = {
                     notificationBannerGroup(Modifier.fillMaxWidth())
@@ -95,7 +96,10 @@ internal fun BoxScope.MapTopOverlays(
                         top = effectiveTopPadding + 8.dp,
                     )
                 } else {
-                    Modifier.fillMaxWidth()
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp)
+                        .padding(top = effectiveTopPadding + 8.dp)
                 },
             )
             .zIndex(2f),
@@ -123,7 +127,7 @@ internal fun BoxScope.MapTopOverlays(
         val currentTurnType = nextInstruction?.type.toTurnType()
         val nextTurnType = nextAfterThis?.type.toTurnType()
 
-        androidx.compose.runtime.LaunchedEffect(nextInstruction, progress) {
+        androidx.compose.runtime.LaunchedEffect(nextInstruction?.nodeId, currentTurnType) {
             val hints = laneProvider.getLaneHints(nextInstruction?.nodeId ?: 0L, currentTurnType)
             val hintsFromLaneHint: List<com.gorite.cyclemap.routing.LaneHint> = hints.map {
                 com.gorite.cyclemap.routing.LaneHint(
@@ -131,7 +135,7 @@ internal fun BoxScope.MapTopOverlays(
                     isActiveForRoute = it.isRecommended
                 )
             }
-            activeLaneHints = hintsFromLaneHint.map {
+            activeLaneHints = hintsFromLaneHint.take(5).map {
                 com.gorite.cyclemap.contract.LaneInfo(
                     direction = when (it.direction) {
                         "left" -> com.gorite.cyclemap.contract.TurnType.Left
@@ -153,36 +157,47 @@ internal fun BoxScope.MapTopOverlays(
             com.gorite.cyclemap.ui.map.LandscapeNavHudBar(
                 currentStep = com.gorite.cyclemap.contract.GuidanceStep(
                     turnType = currentTurnType,
-                    instructionText = guide?.text ?: "直進",
+                    instructionText = guide?.text?.withoutDistancePrefix() ?: "直進",
                     streetName = null,
                     distanceToTurnMeters = distanceMeters ?: 0.0
                 ),
                 eta = null,
                 remainingSeconds = (remaining ?: 0.0) / 4.2,
-                onStopNavigation = onStopNavigation
+                onStopNavigation = onStopNavigation,
+                animationEnabled = effectiveAnimationEnabled
             )
         } else {
             com.gorite.cyclemap.ui.map.GoogleNavHeaderView(
                 currentStep = com.gorite.cyclemap.contract.GuidanceStep(
                     turnType = currentTurnType,
-                    instructionText = guide?.text ?: "直進",
+                    instructionText = guide?.text?.withoutDistancePrefix() ?: "直進",
                     streetName = null,
                     distanceToTurnMeters = distanceMeters ?: 0.0
                 ),
                 nextStep = nextAfterThis?.let {
                     com.gorite.cyclemap.contract.GuidanceStep(
                         turnType = nextTurnType,
-                        instructionText = it.reason,
+                        instructionText = com.gorite.cyclemap.speech.RouteInstructionText.displayLabel(it),
                         streetName = null,
                         distanceToTurnMeters = distNextAfterThis ?: 0.0
                     )
                 },
-                laneHints = activeLaneHints,
-                isRerouting = isRerouting
+                laneHints = if (gpsStatus == com.gorite.cyclemap.tracking.GpsSignalStatus.HEALTHY && (distanceMeters ?: Double.MAX_VALUE) <= 600.0) {
+                    activeLaneHints
+                } else {
+                    emptyList()
+                },
+                isRerouting = isRerouting,
+                animationEnabled = effectiveAnimationEnabled
             )
         }
     }
 }
+
+private fun String.withoutDistancePrefix(): String = replace(
+    Regex("^\\s*(?:あと)?\\d+(?:\\.\\d+)?\\s*(?:m|km)(?:先|後)?\\s*"),
+    "",
+).ifBlank { this }
 
 private fun com.gorite.cyclemap.routing.InstructionType?.toTurnType(): com.gorite.cyclemap.contract.TurnType = when (this) {
     com.gorite.cyclemap.routing.InstructionType.LEFT_TURN -> com.gorite.cyclemap.contract.TurnType.Left

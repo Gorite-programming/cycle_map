@@ -4,6 +4,7 @@ import com.gorite.cyclemap.*
 import com.gorite.cyclemap.utils.*
 import com.gorite.cyclemap.navigation.*
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,11 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 internal fun MapDrawerContent(
@@ -31,29 +30,35 @@ internal fun MapDrawerContent(
     onClose: () -> Unit,
     onSearchClick: () -> Unit,
     onDownloadClick: () -> Unit,
+    on3dSimulationClick: () -> Unit = {},
     onLicenseClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onDeveloperOptionsClick: () -> Unit,
     onVersionClick: () -> Unit,
 ) {
-    ModalDrawerSheet {
-        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 12.dp, top = 20.dp, bottom = 12.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+        ) {
             Text(
                 "CycleMap",
-                modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
-            Button(
-                onClick = onClose,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .height(52.dp),
-            ) {
-                Text("メニューを閉じる", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            IconButton(onClick = onClose) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lucide_x),
+                    contentDescription = "メニューを閉じる",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        }
+        HorizontalDivider(modifier = Modifier.padding(bottom = 8.dp))
+        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
             NavigationDrawerItem(
                 label = { Text("目的地検索") },
                 icon = {
@@ -77,6 +82,18 @@ internal fun MapDrawerContent(
                 },
                 selected = selectedMenu == "ダウンロード",
                 onClick = onDownloadClick,
+            )
+            NavigationDrawerItem(
+                label = { Text("3Dシミュレーション") },
+                icon = {
+                    Icon(
+                        painterResource(R.drawable.ic_lucide_layers),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                    )
+                },
+                selected = selectedMenu == "3D",
+                onClick = on3dSimulationClick,
             )
             NavigationDrawerItem(
                 label = { Text("ライセンス") },

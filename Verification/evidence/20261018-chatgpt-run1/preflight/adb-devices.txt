@@ -1,0 +1,3 @@
+List of devices attached
+R5CR70NDMCM            device usb:1048576X product:SC-51B model:SC_51B device:SC-51B transport_id:34
+

@@ -43,6 +43,7 @@ import org.osmdroid.views.overlay.Marker
 internal fun MapViewsContainer(
     modifier: Modifier = Modifier,
     mapView: org.osmdroid.views.MapView?,
+    vectorMap: MapLibreMap? = null,
     selectedLayer: MapLayer,
     isAreaSelectMode: Boolean,
     areaDragState: AreaDragState,
@@ -66,12 +67,14 @@ internal fun MapViewsContainer(
     systemInsets: PaddingValues,
     navDotDrawable: Drawable?,
     onMapCreated: (CycleMapView, Marker, AccuracyCircleOverlay) -> Unit,
+    onMapDestroyed: () -> Unit = {},
     onUserPan: () -> Unit,
     onPoiRefresh: () -> Unit,
     onZoomLevelChanged: (Double) -> Unit,
     onPoiSpotDeselect: () -> Unit,
     onLongPress: (GeoPoint) -> Unit,
     onTiltChanged: (Double) -> Unit,
+    onBearingChanged: (Double) -> Unit = {},
     onPoiClick: (NearbySpot) -> Unit,
     onVectorMapReady: (MapLibreMap) -> Unit,
 ) {
@@ -154,6 +157,8 @@ internal fun MapViewsContainer(
                 },
                 onRelease = { view ->
                     view.onPause()
+                    view.onDetach()
+                    onMapDestroyed()
                 },
             )
         }
@@ -193,13 +198,15 @@ internal fun MapViewsContainer(
                     poiSelected = poiSelected,
                     cameraPadding = androidx.compose.foundation.layout.PaddingValues(
                         top = if (isNavigationActive) {
-                            if (isLandscape) 50.dp else (systemInsets.calculateTopPadding() + 140.dp)
+                            if (isLandscape) 50.dp else (systemInsets.calculateTopPadding() + 210.dp)
                         } else 0.dp,
                         bottom = if (isNavigationActive) {
-                            if (isLandscape) 64.dp else (systemInsets.calculateBottomPadding() + 130.dp)
+                            if (isLandscape) 64.dp else (systemInsets.calculateBottomPadding() + 105.dp)
                         } else 0.dp,
                     ),
                     onTiltChanged = onTiltChanged,
+                    onZoomLevelChanged = onZoomLevelChanged,
+                    onBearingChanged = onBearingChanged,
                     onPoiClick = onPoiClick,
                     onPoiSpotDeselect = onPoiSpotDeselect,
                     onLongPress = onLongPress,
@@ -212,63 +219,87 @@ internal fun MapViewsContainer(
         // Area-select touch capture + rectangle drawing overlay (Compose layer, above map)
         if (isAreaSelectMode) {
             val latestMapViewForArea by rememberUpdatedState(mapView)
+            val latestVectorMapForArea by rememberUpdatedState(vectorMap)
+            val latestSelectedLayer by rememberUpdatedState(selectedLayer)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f)
-                    .pointerInput(isAreaSelectMode) {
+                    .pointerInput(isAreaSelectMode, selectedLayer) {
+                        var localDrag = AreaDragState()
                         detectDragGestures(
                             onDragStart = { offset ->
-                                onAreaDragStateChange(
-                                    AreaDragState(
-                                        anchorX = offset.x,
-                                        anchorY = offset.y,
-                                        currentX = offset.x,
-                                        currentY = offset.y,
-                                        active = true,
-                                    ),
+                                localDrag = AreaDragState(
+                                    anchorX = offset.x,
+                                    anchorY = offset.y,
+                                    currentX = offset.x,
+                                    currentY = offset.y,
+                                    active = true,
                                 )
+                                onAreaDragStateChange(localDrag)
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                onAreaDragStateChange(
-                                    areaDragState.copy(
-                                        currentX = change.position.x,
-                                        currentY = change.position.y,
-                                    ),
+                                localDrag = localDrag.copy(
+                                    currentX = change.position.x,
+                                    currentY = change.position.y,
                                 )
+                                onAreaDragStateChange(localDrag)
                             },
                             onDragEnd = {
-                                val view = latestMapViewForArea
-                                if (view != null) {
-                                    val drag = areaDragState
-                                    val left = minOf(drag.anchorX, drag.currentX)
-                                    val right = maxOf(drag.anchorX, drag.currentX)
-                                    val top = minOf(drag.anchorY, drag.currentY)
-                                    val bottom = maxOf(drag.anchorY, drag.currentY)
-                                    // Only accept drag with at least 20px in each axis
-                                    if ((right - left) > 20f && (bottom - top) > 20f) {
-                                        val proj = view.projection
-                                        if (proj != null) {
-                                            val topLeftGeo = proj.fromPixels(left.toInt(), top.toInt()) as? GeoPoint
-                                            val bottomRightGeo = proj.fromPixels(right.toInt(), bottom.toInt()) as? GeoPoint
-                                            if (topLeftGeo != null && bottomRightGeo != null) {
+                                val left = minOf(localDrag.anchorX, localDrag.currentX)
+                                val right = maxOf(localDrag.anchorX, localDrag.currentX)
+                                val top = minOf(localDrag.anchorY, localDrag.currentY)
+                                val bottom = maxOf(localDrag.anchorY, localDrag.currentY)
+                                // Only accept drag with at least 20px in each axis
+                                if ((right - left) > 20f && (bottom - top) > 20f) {
+                                    if (latestSelectedLayer == MapLayer.VECTOR_LIBERTY) {
+                                        val vMap = latestVectorMapForArea
+                                        if (vMap != null) {
+                                            val topLeftLatLng = vMap.projection.fromScreenLocation(android.graphics.PointF(left, top))
+                                            val bottomRightLatLng = vMap.projection.fromScreenLocation(android.graphics.PointF(right, bottom))
+                                            if (topLeftLatLng != null && bottomRightLatLng != null) {
+                                                val latNorth = maxOf(topLeftLatLng.latitude, bottomRightLatLng.latitude)
+                                                val latSouth = minOf(topLeftLatLng.latitude, bottomRightLatLng.latitude)
+                                                val lonWest = minOf(topLeftLatLng.longitude, bottomRightLatLng.longitude)
+                                                val lonEast = maxOf(topLeftLatLng.longitude, bottomRightLatLng.longitude)
                                                 onAreaSelected(
                                                     BoundingBox(
-                                                        topLeftGeo.latitude,       // latNorth
-                                                        bottomRightGeo.longitude,  // lonEast
-                                                        bottomRightGeo.latitude,   // latSouth
-                                                        topLeftGeo.longitude,      // lonWest
+                                                        latNorth,
+                                                        lonEast,
+                                                        latSouth,
+                                                        lonWest,
                                                     ),
                                                 )
                                             }
                                         }
+                                    } else {
+                                        val view = latestMapViewForArea
+                                        if (view != null) {
+                                            val proj = view.projection
+                                            if (proj != null) {
+                                                val topLeftGeo = proj.fromPixels(left.toInt(), top.toInt()) as? GeoPoint
+                                                val bottomRightGeo = proj.fromPixels(right.toInt(), bottom.toInt()) as? GeoPoint
+                                                if (topLeftGeo != null && bottomRightGeo != null) {
+                                                    onAreaSelected(
+                                                        BoundingBox(
+                                                            topLeftGeo.latitude,       // latNorth
+                                                            bottomRightGeo.longitude,  // lonEast
+                                                            bottomRightGeo.latitude,   // latSouth
+                                                            topLeftGeo.longitude,      // lonWest
+                                                        ),
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                onAreaDragStateChange(areaDragState.copy(active = false))
+                                localDrag = localDrag.copy(active = false)
+                                onAreaDragStateChange(localDrag)
                             },
                             onDragCancel = {
-                                onAreaDragStateChange(areaDragState.copy(active = false))
+                                localDrag = localDrag.copy(active = false)
+                                onAreaDragStateChange(localDrag)
                             },
                         )
                     }

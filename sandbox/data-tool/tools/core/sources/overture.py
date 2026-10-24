@@ -233,6 +233,12 @@ def fetch_overture_places_for_bbox(
         if not name_str:
             continue
 
+        f_lat = float(lat)
+        f_lon = float(lon)
+        # MED-13: bbox内でも行政界ポリゴン外（隣接県・海上の他県）のPOIを除外
+        if config.prefecture_for_point(f_lat, f_lon) != prefecture_id:
+            continue
+
         cat = resolve_category(name_str, overture_cat, basic_cat)
         full_addr = format_address(freeform, locality, region)
 
@@ -240,8 +246,8 @@ def fetch_overture_places_for_bbox(
         row = {
             "name": name_str,
             "category": cat,
-            "lat": float(lat),
-            "lon": float(lon),
+            "lat": f_lat,
+            "lon": f_lon,
             "address": full_addr,
             "prefecture": prefecture_id,
             "source": "overture:places",

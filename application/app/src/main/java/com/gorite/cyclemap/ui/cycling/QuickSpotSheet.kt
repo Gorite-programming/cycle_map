@@ -358,9 +358,9 @@ private fun QuickSpotCard(
             .clickable(onClick = onSpotClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF8F9FA),
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         ),
-        border = BorderStroke(1.dp, Color(0xFFE8EAED)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             modifier = Modifier
@@ -378,7 +378,7 @@ private fun QuickSpotCard(
                     text = spot.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF202124),
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -390,17 +390,17 @@ private fun QuickSpotCard(
                         text = formatKm(spot.distanceM),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1A73E8),
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = "•",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF5F6368),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         text = formatCategoryLabel(spot.category),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF5F6368),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
